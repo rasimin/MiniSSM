@@ -100,7 +100,7 @@ namespace SSMS
 
         #region Tab Management
 
-        public void CreateNewQueryTab(string connectionString, string databaseName, string? initialSql = null, string? customTabTitle = null)
+        public void CreateNewQueryTab(string connectionString, string databaseName, string? initialSql = null, string? customTabTitle = null, bool autoExecute = false)
         {
             _queryTabCounter++;
 
@@ -114,6 +114,7 @@ namespace SSMS
             {
                 queryTabControl.InitialSql = initialSql;
             }
+            queryTabControl.AutoExecute = autoExecute;
 
             var tabItem = new TabItem();
             tabItem.PreviewMouseLeftButtonDown += TabItem_PreviewMouseLeftButtonDown;
@@ -298,6 +299,8 @@ namespace SSMS
                     {
                         CboDatabases.SelectionChanged += CboDatabases_SelectionChanged;
                     }
+
+                    activeTab.FocusEditor();
                 }
             }
             catch (Exception ex)
@@ -758,6 +761,39 @@ namespace SSMS
             else
             {
                 CreateNewQueryTab(_initialConnectionString, "master");
+            }
+        }
+
+        private void BtnInsertScript_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn)
+            {
+                var menu = new ContextMenu();
+                
+                var scopeIdentityItem = new MenuItem { Header = "Scope Identity (DECLARE @NewID = SCOPE_IDENTITY())" };
+                scopeIdentityItem.Click += (s, ev) =>
+                {
+                    if (TabQueryControls.SelectedItem is TabItem tabItem && tabItem.Content is QueryTabControl activeTab)
+                    {
+                        activeTab.InsertText("DECLARE @NewID BIGINT = SCOPE_IDENTITY();");
+                    }
+                };
+                menu.Items.Add(scopeIdentityItem);
+
+                var getDateItem = new MenuItem { Header = "Get Date ('YYYY-MM-DD HH:mm:ss')" };
+                getDateItem.Click += (s, ev) =>
+                {
+                    if (TabQueryControls.SelectedItem is TabItem tabItem && tabItem.Content is QueryTabControl activeTab)
+                    {
+                        string dateStr = $"'{DateTime.Now:yyyy-MM-dd HH:mm:ss}'";
+                        activeTab.InsertText(dateStr);
+                    }
+                };
+                menu.Items.Add(getDateItem);
+
+                menu.PlacementTarget = btn;
+                menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+                menu.IsOpen = true;
             }
         }
 
@@ -1596,25 +1632,63 @@ namespace SSMS
             newQueryItem.Click += (s, e) => CreateNewQueryTab(connectionString, databaseName);
             menu.Items.Add(newQueryItem);
 
+            if (objectType == "Table" || objectType == "View")
+            {
+                var selectTopItem = new MenuItem { Header = "Select Top 200" };
+                selectTopItem.Click += (s, e) =>
+                {
+                    string safeName = objectName;
+                    var parts = objectName.Split('.');
+                    if (parts.Length == 2)
+                    {
+                        safeName = $"[{parts[0]}].[{parts[1]}]";
+                    }
+                    else
+                    {
+                        safeName = $"[{objectName}]";
+                    }
+                    string sql = $"SELECT TOP 200 * FROM {safeName};";
+                    CreateNewQueryTab(connectionString, databaseName, sql, $"{objectName} (Top 200)", autoExecute: true);
+                };
+                menu.Items.Add(selectTopItem);
+            }
+
             var scriptAsMenu = new MenuItem { Header = "Script Object as" };
 
             var createToMenu = new MenuItem { Header = "CREATE To" };
             var createNewQuery = new MenuItem { Header = "New Query Editor Window" };
             createNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "CREATE");
             createToMenu.Items.Add(createNewQuery);
+            scriptAsMenu.Items.Add(createToMenu);
+
+            if (objectType == "Table")
+            {
+                var insertToMenu = new MenuItem { Header = "INSERT To" };
+                var insertNewQuery = new MenuItem { Header = "New Query Editor Window (Standard)" };
+                insertNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "INSERT");
+                insertToMenu.Items.Add(insertNewQuery);
+
+                var insertVarsNewQuery = new MenuItem { Header = "New Query Editor Window (with Variables)" };
+                insertVarsNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "INSERT_VARS");
+                insertToMenu.Items.Add(insertVarsNewQuery);
+
+                var insertDataNewQuery = new MenuItem { Header = "New Query Editor Window (with Data)" };
+                insertDataNewQuery.Click += (s, e) => ShowInsertWithDataDialog(connectionString, databaseName, objectName);
+                insertToMenu.Items.Add(insertDataNewQuery);
+
+                scriptAsMenu.Items.Add(insertToMenu);
+            }
 
             var alterToMenu = new MenuItem { Header = "ALTER To" };
             var alterNewQuery = new MenuItem { Header = "New Query Editor Window" };
             alterNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "ALTER");
             alterToMenu.Items.Add(alterNewQuery);
+            scriptAsMenu.Items.Add(alterToMenu);
 
             var dropToMenu = new MenuItem { Header = "DROP To" };
             var dropNewQuery = new MenuItem { Header = "New Query Editor Window" };
             dropNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "DROP");
             dropToMenu.Items.Add(dropNewQuery);
-
-            scriptAsMenu.Items.Add(createToMenu);
-            scriptAsMenu.Items.Add(alterToMenu);
             scriptAsMenu.Items.Add(dropToMenu);
 
             menu.Items.Add(scriptAsMenu);
@@ -1638,6 +1712,74 @@ namespace SSMS
                     if (scriptType == "CREATE")
                     {
                         sql = await DatabaseHelper.GenerateTableCreateScriptAsync(connectionString, databaseName, objectName);
+                    }
+                    else if (scriptType == "INSERT" || scriptType == "INSERT_VARS")
+                    {
+                        var columns = await DatabaseHelper.GetColumnsAsync(connectionString, databaseName, objectName);
+                        var sb = new System.Text.StringBuilder();
+                        string safeName = objectName;
+                        var parts = objectName.Split('.');
+                        if (parts.Length == 2)
+                        {
+                            safeName = $"[{parts[0]}].[{parts[1]}]";
+                        }
+                        else
+                        {
+                            safeName = $"[{objectName}]";
+                        }
+
+                        if (scriptType == "INSERT_VARS")
+                        {
+                            foreach (var col in columns)
+                            {
+                                string varName = col.ColumnName.Replace(" ", "_");
+                                varName = new string(varName.Where(c => char.IsLetterOrDigit(c) || c == '_').ToArray());
+                                sb.AppendLine($"DECLARE @{varName} {col.DataType} = NULL;");
+                            }
+                            sb.AppendLine();
+                        }
+
+                        sb.AppendLine($"INSERT INTO {safeName}");
+                        sb.AppendLine("(");
+                        for (int i = 0; i < columns.Count; i++)
+                        {
+                            sb.Append($"    [{columns[i].ColumnName}]");
+                            if (i < columns.Count - 1)
+                            {
+                                sb.AppendLine(",");
+                            }
+                            else
+                            {
+                                sb.AppendLine();
+                            }
+                        }
+                        sb.AppendLine(")");
+                        sb.AppendLine("VALUES");
+                        sb.AppendLine("(");
+                        for (int i = 0; i < columns.Count; i++)
+                        {
+                            if (scriptType == "INSERT_VARS")
+                            {
+                                string varName = columns[i].ColumnName.Replace(" ", "_");
+                                varName = new string(varName.Where(c => char.IsLetterOrDigit(c) || c == '_').ToArray());
+                                sb.Append($"    @{varName}");
+                            }
+                            else
+                            {
+                                sb.Append($"    NULL /* {columns[i].ColumnName} ({columns[i].DataType}) */");
+                            }
+
+                            if (i < columns.Count - 1)
+                            {
+                                sb.AppendLine(",");
+                            }
+                            else
+                            {
+                                sb.AppendLine();
+                            }
+                        }
+                        sb.AppendLine(");");
+                        sql = sb.ToString();
                     }
                     else // ALTER Table
                     {
@@ -1678,6 +1820,16 @@ namespace SSMS
             }
 
             CreateNewQueryTab(connectionString, databaseName, sql, $"{objectName}_{scriptType}.sql");
+        }
+
+        private void ShowInsertWithDataDialog(string connectionString, string databaseName, string tableName)
+        {
+            var dialog = new InsertWithDataWindow(connectionString, databaseName, tableName);
+            dialog.Owner = this;
+            if (dialog.ShowDialog() == true && dialog.IsGenerated)
+            {
+                CreateNewQueryTab(connectionString, databaseName, dialog.GeneratedSql, $"{tableName}_InsertData.sql");
+            }
         }
 
         #endregion

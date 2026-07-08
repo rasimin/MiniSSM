@@ -18,6 +18,7 @@ namespace SSMS
         public string ConnectionString { get; set; }
         public string DatabaseName { get; set; }
         public string InitialSql { get; set; } = string.Empty;
+        public bool AutoExecute { get; set; } = false;
         public bool IsWebViewInitialized { get; private set; } = false;
 
         private readonly Dictionary<string, Dictionary<string, List<string>>> _metadataCache = new(StringComparer.OrdinalIgnoreCase);
@@ -134,17 +135,22 @@ namespace SSMS
                 
                 SqlEditorWebView.NavigationCompleted += async (sender, args) =>
                 {
-                    if (!string.IsNullOrEmpty(InitialSql))
+                    await SqlEditorWebView.ExecuteScriptAsync(@"
+                        var checkEditor = setInterval(function() {
+                            if (typeof focusEditor === 'function' && typeof monaco !== 'undefined') {
+                                clearInterval(checkEditor);
+                                " + (string.IsNullOrEmpty(InitialSql) ? "" : "setQueryText(" + JsonSerializer.Serialize(InitialSql) + ");") + @"
+                                focusEditor();
+                                " + (AutoExecute ? "window.chrome.webview.postMessage({ action: 'execute' });" : "") + @"
+                            }
+                        }, 50);
+                    ");
+
+                    // Also focus the WebView2 control in WPF
+                    _ = Dispatcher.BeginInvoke(new Action(() =>
                     {
-                        await SqlEditorWebView.ExecuteScriptAsync(@"
-                            var checkEditor = setInterval(function() {
-                                if (typeof setQueryText === 'function' && typeof monaco !== 'undefined') {
-                                    clearInterval(checkEditor);
-                                    setQueryText(" + JsonSerializer.Serialize(InitialSql) + @");
-                                }
-                            }, 50);
-                        ");
-                    }
+                        SqlEditorWebView.Focus();
+                    }), System.Windows.Threading.DispatcherPriority.Input);
                 };
                 
                 IsWebViewInitialized = true;
@@ -156,6 +162,34 @@ namespace SSMS
             {
                 AppLogger.Error(ex, "Failed to initialize Monaco SQL Editor");
                 TxtMessages.Text = $"Error initializing Monaco SQL Editor: {ex.Message}";
+            }
+        }
+
+        public async void FocusEditor()
+        {
+            if (!IsWebViewInitialized) return;
+            try
+            {
+                SqlEditorWebView.Focus();
+                await SqlEditorWebView.ExecuteScriptAsync("focusEditor();");
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error(ex, "FocusEditor failed");
+            }
+        }
+
+        public async void InsertText(string text)
+        {
+            if (!IsWebViewInitialized) return;
+            try
+            {
+                SqlEditorWebView.Focus();
+                await SqlEditorWebView.ExecuteScriptAsync($"insertTextAtCursor({JsonSerializer.Serialize(text)});");
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error(ex, "InsertText failed");
             }
         }
 
