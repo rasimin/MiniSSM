@@ -8,6 +8,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Media;
 using Microsoft.Web.WebView2.Core;
 
 namespace SSMS
@@ -343,23 +344,30 @@ namespace SSMS
 
         private DataGrid CreateResultDataGrid(DataTable dataTable)
         {
-            var dataGrid = new DataGrid
+             var dataGrid = new DataGrid
             {
                 AutoGenerateColumns = true,
                 IsReadOnly = true,
                 BorderThickness = new Thickness(0),
-                Background = (System.Windows.Media.SolidColorBrush)new System.Windows.Media.BrushConverter().ConvertFromString("#1E1E1E")!,
-                RowBackground = (System.Windows.Media.SolidColorBrush)new System.Windows.Media.BrushConverter().ConvertFromString("#1E1E1E")!,
-                AlternatingRowBackground = (System.Windows.Media.SolidColorBrush)new System.Windows.Media.BrushConverter().ConvertFromString("#252526")!,
+                Background = (SolidColorBrush)new BrushConverter().ConvertFromString("#1E1E1E")!,
+                RowBackground = (SolidColorBrush)new BrushConverter().ConvertFromString("#1E1E1E")!,
+                AlternatingRowBackground = (SolidColorBrush)new BrushConverter().ConvertFromString("#252526")!,
                 GridLinesVisibility = DataGridGridLinesVisibility.All,
-                HorizontalGridLinesBrush = (System.Windows.Media.SolidColorBrush)new System.Windows.Media.BrushConverter().ConvertFromString("#2D2D30")!,
-                VerticalGridLinesBrush = (System.Windows.Media.SolidColorBrush)new System.Windows.Media.BrushConverter().ConvertFromString("#2D2D30")!,
-                HeadersVisibility = DataGridHeadersVisibility.All,
+                HorizontalGridLinesBrush = (SolidColorBrush)new BrushConverter().ConvertFromString("#2D2D30")!,
+                VerticalGridLinesBrush = (SolidColorBrush)new BrushConverter().ConvertFromString("#2D2D30")!,
+                HeadersVisibility = DataGridHeadersVisibility.Column,
                 FontSize = 12,
-                SelectionUnit = DataGridSelectionUnit.CellOrRowHeader,
+                SelectionUnit = DataGridSelectionUnit.Cell,
                 SelectionMode = DataGridSelectionMode.Extended,
-                ItemsSource = dataTable.DefaultView
+                ItemsSource = dataTable.DefaultView,
+                SnapsToDevicePixels = true,
+                UseLayoutRounding = true
             };
+
+            // Set high-performance text rendering parameters (disable sub-pixel text measurement layout shifts during scroll)
+            TextOptions.SetTextFormattingMode(dataGrid, TextFormattingMode.Display);
+            TextOptions.SetTextRenderingMode(dataGrid, TextRenderingMode.ClearType);
+            RenderOptions.SetClearTypeHint(dataGrid, ClearTypeHint.Enabled);
 
             ScrollViewer.SetHorizontalScrollBarVisibility(dataGrid, ScrollBarVisibility.Auto);
             ScrollViewer.SetVerticalScrollBarVisibility(dataGrid, ScrollBarVisibility.Auto);
@@ -369,12 +377,58 @@ namespace SSMS
             VirtualizingPanel.SetVirtualizationMode(dataGrid, VirtualizationMode.Recycling);
             VirtualizingPanel.SetScrollUnit(dataGrid, ScrollUnit.Item);
             VirtualizingPanel.SetCacheLengthUnit(dataGrid, VirtualizationCacheLengthUnit.Item);
-            VirtualizingPanel.SetCacheLength(dataGrid, new VirtualizationCacheLength(10, 10));
+            VirtualizingPanel.SetCacheLength(dataGrid, new VirtualizationCacheLength(0));
             dataGrid.EnableRowVirtualization = true;
             dataGrid.EnableColumnVirtualization = true;
             dataGrid.ColumnWidth = new DataGridLength(120);
             ScrollViewer.SetIsDeferredScrollingEnabled(dataGrid, false);
             ScrollViewer.SetCanContentScroll(dataGrid, true);
+
+            // Tracing scroll performance
+            var scrollStopwatch = new System.Diagnostics.Stopwatch();
+            int rowsLoadedCount = 0;
+            int rowsUnloadedCount = 0;
+
+            dataGrid.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler((s, e) =>
+            {
+                if (e.VerticalChange != 0)
+                {
+                    scrollStopwatch.Restart();
+                    AppLogger.Info($"[Scroll] Start scrolling. Offset: {e.VerticalOffset:F1}, Change: {e.VerticalChange:F1}");
+                }
+            }));
+
+            dataGrid.LoadingRow += (s, e) =>
+            {
+                rowsLoadedCount++;
+            };
+
+            dataGrid.UnloadingRow += (s, e) =>
+            {
+                rowsUnloadedCount++;
+            };
+
+            dataGrid.LayoutUpdated += (s, e) =>
+            {
+                if (scrollStopwatch.IsRunning)
+                {
+                    scrollStopwatch.Stop();
+                    double elapsedMs = scrollStopwatch.Elapsed.TotalMilliseconds;
+                    int activeRowContainers = GetVisualDescendantsCount<DataGridRow>(dataGrid);
+                    int activeCellContainers = GetVisualDescendantsCount<DataGridCell>(dataGrid);
+                    int renderTier = RenderCapability.Tier >> 16;
+                    AppLogger.Info($"[Render] LayoutUpdated. Time: {elapsedMs:F2} ms. Rows Loaded: {rowsLoadedCount}, Rows Recycled: {rowsUnloadedCount}, Alive Rows: {activeRowContainers}/{dataGrid.Items.Count}, Alive Cells: {activeCellContainers}, Columns: {dataGrid.Columns.Count}, RenderTier: {renderTier}");
+                    
+                    if (elapsedMs > 16.6)
+                    {
+                        AppLogger.Info($"[WARN-LAG] Slow frame detected: {elapsedMs:F2} ms (> 16.6ms frame budget)!");
+                    }
+
+                    // Reset counts for the next scroll layout cycle
+                    rowsLoadedCount = 0;
+                    rowsUnloadedCount = 0;
+                }
+            };
 
             // Context Menu (Copy & Copy with Headers)
             var contextMenu = new ContextMenu { Background = dataGrid.Background, BorderBrush = (System.Windows.Media.SolidColorBrush)new System.Windows.Media.BrushConverter().ConvertFromString("#2D2D30")! };
@@ -390,6 +444,22 @@ namespace SSMS
             dataGrid.ContextMenu = contextMenu;
 
             return dataGrid;
+        }
+
+        private static int GetVisualDescendantsCount<T>(DependencyObject parent) where T : DependencyObject
+        {
+            int count = 0;
+            int childrenCount = VisualTreeHelper.GetChildrenCount(parent);
+            for (int i = 0; i < childrenCount; i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                if (child is T)
+                {
+                    count++;
+                }
+                count += GetVisualDescendantsCount<T>(child);
+            }
+            return count;
         }
 
         private void CopyGridToClipboard(DataGrid grid, bool includeHeaders)

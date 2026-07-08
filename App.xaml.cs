@@ -12,6 +12,9 @@ namespace SSMS
     {
         protected override void OnStartup(StartupEventArgs e)
         {
+            // Disable UI Automation globally for ItemsControls to prevent major DataGrid scroll lag
+            AppContext.SetSwitch("Switch.System.Windows.Controls.ItemsControlDoesNotSupportAutomation", true);
+
             base.OnStartup(e);
             DispatcherUnhandledException += App_DispatcherUnhandledException;
             AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
