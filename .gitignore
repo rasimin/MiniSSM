@@ -1,0 +1,15 @@
+# Build outputs
+bin/
+obj/
+[Bb]in/
+[Oo]bj/
+
+# IDE files
+.vs/
+*.user
+*.suo
+*.userprefs
+.idea/
+
+# Local credentials settings file
+connection_settings.json

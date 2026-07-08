@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html;charset=utf-8" >
+    <style>
+        html, body, #container {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #1e1e1e;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
+    <script>
+        require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.39.0/min/vs' } });
+        
+        var editor;
+        var tableColumns = {}; // Key: "schema.table" & "table", Value: ["col1", "col2", ...]
+        var schemas = [];      // Unique schema list
+        var tables = [];       // Unique table list
+
+        require(['vs/editor/editor.main'], function () {
+            // Register custom completion item provider for sql
+            monaco.languages.registerCompletionItemProvider('sql', {
+                triggerCharacters: ['.'],
+                provideCompletionItems: function (model, position) {
+                    var word = model.getWordUntilPosition(position);
+                    var range = {
+                        startLineNumber: position.lineNumber,
+                        endLineNumber: position.lineNumber,
+                        startColumn: word.startColumn,
+                        endColumn: word.endColumn
+                    };
+                    
+                    var lineText = model.getLineContent(position.lineNumber);
+                    var textBeforeCursor = lineText.substring(0, position.column - 1);
+                    var isAfterDot = textBeforeCursor.endsWith('.');
+                    
+                    var suggestions = [];
+
+                    if (isAfterDot) {
+                        // Find the word preceding the dot
+                        var match = textBeforeCursor.match(/([a-zA-Z0-9_\u00c0-\u00ff]+)\.$/);
+                        if (match) {
+                            var identifier = match[1];
+
+                            // 1. Check if the identifier is a Schema
+                            if (schemas.indexOf(identifier) > -1) {
+                                // List tables under this schema
+                                tables.forEach(t => {
+                                    if (t.startsWith(identifier + '.')) {
+                                        var tableNameOnly = t.substring(identifier.length + 1);
+                                        suggestions.push({
+                                            label: tableNameOnly,
+                                            kind: monaco.languages.CompletionItemKind.Class,
+                                            insertText: tableNameOnly,
+                                            detail: "Table (" + identifier + ")",
+                                            range: range
+                                        });
+                                    }
+                                });
+                                return { suggestions: suggestions };
+                            }
+
+                            // 2. Check if the identifier is a Table directly
+                            var columns = tableColumns[identifier];
+
+                            // 3. Check if the identifier is a Table Alias
+                            if (!columns) {
+                                var fullSql = model.getValue();
+                                var realTableName = getTableForAlias(identifier, fullSql);
+                                if (realTableName) {
+                                    columns = tableColumns[realTableName];
+                                }
+                            }
+
+                            // If columns found, show column suggestions
+                            if (columns) {
+                                columns.forEach(col => {
+                                    suggestions.push({
+                                        label: col,
+                                        kind: monaco.languages.CompletionItemKind.Field,
+                                        insertText: col,
+                                        detail: "Column",
+                                        range: range
+                                    });
+                                });
+                                return { suggestions: suggestions };
+                            }
+                        }
+                    }
+
+                    // Check if cursor is right after an asterisk "*" (for wildcard column list expansion)
+                    var textTrimmed = textBeforeCursor.trim();
+                    var endsWithAsterisk = textTrimmed.endsWith('*') && !textTrimmed.endsWith('.*');
+
+                    if (endsWithAsterisk) {
+                        var queryTables = getTablesInQuery(model.getValue());
+                        queryTables.forEach(qt => {
+                            var cols = tableColumns[qt];
+                            if (!cols) {
+                                for (var key in tableColumns) {
+                                    if (key.endsWith('.' + qt)) {
+                                        cols = tableColumns[key];
+                                        break;
+                                    }
+                                }
+                            }
+                            if (cols) {
+                                var columnList = cols.join(', ');
+                                suggestions.push({
+                                    label: "* (Expand Columns - " + qt + ")",
+                                    kind: monaco.languages.CompletionItemKind.Snippet,
+                                    insertText: columnList,
+                                    detail: "Expand wildcard * to column list of " + qt,
+                                    range: {
+                                        startLineNumber: position.lineNumber,
+                                        endLineNumber: position.lineNumber,
+                                        startColumn: textBeforeCursor.lastIndexOf('*') + 1, // Overwrite the asterisk character
+                                        endColumn: position.column
+                                    }
+                                });
+                            }
+                        });
+                        if (suggestions.length > 0) {
+                            return { suggestions: suggestions };
+                        }
+                    }
+
+                    // Otherwise, provide general suggestions (Keywords, Snippets, Schemas, and Tables)
+                    
+                    // 1. Snippet ssf: SELECT TOP 50 * FROM
+                    suggestions.push({
+                        label: "ssf",
+                        kind: monaco.languages.CompletionItemKind.Snippet,
+                        insertText: "SELECT TOP 50 * FROM $0",
+                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                        detail: "Snippet: SELECT TOP 50 * FROM",
+                        range: range
+                    });
+
+                    // 2. Columns of tables present in the current query (Smart Autocomplete like Redgate)
+                    var queryTables = getTablesInQuery(model.getValue());
+                    queryTables.forEach(qt => {
+                        var cols = tableColumns[qt];
+                        if (!cols) {
+                            for (var key in tableColumns) {
+                                if (key.endsWith('.' + qt)) {
+                                    cols = tableColumns[key];
+                                    break;
+                                }
+                            }
+                        }
+                        if (cols) {
+                            cols.forEach(col => {
+                                suggestions.push({
+                                    label: col,
+                                    kind: monaco.languages.CompletionItemKind.Field,
+                                    insertText: col,
+                                    detail: "Column (" + qt + ")",
+                                    range: range
+                                });
+                            });
+                        }
+                    });
+
+                    // 3. Standard SQL Keywords
+                    var keywords = [
+                        "SELECT", "FROM", "WHERE", "INSERT", "INTO", "UPDATE", "SET", "DELETE",
+                        "CREATE", "TABLE", "DATABASE", "DROP", "ALTER", "JOIN", "INNER", "LEFT",
+                        "RIGHT", "OUTER", "ON", "GROUP", "BY", "ORDER", "AND", "OR", "NOT",
+                        "IN", "LIKE", "IS", "NULL", "AS", "COUNT", "SUM", "AVG", "MIN", "MAX", "EXEC"
+                    ];
+                    keywords.forEach(kw => {
+                        suggestions.push({
+                            label: kw,
+                            kind: monaco.languages.CompletionItemKind.Keyword,
+                            insertText: kw,
+                            range: range
+                        });
+                    });
+
+                    // 4. Schemas
+                    schemas.forEach(s => {
+                        suggestions.push({
+                            label: s,
+                            kind: monaco.languages.CompletionItemKind.Module,
+                            insertText: s,
+                            detail: "Schema",
+                            range: range
+                        });
+                    });
+
+                    // 5. Tables
+                    tables.forEach(t => {
+                        suggestions.push({
+                            label: t,
+                            kind: monaco.languages.CompletionItemKind.Class,
+                            insertText: t,
+                            detail: "Table",
+                            range: range
+                        });
+                    });
+
+                    return { suggestions: suggestions };
+                }
+            });
+
+            // Initialize Monaco Editor
+            editor = monaco.editor.create(document.getElementById('container'), {
+                value: '-- Tulis query SQL di sini...\nSELECT * FROM sys.databases;',
+                language: 'sql',
+                theme: 'vs-dark',
+                automaticLayout: true,
+                fontSize: 14,
+                fontFamily: 'Consolas, Courier New, monospace',
+                minimap: { enabled: false }
+            });
+
+            // Send signal to C# on keydown inside Monaco for F5
+            editor.addCommand(monaco.KeyCode.F5, function() {
+                window.chrome.webview.postMessage({ action: 'execute' });
+            });
+        });
+
+        // Extract tables used in the query (FROM TableName / JOIN TableName)
+        function getTablesInQuery(sqlText) {
+            var tablesFound = [];
+            var regex = /(?:FROM|JOIN)\s+([a-zA-Z0-9_\.\[\]]+)/gi;
+            var match;
+            while ((match = regex.exec(sqlText)) !== null) {
+                var tableName = match[1].replace(/[\[\]]/g, ''); // Strip square brackets
+                if (tablesFound.indexOf(tableName) === -1) {
+                    tablesFound.push(tableName);
+                }
+            }
+            return tablesFound;
+        }
+
+        // Resolve Table Alias by searching backwards in sql text
+        function getTableForAlias(alias, sqlText) {
+            var regex = new RegExp("(?:FROM|JOIN)\\s+([a-zA-Z0-9_\\.\\[\\]]+)\\s+(?:AS\\s+)?" + alias + "\\b", "i");
+            var match = sqlText.match(regex);
+            if (match) {
+                return match[1].replace(/[\[\]]/g, '');
+            }
+            return null;
+        }
+
+        // C# callable functions:
+        function getQueryText() {
+            if (editor) {
+                var selection = editor.getSelection();
+                var selectedText = editor.getModel().getValueInRange(selection);
+                if (selectedText && selectedText.trim().length > 0) {
+                    return selectedText;
+                }
+                return editor.getValue();
+            }
+            return '';
+        }
+
+        function setQueryText(text) {
+            if (editor) {
+                editor.setValue(text);
+            }
+        }
+
+        function updateMetadata(meta) {
+            tableColumns = meta || {};
+            tables = Object.keys(tableColumns);
+            
+            // Extract unique schemas from keys (e.g. "dbo" from "dbo.customers")
+            var schemaSet = new Set();
+            tables.forEach(t => {
+                if (t.indexOf('.') > -1) {
+                    schemaSet.add(t.split('.')[0]);
+                }
+            });
+            schemas = Array.from(schemaSet);
+        }
+    </script>
+</body>
+</html>
