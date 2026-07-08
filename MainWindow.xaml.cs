@@ -18,6 +18,11 @@ namespace SSMS
 
         // Cache databases list per server connection string to make tab switching instant
         private readonly Dictionary<string, List<string>> _serverDatabasesCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, string> _folderFilters = new(StringComparer.OrdinalIgnoreCase);
+        private TabItem? _draggedTab;
+        private Point _dragStartPoint;
+        private Border? _draggedToolbarItem;
+        private Point _toolbarDragStartPoint;
 
         [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
@@ -82,17 +87,24 @@ namespace SSMS
 
         #region Tab Management
 
-        public void CreateNewQueryTab(string connectionString, string databaseName)
+        public void CreateNewQueryTab(string connectionString, string databaseName, string? initialSql = null, string? customTabTitle = null)
         {
             _queryTabCounter++;
 
             var builder = new SqlConnectionStringBuilder(connectionString);
             string serverName = builder.DataSource;
-            string tabTitle = $"SQLQuery{_queryTabCounter}.sql ({serverName}.{databaseName})";
+            string tabTitle = customTabTitle ?? $"SQLQuery{_queryTabCounter}.sql ({serverName}.{databaseName})";
 
             var queryTabControl = new QueryTabControl(connectionString, databaseName);
+            if (!string.IsNullOrEmpty(initialSql))
+            {
+                queryTabControl.InitialSql = initialSql;
+            }
 
             var tabItem = new TabItem();
+            tabItem.PreviewMouseLeftButtonDown += TabItem_PreviewMouseLeftButtonDown;
+            tabItem.PreviewMouseMove += TabItem_PreviewMouseMove;
+            tabItem.PreviewMouseLeftButtonUp += TabItem_PreviewMouseLeftButtonUp;
 
             // Build tab header panel with close button
             var headerPanel = new StackPanel { Orientation = Orientation.Horizontal };
@@ -117,6 +129,7 @@ namespace SSMS
                 VerticalAlignment = VerticalAlignment.Center,
                 ToolTip = "Close Tab"
             };
+            closeBtn.Template = new ControlTemplate(typeof(Button)) { VisualTree = new FrameworkElementFactory(typeof(ContentPresenter)) };
 
             // Custom hover effect for close button
             closeBtn.MouseEnter += (s, e) => { closeBtn.Foreground = System.Windows.Media.Brushes.Red; };
@@ -143,7 +156,7 @@ namespace SSMS
             var tabContextMenu = new ContextMenu();
             var renameTabMenu = new MenuItem { Header = "Rename" };
             renameTabMenu.Click += (s, e) => {
-                string newName = ShowInputDialog("Rename Tab", headerText.Text);
+                string newName = ShowInputDialog("Rename Tab", "Enter new tab name:", headerText.Text);
                 if (!string.IsNullOrEmpty(newName))
                 {
                     headerText.Text = newName;
@@ -325,27 +338,119 @@ namespace SSMS
                     {
                         var tablesFolder = new TreeViewItem
                         {
-                            Header = "📁 Tables",
+                            Header = GetFolderHeader(dbName, "TablesFolder", "Tables"),
                             Tag = new ObjectExplorerNode { NodeType = "TablesFolder", ConnectionString = connStr, DatabaseName = dbName }
                         };
                         tablesFolder.Items.Add(new TreeViewItem { Header = "Loading..." });
+                        tablesFolder.ContextMenu = CreateFolderContextMenu(tablesFolder, connStr, dbName, "TablesFolder", "Tables");
                         item.Items.Add(tablesFolder);
+
+                        var viewsFolder = new TreeViewItem
+                        {
+                            Header = GetFolderHeader(dbName, "ViewsFolder", "Views"),
+                            Tag = new ObjectExplorerNode { NodeType = "ViewsFolder", ConnectionString = connStr, DatabaseName = dbName }
+                        };
+                        viewsFolder.Items.Add(new TreeViewItem { Header = "Loading..." });
+                        viewsFolder.ContextMenu = CreateFolderContextMenu(viewsFolder, connStr, dbName, "ViewsFolder", "Views");
+                        item.Items.Add(viewsFolder);
+
+                        var spsFolder = new TreeViewItem
+                        {
+                            Header = GetFolderHeader(dbName, "SpsFolder", "Stored Procedures"),
+                            Tag = new ObjectExplorerNode { NodeType = "SpsFolder", ConnectionString = connStr, DatabaseName = dbName }
+                        };
+                        spsFolder.Items.Add(new TreeViewItem { Header = "Loading..." });
+                        spsFolder.ContextMenu = CreateFolderContextMenu(spsFolder, connStr, dbName, "SpsFolder", "Stored Procedures");
+                        item.Items.Add(spsFolder);
+
+                        var funcsFolder = new TreeViewItem
+                        {
+                            Header = GetFolderHeader(dbName, "FuncsFolder", "Functions"),
+                            Tag = new ObjectExplorerNode { NodeType = "FuncsFolder", ConnectionString = connStr, DatabaseName = dbName }
+                        };
+                        funcsFolder.Items.Add(new TreeViewItem { Header = "Loading..." });
+                        funcsFolder.ContextMenu = CreateFolderContextMenu(funcsFolder, connStr, dbName, "FuncsFolder", "Functions");
+                        item.Items.Add(funcsFolder);
                     }
                     else if (type == "TablesFolder")
                     {
+                        string filter = GetFolderFilter(dbName, "TablesFolder");
                         var tables = await DatabaseHelper.GetTablesAsync(connStr, dbName);
                         foreach (var table in tables)
                         {
+                            if (!string.IsNullOrEmpty(filter) && !table.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                            {
+                                continue;
+                            }
                             var tableItem = new TreeViewItem
                             {
                                 Header = $"田 {table}",
                                 Tag = new ObjectExplorerNode { NodeType = "Table", ConnectionString = connStr, DatabaseName = dbName, DetailName = table }
                             };
                             tableItem.Items.Add(new TreeViewItem { Header = "Loading..." });
+                            tableItem.ContextMenu = CreateObjectContextMenu(connStr, dbName, "Table", table);
                             item.Items.Add(tableItem);
                         }
                     }
-                    else if (type == "Table")
+                    else if (type == "ViewsFolder")
+                    {
+                        string filter = GetFolderFilter(dbName, "ViewsFolder");
+                        var views = await DatabaseHelper.GetViewsAsync(connStr, dbName);
+                        foreach (var view in views)
+                        {
+                            if (!string.IsNullOrEmpty(filter) && !view.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                            {
+                                continue;
+                            }
+                            var viewItem = new TreeViewItem
+                            {
+                                Header = $"👓 {view}",
+                                Tag = new ObjectExplorerNode { NodeType = "View", ConnectionString = connStr, DatabaseName = dbName, DetailName = view }
+                            };
+                            viewItem.Items.Add(new TreeViewItem { Header = "Loading..." });
+                            viewItem.ContextMenu = CreateObjectContextMenu(connStr, dbName, "View", view);
+                            item.Items.Add(viewItem);
+                        }
+                    }
+                    else if (type == "SpsFolder")
+                    {
+                        string filter = GetFolderFilter(dbName, "SpsFolder");
+                        var sps = await DatabaseHelper.GetStoredProceduresAsync(connStr, dbName);
+                        foreach (var sp in sps)
+                        {
+                            if (!string.IsNullOrEmpty(filter) && !sp.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                            {
+                                continue;
+                            }
+                            var spItem = new TreeViewItem
+                            {
+                                Header = $"⚡ {sp}",
+                                Tag = new ObjectExplorerNode { NodeType = "StoredProcedure", ConnectionString = connStr, DatabaseName = dbName, DetailName = sp }
+                            };
+                            spItem.ContextMenu = CreateObjectContextMenu(connStr, dbName, "StoredProcedure", sp);
+                            item.Items.Add(spItem);
+                        }
+                    }
+                    else if (type == "FuncsFolder")
+                    {
+                        string filter = GetFolderFilter(dbName, "FuncsFolder");
+                        var funcs = await DatabaseHelper.GetFunctionsAsync(connStr, dbName);
+                        foreach (var func in funcs)
+                        {
+                            if (!string.IsNullOrEmpty(filter) && !func.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                            {
+                                continue;
+                            }
+                            var funcItem = new TreeViewItem
+                            {
+                                Header = $"⚙️ {func}",
+                                Tag = new ObjectExplorerNode { NodeType = "Function", ConnectionString = connStr, DatabaseName = dbName, DetailName = func }
+                            };
+                            funcItem.ContextMenu = CreateObjectContextMenu(connStr, dbName, "Function", func);
+                            item.Items.Add(funcItem);
+                        }
+                    }
+                    else if (type == "Table" || type == "View")
                     {
                         var colsFolder = new TreeViewItem
                         {
@@ -546,13 +651,17 @@ namespace SSMS
             }
         }
 
-        private string ShowInputDialog(string title, string defaultText)
+        private string ShowInputDialog(string title, string prompt, string defaultText)
         {
             var dialog = new Window
             {
                 Title = title,
-                Width = 350,
-                Height = 150,
+                Width = 360,
+                Height = 175,
+                WindowStyle = WindowStyle.None,
+                AllowsTransparency = true,
+                BorderBrush = (System.Windows.Media.SolidColorBrush)new System.Windows.Media.BrushConverter().ConvertFromString("#2D2D30")!,
+                BorderThickness = new Thickness(1),
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 Owner = this,
                 ResizeMode = ResizeMode.NoResize,
@@ -560,38 +669,73 @@ namespace SSMS
                 Foreground = System.Windows.Media.Brushes.White
             };
 
-            var grid = new Grid { Margin = new Thickness(15) };
+            var grid = new Grid();
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-            var label = new TextBlock { Text = "Enter new tab name:", Foreground = System.Windows.Media.Brushes.LightGray, Margin = new Thickness(0, 0, 0, 8) };
+            // Custom Title Bar
+            var titleBar = new Border
+            {
+                Background = (System.Windows.Media.SolidColorBrush)new System.Windows.Media.BrushConverter().ConvertFromString("#252526")!,
+                BorderBrush = (System.Windows.Media.SolidColorBrush)new System.Windows.Media.BrushConverter().ConvertFromString("#2D2D30")!,
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                Padding = new Thickness(12, 6, 12, 6)
+            };
+            titleBar.MouseLeftButtonDown += (s, e) => { if (e.LeftButton == MouseButtonState.Pressed) dialog.DragMove(); };
+
+            var titleText = new TextBlock
+            {
+                Text = title,
+                Foreground = System.Windows.Media.Brushes.White,
+                FontWeight = FontWeights.SemiBold,
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            titleBar.Child = titleText;
+            Grid.SetRow(titleBar, 0);
+            grid.Children.Add(titleBar);
+
+            // Content Grid
+            var contentGrid = new Grid { Margin = new Thickness(15) };
+            contentGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            contentGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            contentGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            Grid.SetRow(contentGrid, 1);
+            grid.Children.Add(contentGrid);
+
+            var label = new TextBlock { Text = prompt, Foreground = System.Windows.Media.Brushes.LightGray, Margin = new Thickness(0, 0, 0, 8), FontSize = 12 };
             Grid.SetRow(label, 0);
+            contentGrid.Children.Add(label);
 
             var textBox = new TextBox 
             { 
                 Text = defaultText, 
                 Background = (System.Windows.Media.SolidColorBrush)new System.Windows.Media.BrushConverter().ConvertFromString("#252526")!, 
                 Foreground = System.Windows.Media.Brushes.White, 
+                CaretBrush = System.Windows.Media.Brushes.White,
                 BorderBrush = (System.Windows.Media.SolidColorBrush)new System.Windows.Media.BrushConverter().ConvertFromString("#3E3E42")!, 
-                Padding = new Thickness(5), 
-                Margin = new Thickness(0, 0, 0, 15) 
+                BorderThickness = new Thickness(1), 
+                Padding = new Thickness(6, 4, 6, 4), 
+                Margin = new Thickness(0, 0, 0, 15),
+                FontSize = 12
             };
             Grid.SetRow(textBox, 1);
+            contentGrid.Children.Add(textBox);
 
             var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
             Grid.SetRow(buttonPanel, 2);
+            contentGrid.Children.Add(buttonPanel);
 
             var okButton = new Button 
             { 
                 Content = "OK", 
                 Width = 75, 
                 Height = 25, 
-                Margin = new Thickness(0, 0, 10, 0), 
                 IsDefault = true, 
                 Background = (System.Windows.Media.SolidColorBrush)new System.Windows.Media.BrushConverter().ConvertFromString("#007ACC")!, 
                 Foreground = System.Windows.Media.Brushes.White, 
-                BorderThickness = new Thickness(0) 
+                BorderThickness = new Thickness(0),
+                Margin = new Thickness(0, 0, 8, 0)
             };
             okButton.Click += (s, e) => { dialog.DialogResult = true; dialog.Close(); };
 
@@ -610,17 +754,286 @@ namespace SSMS
             buttonPanel.Children.Add(okButton);
             buttonPanel.Children.Add(cancelButton);
 
-            grid.Children.Add(label);
-            grid.Children.Add(textBox);
-            grid.Children.Add(buttonPanel);
-
             dialog.Content = grid;
+            
+            dialog.Activated += (s, e) =>
+            {
+                textBox.Focus();
+                textBox.SelectAll();
+            };
 
             if (dialog.ShowDialog() == true)
             {
                 return textBox.Text.Trim();
             }
             return string.Empty;
+        }
+
+        private void ToolbarItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is Border border)
+            {
+                var hitTestResult = System.Windows.Media.VisualTreeHelper.HitTest(border, e.GetPosition(border));
+                if (hitTestResult != null && hitTestResult.VisualHit is TextBlock textBlock && textBlock.Text == "⋮")
+                {
+                    _draggedToolbarItem = border;
+                    _toolbarDragStartPoint = e.GetPosition(ToolbarPanel);
+                    border.Opacity = 0.6;
+                }
+            }
+        }
+
+        private void ToolbarItem_PreviewMouseMove(object sender, MouseEventArgs e)
+        {
+            if (_draggedToolbarItem != null && e.LeftButton == MouseButtonState.Pressed)
+            {
+                var currentPoint = e.GetPosition(ToolbarPanel);
+                
+                if (Math.Abs(currentPoint.X - _toolbarDragStartPoint.X) > SystemParameters.MinimumHorizontalDragDistance)
+                {
+                    var hitTestResult = System.Windows.Media.VisualTreeHelper.HitTest(ToolbarPanel, e.GetPosition(ToolbarPanel));
+                    if (hitTestResult != null)
+                    {
+                        var hoveredBorder = FindAncestor<Border>(hitTestResult.VisualHit);
+                        if (hoveredBorder != null && hoveredBorder != _draggedToolbarItem && ToolbarPanel.Children.Contains(hoveredBorder))
+                        {
+                            int sourceIndex = ToolbarPanel.Children.IndexOf(_draggedToolbarItem);
+                            int targetIndex = ToolbarPanel.Children.IndexOf(hoveredBorder);
+
+                            if (sourceIndex >= 0 && targetIndex >= 0)
+                            {
+                                ToolbarPanel.Children.RemoveAt(sourceIndex);
+                                ToolbarPanel.Children.Insert(targetIndex, _draggedToolbarItem);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private void ToolbarItem_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (_draggedToolbarItem != null)
+            {
+                _draggedToolbarItem.Opacity = 1.0;
+                _draggedToolbarItem = null;
+            }
+        }
+
+        private void TabItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is TabItem tabItem)
+            {
+                _draggedTab = tabItem;
+                _dragStartPoint = e.GetPosition(TabQueryControls);
+            }
+        }
+
+        private void TabItem_PreviewMouseMove(object sender, MouseEventArgs e)
+        {
+            if (_draggedTab != null && e.LeftButton == MouseButtonState.Pressed)
+            {
+                var currentPoint = e.GetPosition(TabQueryControls);
+                
+                if (Math.Abs(currentPoint.X - _dragStartPoint.X) > SystemParameters.MinimumHorizontalDragDistance ||
+                    Math.Abs(currentPoint.Y - _dragStartPoint.Y) > SystemParameters.MinimumVerticalDragDistance)
+                {
+                    var hitTestResult = System.Windows.Media.VisualTreeHelper.HitTest(TabQueryControls, e.GetPosition(TabQueryControls));
+                    if (hitTestResult != null)
+                    {
+                        var hoveredTabItem = FindAncestor<TabItem>(hitTestResult.VisualHit);
+                        if (hoveredTabItem != null && hoveredTabItem != _draggedTab)
+                        {
+                            int sourceIndex = TabQueryControls.Items.IndexOf(_draggedTab);
+                            int targetIndex = TabQueryControls.Items.IndexOf(hoveredTabItem);
+
+                            if (sourceIndex >= 0 && targetIndex >= 0)
+                            {
+                                TabQueryControls.Items.RemoveAt(sourceIndex);
+                                TabQueryControls.Items.Insert(targetIndex, _draggedTab);
+                                TabQueryControls.SelectedItem = _draggedTab;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private void TabItem_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            _draggedTab = null;
+        }
+
+        private static T? FindAncestor<T>(DependencyObject current) where T : DependencyObject
+        {
+            do
+            {
+                if (current is T ancestor)
+                {
+                    return ancestor;
+                }
+                current = System.Windows.Media.VisualTreeHelper.GetParent(current);
+            }
+            while (current != null);
+            return null;
+        }
+
+        private string GetFolderFilter(string dbName, string folderType)
+        {
+            string key = $"{dbName}_{folderType}";
+            return _folderFilters.TryGetValue(key, out var val) ? val : string.Empty;
+        }
+
+        private string GetFolderHeader(string dbName, string folderType, string baseName)
+        {
+            string filter = GetFolderFilter(dbName, folderType);
+            return string.IsNullOrEmpty(filter) ? $"📁 {baseName}" : $"📁 {baseName} (filtered: '{filter}')";
+        }
+
+        private ContextMenu CreateFolderContextMenu(TreeViewItem folderItem, string connStr, string dbName, string folderType, string baseName)
+        {
+            var menu = new ContextMenu();
+            
+            var filterItem = new MenuItem { Header = "Filter..." };
+            filterItem.Click += (s, e) => OpenFilterDialog(folderItem, connStr, dbName, folderType, baseName);
+            menu.Items.Add(filterItem);
+
+            var clearFilterItem = new MenuItem { Header = "Clear Filter" };
+            clearFilterItem.Click += (s, e) => ClearFilter(folderItem, connStr, dbName, folderType, baseName);
+            menu.Items.Add(clearFilterItem);
+
+            return menu;
+        }
+
+        private void OpenFilterDialog(TreeViewItem folderItem, string connStr, string dbName, string folderType, string baseName)
+        {
+            string key = $"{dbName}_{folderType}";
+            string currentFilter = GetFolderFilter(dbName, folderType);
+            string filterText = ShowInputDialog("Filter Objects", "Enter filter query (wildcard/substring):", currentFilter);
+
+            if (filterText != currentFilter)
+            {
+                if (string.IsNullOrEmpty(filterText))
+                {
+                    _folderFilters.Remove(key);
+                }
+                else
+                {
+                    _folderFilters[key] = filterText;
+                }
+
+                folderItem.Header = GetFolderHeader(dbName, folderType, baseName);
+
+                // Reload the folder
+                folderItem.IsExpanded = false;
+                folderItem.Items.Clear();
+                folderItem.Items.Add(new TreeViewItem { Header = "Loading..." });
+                folderItem.IsExpanded = true;
+            }
+        }
+
+        private void ClearFilter(TreeViewItem folderItem, string connStr, string dbName, string folderType, string baseName)
+        {
+            string key = $"{dbName}_{folderType}";
+            if (_folderFilters.ContainsKey(key))
+            {
+                _folderFilters.Remove(key);
+                folderItem.Header = GetFolderHeader(dbName, folderType, baseName);
+
+                // Reload the folder
+                folderItem.IsExpanded = false;
+                folderItem.Items.Clear();
+                folderItem.Items.Add(new TreeViewItem { Header = "Loading..." });
+                folderItem.IsExpanded = true;
+            }
+        }
+
+        private ContextMenu CreateObjectContextMenu(string connectionString, string databaseName, string objectType, string objectName)
+        {
+            var menu = new ContextMenu();
+
+            var scriptAsMenu = new MenuItem { Header = "Script Object as" };
+
+            var createToMenu = new MenuItem { Header = "CREATE To" };
+            var createNewQuery = new MenuItem { Header = "New Query Editor Window" };
+            createNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "CREATE");
+            createToMenu.Items.Add(createNewQuery);
+
+            var alterToMenu = new MenuItem { Header = "ALTER To" };
+            var alterNewQuery = new MenuItem { Header = "New Query Editor Window" };
+            alterNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "ALTER");
+            alterToMenu.Items.Add(alterNewQuery);
+
+            var dropToMenu = new MenuItem { Header = "DROP To" };
+            var dropNewQuery = new MenuItem { Header = "New Query Editor Window" };
+            dropNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "DROP");
+            dropToMenu.Items.Add(dropNewQuery);
+
+            scriptAsMenu.Items.Add(createToMenu);
+            scriptAsMenu.Items.Add(alterToMenu);
+            scriptAsMenu.Items.Add(dropToMenu);
+
+            menu.Items.Add(scriptAsMenu);
+
+            return menu;
+        }
+
+        private async Task GenerateScriptObjectAsync(string connectionString, string databaseName, string objectType, string objectName, string scriptType)
+        {
+            string sql = "";
+            try
+            {
+                if (scriptType == "DROP")
+                {
+                    string dropKeyword = objectType;
+                    if (objectType == "StoredProcedure") dropKeyword = "PROCEDURE";
+                    sql = $"DROP {dropKeyword.ToUpper()} {objectName};";
+                }
+                else if (objectType == "Table")
+                {
+                    if (scriptType == "CREATE")
+                    {
+                        sql = await DatabaseHelper.GenerateTableCreateScriptAsync(connectionString, databaseName, objectName);
+                    }
+                    else // ALTER Table
+                    {
+                        sql = $"-- Alter Table Script for {objectName}\n-- ALTER TABLE {objectName} ADD [NewColumnName] DataType;";
+                    }
+                }
+                else // View, StoredProcedure, Function
+                {
+                    string def = await DatabaseHelper.GetObjectDefinitionAsync(connectionString, databaseName, objectName);
+                    if (string.IsNullOrEmpty(def))
+                    {
+                        sql = $"-- Could not retrieve definition for {objectName}.";
+                    }
+                    else
+                    {
+                        if (scriptType == "CREATE")
+                        {
+                            sql = def;
+                        }
+                        else // ALTER
+                        {
+                            int idx = def.IndexOf("CREATE", StringComparison.OrdinalIgnoreCase);
+                            if (idx >= 0)
+                            {
+                                sql = def.Substring(0, idx) + "ALTER" + def.Substring(idx + 6);
+                            }
+                            else
+                            {
+                                sql = def;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                sql = $"-- Error generating script: {ex.Message}";
+            }
+
+            CreateNewQueryTab(connectionString, databaseName, sql, $"{objectName}_{scriptType}.sql");
         }
 
         #endregion

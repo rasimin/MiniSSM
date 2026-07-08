@@ -15,6 +15,7 @@ namespace SSMS
     {
         public string ConnectionString { get; set; }
         public string DatabaseName { get; set; }
+        public string InitialSql { get; set; } = string.Empty;
         public bool IsWebViewInitialized { get; private set; } = false;
 
         private readonly Dictionary<string, Dictionary<string, List<string>>> _metadataCache = new(StringComparer.OrdinalIgnoreCase);
@@ -61,6 +62,22 @@ namespace SSMS
 
                 SqlEditorWebView.Source = new Uri(htmlPath);
                 SqlEditorWebView.WebMessageReceived += SqlEditorWebView_WebMessageReceived;
+                
+                SqlEditorWebView.NavigationCompleted += async (sender, args) =>
+                {
+                    if (!string.IsNullOrEmpty(InitialSql))
+                    {
+                        await SqlEditorWebView.ExecuteScriptAsync(@"
+                            var checkEditor = setInterval(function() {
+                                if (typeof setQueryText === 'function' && typeof monaco !== 'undefined') {
+                                    clearInterval(checkEditor);
+                                    setQueryText(" + JsonSerializer.Serialize(InitialSql) + @");
+                                }
+                            }, 50);
+                        ");
+                    }
+                };
+                
                 IsWebViewInitialized = true;
 
                 // Cache metadata & update autocompletion for this database
@@ -262,6 +279,8 @@ namespace SSMS
                 VerticalGridLinesBrush = (System.Windows.Media.SolidColorBrush)new System.Windows.Media.BrushConverter().ConvertFromString("#2D2D30")!,
                 HeadersVisibility = DataGridHeadersVisibility.All,
                 FontSize = 12,
+                SelectionUnit = DataGridSelectionUnit.CellOrRowHeader,
+                SelectionMode = DataGridSelectionMode.Extended,
                 ItemsSource = dataTable.DefaultView
             };
 
@@ -300,7 +319,7 @@ namespace SSMS
 
         private string GetDefaultHtmlContent()
         {
-            return @"<!DOCTYPE html><html><head><style>html,body,#container{width:100%;height:100%;margin:0;padding:0;overflow:hidden;background-color:#1e1e1e;}</style></head><body><div id='container'></div><script src='https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js'></script><script>require.config({paths:{vs:'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.39.0/min/vs'}});var editor;var tables=[];var columns=[];require(['vs/editor/editor.main'],function(){monaco.languages.registerCompletionItemProvider('sql',{provideCompletionItems:function(model,position){var word=model.getWordUntilPosition(position);var range={startLineNumber:position.lineNumber,endLineNumber:position.lineNumber,startColumn:word.startColumn,endColumn:word.endColumn};var suggestions=[];var keywords=['SELECT','FROM','WHERE','INSERT','INTO','UPDATE','SET','DELETE','CREATE','TABLE','JOIN','INNER','LEFT','ON','GROUP','BY','ORDER','AND','OR','AS'];keywords.forEach(kw=>{suggestions.push({label:kw,kind:monaco.languages.CompletionItemKind.Keyword,insertText:kw,range:range});});tables.forEach(t=>{suggestions.push({label:t,kind:monaco.languages.CompletionItemKind.Class,insertText:t,detail:'Table',range:range});});columns.forEach(c=>{suggestions.push({label:c,kind:monaco.languages.CompletionItemKind.Field,insertText:c,detail:'Column',range:range});});return{suggestions:suggestions};}});editor=monaco.editor.create(document.getElementById('container'),{value:'-- Write SQL Query\nSELECT * FROM sys.databases;',language:'sql',theme:'vs-dark',automaticLayout:true,fontSize:14});editor.addCommand(monaco.KeyCode.F5,function(){window.chrome.webview.postMessage({action:'execute'});});});function getQueryText(){if(editor){var selection=editor.getSelection();var selectedText=editor.getModel().getValueInRange(selection);if(selectedText&&selectedText.trim().length>0){return selectedText;}return editor.getValue();}return'';}function setQueryText(text){if(editor)editor.setValue(text);}function updateMetadata(t,c){tables=t||[];columns=c||[];}</script></body></html>";
+            return @"<!DOCTYPE html><html><head><style>html,body,#container{width:100%;height:100%;margin:0;padding:0;overflow:hidden;background-color:#1e1e1e;}</style></head><body><div id='container'></div><script src='https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js'></script><script>require.config({paths:{vs:'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.39.0/min/vs'}});var editor;var tables=[];var columns=[];require(['vs/editor/editor.main'],function(){monaco.languages.registerCompletionItemProvider('sql',{provideCompletionItems:function(model,position){var word=model.getWordUntilPosition(position);var range={startLineNumber:position.lineNumber,endLineNumber:position.lineNumber,startColumn:word.startColumn,endColumn:word.endColumn};var suggestions=[];var keywords=['SELECT','FROM','WHERE','INSERT','INTO','UPDATE','SET','DELETE','CREATE','TABLE','JOIN','INNER','LEFT','ON','GROUP','BY','ORDER','AND','OR','AS'];keywords.forEach(kw=>{suggestions.push({label:kw,kind:monaco.languages.CompletionItemKind.Keyword,insertText:kw,range:range});});tables.forEach(t=>{suggestions.push({label:t,kind:monaco.languages.CompletionItemKind.Class,insertText:t,detail:'Table',range:range});});columns.forEach(c=>{suggestions.push({label:c,kind:monaco.languages.CompletionItemKind.Field,insertText:c,detail:'Column',range:range});});return{suggestions:suggestions};}});editor=monaco.editor.create(document.getElementById('container'),{value:'-- Write SQL Query\nSELECT * FROM sys.databases;',language:'sql',theme:'vs-dark',automaticLayout:true,fontSize:14,scrollbar:{verticalScrollbarSize:5,horizontalScrollbarSize:5,useShadows:false}});editor.addCommand(monaco.KeyCode.F5,function(){window.chrome.webview.postMessage({action:'execute'});});});function getQueryText(){if(editor){var selection=editor.getSelection();var selectedText=editor.getModel().getValueInRange(selection);if(selectedText&&selectedText.trim().length>0){return selectedText;}return editor.getValue();}return'';}function setQueryText(text){if(editor)editor.setValue(text);}function updateMetadata(t,c){tables=t||[];columns=c||[];}</script></body></html>";
         }
     }
 }

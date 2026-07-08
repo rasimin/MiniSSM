@@ -210,5 +210,154 @@ namespace SSMS
 
             return result;
         }
+
+        public static async Task<List<string>> GetViewsAsync(string connectionString, string databaseName)
+        {
+            var views = new List<string>();
+            var dbConnString = BuildConnectionString(connectionString, databaseName);
+            using (var connection = new SqlConnection(dbConnString))
+            {
+                await connection.OpenAsync();
+                var query = @"
+                    SELECT SCHEMA_NAME(schema_id) + '.' + name AS ViewName 
+                    FROM sys.views 
+                    ORDER BY SCHEMA_NAME(schema_id), name;";
+                using (var command = new SqlCommand(query, connection))
+                using (var reader = await command.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        views.Add(reader.GetString(0));
+                    }
+                }
+            }
+            return views;
+        }
+
+        public static async Task<List<string>> GetStoredProceduresAsync(string connectionString, string databaseName)
+        {
+            var sps = new List<string>();
+            var dbConnString = BuildConnectionString(connectionString, databaseName);
+            using (var connection = new SqlConnection(dbConnString))
+            {
+                await connection.OpenAsync();
+                var query = @"
+                    SELECT SCHEMA_NAME(schema_id) + '.' + name AS ProcedureName 
+                    FROM sys.procedures 
+                    ORDER BY SCHEMA_NAME(schema_id), name;";
+                using (var command = new SqlCommand(query, connection))
+                using (var reader = await command.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        sps.Add(reader.GetString(0));
+                    }
+                }
+            }
+            return sps;
+        }
+
+        public static async Task<List<string>> GetFunctionsAsync(string connectionString, string databaseName)
+        {
+            var funcs = new List<string>();
+            var dbConnString = BuildConnectionString(connectionString, databaseName);
+            using (var connection = new SqlConnection(dbConnString))
+            {
+                await connection.OpenAsync();
+                var query = @"
+                    SELECT SCHEMA_NAME(schema_id) + '.' + name AS FunctionName 
+                    FROM sys.objects 
+                    WHERE type IN ('FN', 'IF', 'TF', 'FS', 'FT') 
+                    ORDER BY SCHEMA_NAME(schema_id), name;";
+                using (var command = new SqlCommand(query, connection))
+                using (var reader = await command.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        funcs.Add(reader.GetString(0));
+                    }
+                }
+            }
+            return funcs;
+        }
+
+        public static async Task<string> GetObjectDefinitionAsync(string connectionString, string databaseName, string objectName)
+        {
+            var dbConnString = BuildConnectionString(connectionString, databaseName);
+            using (var connection = new SqlConnection(dbConnString))
+            {
+                await connection.OpenAsync();
+                var query = "SELECT definition FROM sys.sql_modules WHERE object_id = OBJECT_ID(@ObjectName);";
+                using (var command = new SqlCommand(query, connection))
+                {
+                    command.Parameters.AddWithValue("@ObjectName", objectName);
+                    var result = await command.ExecuteScalarAsync();
+                    return result?.ToString() ?? string.Empty;
+                }
+            }
+        }
+
+        public static async Task<string> GenerateTableCreateScriptAsync(string connectionString, string databaseName, string tableName)
+        {
+            var columns = new List<(string Name, string Type, bool IsNullable, bool IsIdentity, bool IsPrimaryKey)>();
+            var dbConnString = BuildConnectionString(connectionString, databaseName);
+            using (var connection = new SqlConnection(dbConnString))
+            {
+                await connection.OpenAsync();
+                var query = @"
+                    SELECT c.name, t.name + 
+                        CASE 
+                            WHEN t.name IN ('varchar', 'char', 'nvarchar', 'nchar') THEN '(' + 
+                                CASE WHEN c.max_length = -1 THEN 'MAX' 
+                                     ELSE CAST(CASE WHEN t.name LIKE 'n%' THEN c.max_length/2 ELSE c.max_length END AS VARCHAR) 
+                                END + ')'
+                            WHEN t.name IN ('decimal', 'numeric') THEN '(' + CAST(c.precision AS VARCHAR) + ',' + CAST(c.scale AS VARCHAR) + ')'
+                            ELSE ''
+                        END AS DataType,
+                        c.is_nullable,
+                        c.is_identity,
+                        CAST(ISNULL((SELECT 1 FROM sys.index_columns ic 
+                                JOIN sys.indexes i ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+                                WHERE ic.object_id = c.object_id AND ic.column_id = c.column_id AND i.is_primary_key = 1), 0) AS BIT) AS IsPrimaryKey
+                    FROM sys.columns c
+                    JOIN sys.types t ON c.user_type_id = t.user_type_id
+                    WHERE c.object_id = OBJECT_ID(@TableName)
+                    ORDER BY c.column_id;";
+                using (var command = new SqlCommand(query, connection))
+                {
+                    command.Parameters.AddWithValue("@TableName", tableName);
+                    using (var reader = await command.ExecuteReaderAsync())
+                    {
+                        while (await reader.ReadAsync())
+                        {
+                            columns.Add((
+                                reader.GetString(0),
+                                reader.GetString(1),
+                                reader.GetBoolean(2),
+                                reader.GetBoolean(3),
+                                reader.GetBoolean(4)
+                            ));
+                        }
+                    }
+                }
+            }
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"-- Create Table Script for {tableName}");
+            sb.AppendLine($"CREATE TABLE {tableName}");
+            sb.AppendLine("(");
+            for (int i = 0; i < columns.Count; i++)
+            {
+                var col = columns[i];
+                string identityStr = col.IsIdentity ? " IDENTITY(1,1)" : "";
+                string nullStr = col.IsNullable ? "NULL" : "NOT NULL";
+                string pkStr = col.IsPrimaryKey ? " PRIMARY KEY" : "";
+                
+                string comma = (i < columns.Count - 1) ? "," : "";
+                sb.AppendLine($"    [{col.Name}] {col.Type}{identityStr}{pkStr} {nullStr}{comma}");
+            }
+            sb.AppendLine(");");
+            return sb.ToString();
+        }
     }
 }
