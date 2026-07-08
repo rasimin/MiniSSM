@@ -132,6 +132,69 @@ namespace SSMS
             return columns;
         }
 
+        public static async Task<List<(string IndexName, string IndexType, bool IsUnique, bool IsPrimaryKey)>> GetIndexesAsync(string connectionString, string databaseName, string tableSchemaAndName)
+        {
+            var indexes = new List<(string, string, bool, bool)>();
+            var dbConnString = BuildConnectionString(connectionString, databaseName);
+
+            using (var connection = new SqlConnection(dbConnString))
+            {
+                await connection.OpenAsync();
+                var query = @"
+                    SELECT i.name,
+                           i.type_desc,
+                           i.is_unique,
+                           i.is_primary_key
+                    FROM sys.indexes i
+                    WHERE i.object_id = OBJECT_ID(@TableFullName)
+                      AND i.name IS NOT NULL
+                    ORDER BY i.is_primary_key DESC, i.is_unique DESC, i.name;";
+
+                using (var command = new SqlCommand(query, connection))
+                {
+                    command.Parameters.AddWithValue("@TableFullName", tableSchemaAndName);
+                    using (var reader = await command.ExecuteReaderAsync())
+                    {
+                        while (await reader.ReadAsync())
+                        {
+                            indexes.Add((reader.GetString(0), reader.GetString(1), reader.GetBoolean(2), reader.GetBoolean(3)));
+                        }
+                    }
+                }
+            }
+            return indexes;
+        }
+
+        public static async Task<List<(string TriggerName, bool IsDisabled)>> GetTriggersAsync(string connectionString, string databaseName, string tableSchemaAndName)
+        {
+            var triggers = new List<(string, bool)>();
+            var dbConnString = BuildConnectionString(connectionString, databaseName);
+
+            using (var connection = new SqlConnection(dbConnString))
+            {
+                await connection.OpenAsync();
+                var query = @"
+                    SELECT tr.name,
+                           tr.is_disabled
+                    FROM sys.triggers tr
+                    WHERE tr.parent_id = OBJECT_ID(@TableFullName)
+                    ORDER BY tr.name;";
+
+                using (var command = new SqlCommand(query, connection))
+                {
+                    command.Parameters.AddWithValue("@TableFullName", tableSchemaAndName);
+                    using (var reader = await command.ExecuteReaderAsync())
+                    {
+                        while (await reader.ReadAsync())
+                        {
+                            triggers.Add((reader.GetString(0), reader.GetBoolean(1)));
+                        }
+                    }
+                }
+            }
+            return triggers;
+        }
+
         /// <summary>
         /// Executes an SQL query or command against a database and returns the result, message, execution time.
         /// </summary>

@@ -276,6 +276,61 @@
             }
         }
 
+        function getSelectedLineRange() {
+            var selection = editor.getSelection();
+            var startLine = selection.startLineNumber;
+            var endLine = selection.endLineNumber;
+            if (selection.endColumn === 1 && endLine > startLine) {
+                endLine--;
+            }
+            return {
+                selection: selection,
+                startLine: startLine,
+                endLine: endLine
+            };
+        }
+
+        function updateSelectedLines(transformLine) {
+            if (!editor) {
+                return;
+            }
+
+            var model = editor.getModel();
+            var rangeInfo = getSelectedLineRange();
+            var edits = [];
+
+            for (var lineNumber = rangeInfo.startLine; lineNumber <= rangeInfo.endLine; lineNumber++) {
+                var oldText = model.getLineContent(lineNumber);
+                var newText = transformLine(oldText);
+                if (newText !== oldText) {
+                    edits.push({
+                        range: new monaco.Range(lineNumber, 1, lineNumber, oldText.length + 1),
+                        text: newText
+                    });
+                }
+            }
+
+            if (edits.length > 0) {
+                editor.executeEdits('toolbar-comment', edits);
+            }
+
+            editor.setSelection(rangeInfo.selection);
+            editor.focus();
+        }
+
+        function commentSelection() {
+            updateSelectedLines(function(line) {
+                var indent = line.match(/^\s*/)[0];
+                return indent + '-- ' + line.substring(indent.length);
+            });
+        }
+
+        function uncommentSelection() {
+            updateSelectedLines(function(line) {
+                return line.replace(/^(\s*)--\s?/, '$1');
+            });
+        }
+
         function updateMetadata(meta) {
             tableColumns = meta || {};
             tables = Object.keys(tableColumns);

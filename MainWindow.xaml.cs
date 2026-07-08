@@ -143,15 +143,10 @@ namespace SSMS
             closeBtn.MouseEnter += (s, e) => { closeBtn.Foreground = System.Windows.Media.Brushes.Red; };
             closeBtn.MouseLeave += (s, e) => { closeBtn.Foreground = System.Windows.Media.Brushes.Gray; };
 
-            closeBtn.Click += (s, e) => {
-                TabQueryControls.Items.Remove(tabItem);
-                if (TabQueryControls.Items.Count == 0)
-                {
-                    CboDatabases.ItemsSource = null;
-                    TxtStatusDatabase.Text = "";
-                    TxtStatusServer.Text = "No Connection";
-                    TxtStatusTime.Text = "";
-                }
+            closeBtn.Click += (s, e) =>
+            {
+                CloseTab(tabItem);
+                e.Handled = true;
             };
 
             headerPanel.Children.Add(headerText);
@@ -163,14 +158,20 @@ namespace SSMS
             // Context Menu for Tab Header (Rename & Set Color)
             var tabContextMenu = new ContextMenu();
             var renameTabMenu = new MenuItem { Header = "Rename" };
-            renameTabMenu.Click += (s, e) => {
-                string newName = ShowInputDialog("Rename Tab", "Enter new tab name:", headerText.Text);
-                if (!string.IsNullOrEmpty(newName))
-                {
-                    headerText.Text = newName;
-                }
-            };
+            renameTabMenu.Click += (s, e) => RenameTab(tabItem);
             tabContextMenu.Items.Add(renameTabMenu);
+
+            var closeTabMenu = new MenuItem { Header = "Close" };
+            closeTabMenu.Click += (s, e) => CloseTab(tabItem);
+            tabContextMenu.Items.Add(closeTabMenu);
+
+            var closeAllMenu = new MenuItem { Header = "Close All" };
+            closeAllMenu.Click += (s, e) => CloseAllTabs();
+            tabContextMenu.Items.Add(closeAllMenu);
+
+            var closeAllButThisMenu = new MenuItem { Header = "Close All But This" };
+            closeAllButThisMenu.Click += (s, e) => CloseAllTabsExcept(tabItem);
+            tabContextMenu.Items.Add(closeAllButThisMenu);
 
             var colorTabMenu = new MenuItem { Header = "Set Color" };
             var tabColors = new[] {
@@ -195,6 +196,53 @@ namespace SSMS
             tabItem.ContextMenu = tabContextMenu;
 
             TabQueryControls.Items.Add(tabItem);
+            TabQueryControls.SelectedItem = tabItem;
+        }
+
+        private void RenameTab(TabItem tabItem)
+        {
+            if (tabItem.Header is StackPanel headerPanel && headerPanel.Children[0] is TextBlock headerText)
+            {
+                string newName = ShowInputDialog("Rename Tab", "Enter new tab name:", headerText.Text);
+                if (!string.IsNullOrEmpty(newName))
+                {
+                    headerText.Text = newName;
+                }
+            }
+        }
+
+        private void CloseTab(TabItem tabItem)
+        {
+            if (!TabQueryControls.Items.Contains(tabItem))
+            {
+                return;
+            }
+
+            TabQueryControls.Items.Remove(tabItem);
+            if (TabQueryControls.Items.Count == 0)
+            {
+                CboDatabases.ItemsSource = null;
+                TxtStatusDatabase.Text = "";
+                TxtStatusServer.Text = "No Connection";
+                TxtStatusTime.Text = "";
+            }
+        }
+
+        private void CloseAllTabs()
+        {
+            TabQueryControls.Items.Clear();
+            CboDatabases.ItemsSource = null;
+            TxtStatusDatabase.Text = "";
+            TxtStatusServer.Text = "No Connection";
+            TxtStatusTime.Text = "";
+        }
+
+        private void CloseAllTabsExcept(TabItem tabItem)
+        {
+            foreach (var item in TabQueryControls.Items.OfType<TabItem>().Where(item => item != tabItem).ToList())
+            {
+                TabQueryControls.Items.Remove(item);
+            }
             TabQueryControls.SelectedItem = tabItem;
         }
 
@@ -467,6 +515,25 @@ namespace SSMS
                         };
                         colsFolder.Items.Add(new TreeViewItem { Header = "Loading..." });
                         item.Items.Add(colsFolder);
+
+                        if (type == "Table")
+                        {
+                            var indexesFolder = new TreeViewItem
+                            {
+                                Header = "📁 Indexes",
+                                Tag = new ObjectExplorerNode { NodeType = "IndexesFolder", ConnectionString = connStr, DatabaseName = dbName, DetailName = detailName }
+                            };
+                            indexesFolder.Items.Add(new TreeViewItem { Header = "Loading..." });
+                            item.Items.Add(indexesFolder);
+
+                            var triggersFolder = new TreeViewItem
+                            {
+                                Header = "📁 Triggers",
+                                Tag = new ObjectExplorerNode { NodeType = "TriggersFolder", ConnectionString = connStr, DatabaseName = dbName, DetailName = detailName }
+                            };
+                            triggersFolder.Items.Add(new TreeViewItem { Header = "Loading..." });
+                            item.Items.Add(triggersFolder);
+                        }
                     }
                     else if (type == "ColumnsFolder")
                     {
@@ -481,6 +548,35 @@ namespace SSMS
                                 Tag = new ObjectExplorerNode { NodeType = "Column", ConnectionString = connStr, DatabaseName = dbName, DetailName = col.ColumnName }
                             };
                             item.Items.Add(colItem);
+                        }
+                    }
+                    else if (type == "IndexesFolder")
+                    {
+                        var indexes = await DatabaseHelper.GetIndexesAsync(connStr, dbName, detailName);
+                        foreach (var index in indexes)
+                        {
+                            string uniqueSuffix = index.IsUnique ? ", Unique" : "";
+                            string pkSuffix = index.IsPrimaryKey ? ", PK" : "";
+                            var indexItem = new TreeViewItem
+                            {
+                                Header = $"🔖 {index.IndexName} ({index.IndexType}{uniqueSuffix}{pkSuffix})",
+                                Tag = new ObjectExplorerNode { NodeType = "Index", ConnectionString = connStr, DatabaseName = dbName, DetailName = index.IndexName }
+                            };
+                            item.Items.Add(indexItem);
+                        }
+                    }
+                    else if (type == "TriggersFolder")
+                    {
+                        var triggers = await DatabaseHelper.GetTriggersAsync(connStr, dbName, detailName);
+                        foreach (var trigger in triggers)
+                        {
+                            string disabledSuffix = trigger.IsDisabled ? " (Disabled)" : "";
+                            var triggerItem = new TreeViewItem
+                            {
+                                Header = $"⚡ {trigger.TriggerName}{disabledSuffix}",
+                                Tag = new ObjectExplorerNode { NodeType = "Trigger", ConnectionString = connStr, DatabaseName = dbName, DetailName = trigger.TriggerName }
+                            };
+                            item.Items.Add(triggerItem);
                         }
                     }
                 }
@@ -606,6 +702,21 @@ namespace SSMS
                 SaveActiveTabQuery();
                 e.Handled = true;
             }
+            else if (e.Key == Key.O && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                OpenSqlFile();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.K && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control && (Keyboard.Modifiers & ModifierKeys.Shift) != ModifierKeys.Shift)
+            {
+                RunEditorCommand("commentSelection()");
+                e.Handled = true;
+            }
+            else if (e.Key == Key.K && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+            {
+                RunEditorCommand("uncommentSelection()");
+                e.Handled = true;
+            }
         }
 
         private void BtnNewQuery_Click(object sender, RoutedEventArgs e)
@@ -623,6 +734,78 @@ namespace SSMS
         private void BtnSaveQuery_Click(object sender, RoutedEventArgs e)
         {
             SaveActiveTabQuery();
+        }
+
+        private void BtnOpenQuery_Click(object sender, RoutedEventArgs e)
+        {
+            OpenSqlFile();
+        }
+
+        private void BtnCommentQuery_Click(object sender, RoutedEventArgs e)
+        {
+            RunEditorCommand("commentSelection()");
+        }
+
+        private void BtnUncommentQuery_Click(object sender, RoutedEventArgs e)
+        {
+            RunEditorCommand("uncommentSelection()");
+        }
+
+        private async void RunEditorCommand(string script)
+        {
+            if (TabQueryControls.SelectedItem is TabItem tabItem && tabItem.Content is QueryTabControl activeTab && activeTab.IsWebViewInitialized)
+            {
+                try
+                {
+                    await activeTab.SqlEditorWebView.ExecuteScriptAsync(script);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Failed to update SQL editor: {ex.Message}", "Editor Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            }
+        }
+
+        private void OpenSqlFile()
+        {
+            var openFileDialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Filter = "SQL Files (*.sql)|*.sql|All Files (*.*)|*.*",
+                DefaultExt = ".sql",
+                Title = "Open SQL Query"
+            };
+
+            if (openFileDialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            try
+            {
+                string sql = File.ReadAllText(openFileDialog.FileName);
+                string connectionString = _initialConnectionString;
+                string databaseName = "master";
+
+                if (TabQueryControls.SelectedItem is TabItem activeTabItem && activeTabItem.Content is QueryTabControl activeTab)
+                {
+                    connectionString = activeTab.ConnectionString;
+                    databaseName = activeTab.DatabaseName;
+                }
+                else
+                {
+                    var builder = new SqlConnectionStringBuilder(_initialConnectionString);
+                    if (!string.IsNullOrEmpty(builder.InitialCatalog))
+                    {
+                        databaseName = builder.InitialCatalog;
+                    }
+                }
+
+                CreateNewQueryTab(connectionString, databaseName, sql, Path.GetFileName(openFileDialog.FileName));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to open SQL file: {ex.Message}", "Open Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private async void SaveActiveTabQuery()
@@ -834,11 +1017,22 @@ namespace SSMS
         {
             if (sender is TabItem tabItem)
             {
+                if (IsInteractiveTabChild(e.OriginalSource as DependencyObject))
+                {
+                    return;
+                }
+
+                if (e.ClickCount == 2)
+                {
+                    RenameTab(tabItem);
+                    e.Handled = true;
+                    return;
+                }
+
                 _draggedTab = tabItem;
                 _dragStartPoint = e.GetPosition(TabQueryControls);
                 _draggedTabGrabOffsetX = _dragStartPoint.X - GetLayoutPosition(tabItem, TabQueryControls).X;
                 Panel.SetZIndex(tabItem, 1000);
-                tabItem.CaptureMouse();
             }
         }
 
@@ -847,11 +1041,16 @@ namespace SSMS
             if (_draggedTab != null && e.LeftButton == MouseButtonState.Pressed)
             {
                 var currentPoint = e.GetPosition(TabQueryControls);
-                MoveDraggedElementWithCursor(_draggedTab, TabQueryControls, currentPoint, _draggedTabGrabOffsetX);
                 
                 if (Math.Abs(currentPoint.X - _dragStartPoint.X) > SystemParameters.MinimumHorizontalDragDistance ||
                     Math.Abs(currentPoint.Y - _dragStartPoint.Y) > SystemParameters.MinimumVerticalDragDistance)
                 {
+                    if (!_draggedTab.IsMouseCaptured)
+                    {
+                        _draggedTab.CaptureMouse();
+                    }
+                    MoveDraggedElementWithCursor(_draggedTab, TabQueryControls, currentPoint, _draggedTabGrabOffsetX);
+
                     var tabItems = TabQueryControls.Items.OfType<TabItem>().Cast<FrameworkElement>().ToList();
                     int sourceIndex = tabItems.IndexOf(_draggedTab);
                     int targetIndex = GetReorderTargetIndex(tabItems, _draggedTab, currentPoint, sourceIndex, TabQueryControls);
@@ -872,11 +1071,31 @@ namespace SSMS
         {
             if (_draggedTab != null)
             {
-                AnimateDraggedElementToSlot(_draggedTab);
+                if (_draggedTab.IsMouseCaptured)
+                {
+                    AnimateDraggedElementToSlot(_draggedTab);
+                    _draggedTab.ReleaseMouseCapture();
+                }
                 Panel.SetZIndex(_draggedTab, 0);
-                _draggedTab.ReleaseMouseCapture();
             }
             _draggedTab = null;
+        }
+
+        private bool IsInteractiveTabChild(DependencyObject? source)
+        {
+            while (source != null)
+            {
+                if (source is Button || source is TextBox || source is ComboBox || source is MenuItem)
+                {
+                    return true;
+                }
+                if (source is TabItem)
+                {
+                    return false;
+                }
+                source = VisualTreeHelper.GetParent(source);
+            }
+            return false;
         }
 
         private int GetReorderTargetIndex(
@@ -1081,6 +1300,10 @@ namespace SSMS
         private ContextMenu CreateFolderContextMenu(TreeViewItem folderItem, string connStr, string dbName, string folderType, string baseName)
         {
             var menu = new ContextMenu();
+
+            var newQueryItem = new MenuItem { Header = "New Query" };
+            newQueryItem.Click += (s, e) => CreateNewQueryTab(connStr, dbName);
+            menu.Items.Add(newQueryItem);
             
             var filterItem = new MenuItem { Header = "Filter..." };
             filterItem.Click += (s, e) => OpenFilterDialog(folderItem, connStr, dbName, folderType, baseName);
@@ -1139,6 +1362,10 @@ namespace SSMS
         private ContextMenu CreateObjectContextMenu(string connectionString, string databaseName, string objectType, string objectName)
         {
             var menu = new ContextMenu();
+
+            var newQueryItem = new MenuItem { Header = "New Query" };
+            newQueryItem.Click += (s, e) => CreateNewQueryTab(connectionString, databaseName);
+            menu.Items.Add(newQueryItem);
 
             var scriptAsMenu = new MenuItem { Header = "Script Object as" };
 
