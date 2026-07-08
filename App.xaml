@@ -9,11 +9,11 @@
         <SolidColorBrush x:Key="ScrollTrackBrush" Color="#1E1E1E"/>
 
         <!-- Orientation-Aware Scrollbar Style -->
-        <Style TargetType="{x:Type ScrollBar}">
+        <Style x:Key="StandardScrollBar" TargetType="{x:Type ScrollBar}">
             <Setter Property="Background" Value="{StaticResource ScrollTrackBrush}"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Width" Value="3"/>
-            <Setter Property="Height" Value="3"/>
+            <Setter Property="Width" Value="6"/>
+            <Setter Property="Height" Value="6"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type ScrollBar}">
@@ -22,16 +22,16 @@
                                    IsDirectionReversed="true" 
                                    Orientation="{TemplateBinding Orientation}">
                                 <Track.DecreaseRepeatButton>
-                                    <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}" Opacity="0" Focusable="false"/>
+                                    <RepeatButton x:Name="DecreaseButton" Command="{x:Static ScrollBar.PageUpCommand}" Opacity="0" Focusable="false"/>
                                 </Track.DecreaseRepeatButton>
                                 <Track.IncreaseRepeatButton>
-                                    <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}" Opacity="0" Focusable="false"/>
+                                    <RepeatButton x:Name="IncreaseButton" Command="{x:Static ScrollBar.PageDownCommand}" Opacity="0" Focusable="false"/>
                                 </Track.IncreaseRepeatButton>
                                 <Track.Thumb>
                                     <Thumb x:Name="Thumb">
                                         <Thumb.Template>
                                             <ControlTemplate TargetType="{x:Type Thumb}">
-                                                <Border x:Name="thumbBorder" Background="{StaticResource ScrollThumbBrush}" CornerRadius="1.5"/>
+                                                <Border x:Name="thumbBorder" Background="{StaticResource ScrollThumbBrush}" CornerRadius="3"/>
                                                 <ControlTemplate.Triggers>
                                                     <Trigger Property="IsMouseOver" Value="true">
                                                         <Setter TargetName="thumbBorder" Property="Background" Value="{StaticResource ScrollThumbHoverBrush}"/>
@@ -46,6 +46,8 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="Orientation" Value="Horizontal">
                                 <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="false"/>
+                                <Setter TargetName="DecreaseButton" Property="Command" Value="{x:Static ScrollBar.PageLeftCommand}"/>
+                                <Setter TargetName="IncreaseButton" Property="Command" Value="{x:Static ScrollBar.PageRightCommand}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -54,14 +56,16 @@
             <Style.Triggers>
                 <Trigger Property="Orientation" Value="Horizontal">
                     <Setter Property="Width" Value="Auto"/>
-                    <Setter Property="Height" Value="3"/>
+                    <Setter Property="Height" Value="6"/>
                 </Trigger>
                 <Trigger Property="Orientation" Value="Vertical">
-                    <Setter Property="Width" Value="3"/>
+                    <Setter Property="Width" Value="6"/>
                     <Setter Property="Height" Value="Auto"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
+
+        <Style TargetType="{x:Type ScrollBar}" BasedOn="{StaticResource StandardScrollBar}"/>
 
         <!-- Style implisit untuk ScrollViewer untuk mengubah warna sudut pertemuan scrollbar -->
         <Style TargetType="{x:Type ScrollViewer}">
@@ -79,8 +83,8 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
                             <ScrollContentPresenter Grid.Column="0" Grid.Row="0" Margin="{TemplateBinding Padding}" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" CanContentScroll="{TemplateBinding CanContentScroll}"/>
-                            <ScrollBar x:Name="PART_VerticalScrollBar" Grid.Column="1" Grid.Row="0" AutomationProperties.AutomationId="VerticalScrollBar" Cursor="Arrow" Value="{TemplateBinding VerticalOffset}" Maximum="{TemplateBinding ScrollableHeight}" Minimum="0" ViewportSize="{TemplateBinding ViewportHeight}" Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"/>
-                            <ScrollBar x:Name="PART_HorizontalScrollBar" Grid.Column="0" Grid.Row="1" AutomationProperties.AutomationId="HorizontalScrollBar" Cursor="Arrow" Orientation="Horizontal" Value="{TemplateBinding HorizontalOffset}" Maximum="{TemplateBinding ScrollableWidth}" Minimum="0" ViewportSize="{TemplateBinding ViewportWidth}" Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}"/>
+                            <ScrollBar x:Name="PART_VerticalScrollBar" Grid.Column="1" Grid.Row="0" AutomationProperties.AutomationId="VerticalScrollBar" Cursor="Arrow" Style="{StaticResource StandardScrollBar}" Value="{TemplateBinding VerticalOffset}" Maximum="{TemplateBinding ScrollableHeight}" Minimum="0" ViewportSize="{TemplateBinding ViewportHeight}" Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"/>
+                            <ScrollBar x:Name="PART_HorizontalScrollBar" Grid.Column="0" Grid.Row="1" AutomationProperties.AutomationId="HorizontalScrollBar" Cursor="Arrow" Orientation="Horizontal" Style="{StaticResource StandardScrollBar}" Value="{TemplateBinding HorizontalOffset}" Maximum="{TemplateBinding ScrollableWidth}" Minimum="0" ViewportSize="{TemplateBinding ViewportWidth}" Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}"/>
                             <!-- Sudut pengisi berwarna gelap -->
                             <Rectangle Grid.Row="1" Grid.Column="1" Fill="#1E1E1E"/>
                         </Grid>
@@ -123,6 +127,9 @@
             <Setter Property="VerticalGridLinesBrush" Value="#2D2D30"/>
             <Setter Property="HeadersVisibility" Value="All"/>
             <Setter Property="FontSize" Value="12"/>
+            <Style.Resources>
+                <Style TargetType="{x:Type ScrollBar}" BasedOn="{StaticResource StandardScrollBar}"/>
+            </Style.Resources>
         </Style>
 
         <Style TargetType="DataGridColumnHeader">

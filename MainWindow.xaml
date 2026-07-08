@@ -168,6 +168,21 @@
             <Setter Property="BorderBrush" Value="#2D2D30"/>
             <Setter Property="BorderThickness" Value="0,0,1,0"/>
             <Setter Property="Padding" Value="5"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TreeView">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}">
+                            <ItemsPresenter/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Resources>
+                <Style TargetType="{x:Type ScrollBar}" BasedOn="{StaticResource StandardScrollBar}"/>
+            </Style.Resources>
         </Style>
 
         <Style TargetType="TreeViewItem">
@@ -191,6 +206,120 @@
             <Setter Property="Background" Value="#1E1E1E"/>
             <Setter Property="BorderBrush" Value="#2D2D30"/>
             <Setter Property="Padding" Value="0"/>
+        </Style>
+
+        <Style x:Key="QueryTabHeaderHorizontalScrollBar" TargetType="ScrollBar">
+            <Setter Property="Background" Value="#252526"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Height" Value="6"/>
+            <Setter Property="MinHeight" Value="6"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid Height="6" Background="#252526" SnapsToDevicePixels="True">
+                            <Track x:Name="PART_Track"
+                                   Orientation="{TemplateBinding Orientation}"
+                                   IsDirectionReversed="False">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Opacity="0" Focusable="False" IsTabStop="False"/>
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Opacity="0" Focusable="False" IsTabStop="False"/>
+                                </Track.IncreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb MinWidth="24" Height="6">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border x:Name="ThumbBorder"
+                                                        Height="6"
+                                                        Background="#555555"
+                                                        CornerRadius="3"/>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="ThumbBorder" Property="Background" Value="#777777"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="QueryTabHeaderScrollViewer" TargetType="ScrollViewer">
+            <Setter Property="Background" Value="#252526"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollViewer">
+                        <Grid Background="{TemplateBinding Background}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="6"/>
+                            </Grid.RowDefinitions>
+
+                            <ScrollContentPresenter Grid.Row="0"
+                                                    Content="{TemplateBinding Content}"
+                                                    ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                    CanContentScroll="{TemplateBinding CanContentScroll}"/>
+
+                            <ScrollBar x:Name="PART_HorizontalScrollBar"
+                                       Grid.Row="1"
+                                       Orientation="Horizontal"
+                                       Height="6"
+                                       Style="{StaticResource QueryTabHeaderHorizontalScrollBar}"
+                                       Value="{TemplateBinding HorizontalOffset}"
+                                       Maximum="{TemplateBinding ScrollableWidth}"
+                                       ViewportSize="{TemplateBinding ViewportWidth}"
+                                       Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="QueryTabsControl" TargetType="TabControl">
+            <Setter Property="Background" Value="#1E1E1E"/>
+            <Setter Property="BorderBrush" Value="#2D2D30"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabControl">
+                        <Grid KeyboardNavigation.TabNavigation="Local">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <ScrollViewer Grid.Row="0"
+                                          Background="#252526"
+                                          HorizontalScrollBarVisibility="Auto"
+                                          VerticalScrollBarVisibility="Disabled"
+                                          CanContentScroll="False"
+                                          Focusable="False"
+                                          Style="{StaticResource QueryTabHeaderScrollViewer}">
+                                <TabPanel x:Name="HeaderPanel"
+                                          IsItemsHost="True"
+                                          KeyboardNavigation.TabIndex="1"
+                                          Panel.ZIndex="1"/>
+                            </ScrollViewer>
+
+                            <Border Grid.Row="1"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}">
+                                <ContentPresenter x:Name="PART_SelectedContentHost"
+                                                  ContentSource="SelectedContent"
+                                                  Margin="{TemplateBinding Padding}"
+                                                  SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                            </Border>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style TargetType="TabItem">
@@ -257,6 +386,16 @@
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock Text="⋮" Foreground="#555555" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
                             <Button Style="{StaticResource ToolbarButton}" Content="✕" Click="BtnDisconnect_Click" ToolTip="Disconnect"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Name="ToolbarObjectExplorer" Background="Transparent" Padding="2,0" Margin="0,0,4,0"
+                            PreviewMouseLeftButtonDown="ToolbarItem_PreviewMouseLeftButtonDown"
+                            PreviewMouseMove="ToolbarItem_PreviewMouseMove"
+                            PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="⋮" Foreground="#555555" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
+                            <Button x:Name="BtnToggleObjectExplorer" Style="{StaticResource ToolbarButton}" Content="☰" Click="BtnToggleObjectExplorer_Click" ToolTip="Hide Object Explorer (F8)"/>
                         </StackPanel>
                     </Border>
                     
@@ -339,13 +478,13 @@
         <!-- 2. Main Content Splitter (Left: Object Explorer, Right: Editor & Results) -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="260" MinWidth="180"/>
-                <ColumnDefinition Width="3"/>
+                <ColumnDefinition x:Name="ObjectExplorerColumn" Width="260" MinWidth="180"/>
+                <ColumnDefinition x:Name="ObjectExplorerSplitterColumn" Width="3"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
             <!-- Left Panel: Object Explorer -->
-            <Grid Grid.Column="0" Background="#1E1E1E">
+            <Grid x:Name="ObjectExplorerPanel" Grid.Column="0" Background="#1E1E1E">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
@@ -353,14 +492,23 @@
                 <Border Grid.Row="0" Background="#252526" BorderBrush="#2D2D30" BorderThickness="0,0,1,1" Padding="12,8">
                     <TextBlock Text="Object Explorer" FontWeight="SemiBold" Foreground="#FFFFFF" FontSize="12"/>
                 </Border>
-                <TreeView x:Name="TreeObjectExplorer" Grid.Row="1"/>
+                <ScrollViewer Grid.Row="1"
+                              Background="#1E1E1E"
+                              HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Auto"
+                              CanContentScroll="False">
+                    <ScrollViewer.Resources>
+                        <Style TargetType="{x:Type ScrollBar}" BasedOn="{StaticResource StandardScrollBar}"/>
+                    </ScrollViewer.Resources>
+                    <TreeView x:Name="TreeObjectExplorer" BorderThickness="0"/>
+                </ScrollViewer>
             </Grid>
 
             <!-- Vertical Grid Splitter -->
-            <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="#2D2D30" ShowsPreview="True"/>
+            <GridSplitter x:Name="ObjectExplorerSplitter" Grid.Column="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="#2D2D30" ShowsPreview="True"/>
 
             <!-- Right Panel: Multi-tab Query Editor & Results -->
-            <TabControl x:Name="TabQueryControls" Grid.Column="2" BorderThickness="0" Background="#1E1E1E" SelectionChanged="TabQueryControls_SelectionChanged">
+            <TabControl x:Name="TabQueryControls" Grid.Column="2" BorderThickness="0" Background="#1E1E1E" Style="{StaticResource QueryTabsControl}" SelectionChanged="TabQueryControls_SelectionChanged">
                 <!-- Tab items will be added programmatically here -->
             </TabControl>
         </Grid>

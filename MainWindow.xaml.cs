@@ -24,13 +24,18 @@ namespace SSMS
         private readonly Dictionary<string, List<string>> _serverDatabasesCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _folderFilters = new(StringComparer.OrdinalIgnoreCase);
         private TabItem? _draggedTab;
+        private int _lastTargetIndex = -1;
         private Point _dragStartPoint;
+        private Point _dragCurrentPoint;
         private double _draggedTabGrabOffsetX;
         private Border? _draggedToolbarItem;
         private Point _toolbarDragStartPoint;
         private double _draggedToolbarGrabOffsetX;
+        private GridLength _lastObjectExplorerWidth = new(260);
+        private bool _isObjectExplorerVisible = true;
 
         private static readonly Duration ReorderAnimationDuration = new(TimeSpan.FromMilliseconds(320));
+        private const string QueryTabDragHandleTag = "QueryTabDragHandle";
 
         [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
@@ -102,6 +107,7 @@ namespace SSMS
             var builder = new SqlConnectionStringBuilder(connectionString);
             string serverName = builder.DataSource;
             string tabTitle = customTabTitle ?? $"SQLQuery{_queryTabCounter}.sql ({serverName}.{databaseName})";
+            AppLogger.Info($"Creating query tab: {tabTitle}");
 
             var queryTabControl = new QueryTabControl(connectionString, databaseName);
             if (!string.IsNullOrEmpty(initialSql))
@@ -115,7 +121,7 @@ namespace SSMS
             tabItem.PreviewMouseLeftButtonUp += TabItem_PreviewMouseLeftButtonUp;
 
             // Build tab header panel with close button
-            var headerPanel = new StackPanel { Orientation = Orientation.Horizontal };
+            var headerPanel = new StackPanel { Orientation = Orientation.Horizontal, Tag = QueryTabDragHandleTag };
             var headerText = new TextBlock 
             { 
                 Text = tabTitle, 
@@ -195,7 +201,7 @@ namespace SSMS
             tabContextMenu.Items.Add(colorTabMenu);
             tabItem.ContextMenu = tabContextMenu;
 
-            TabQueryControls.Items.Add(tabItem);
+            TabQueryControls.Items.Insert(0, tabItem);
             TabQueryControls.SelectedItem = tabItem;
         }
 
@@ -218,6 +224,7 @@ namespace SSMS
                 return;
             }
 
+            AppLogger.Info($"Closing query tab: {GetTabHeaderText(tabItem)}");
             TabQueryControls.Items.Remove(tabItem);
             if (TabQueryControls.Items.Count == 0)
             {
@@ -226,6 +233,15 @@ namespace SSMS
                 TxtStatusServer.Text = "No Connection";
                 TxtStatusTime.Text = "";
             }
+        }
+
+        private string GetTabHeaderText(TabItem tabItem)
+        {
+            if (tabItem.Header is StackPanel headerPanel && headerPanel.Children[0] is TextBlock headerText)
+            {
+                return headerText.Text;
+            }
+            return tabItem.Header?.ToString() ?? "(untitled)";
         }
 
         private void CloseAllTabs()
@@ -251,34 +267,43 @@ namespace SSMS
             // Only respond when the selection changes on TabQueryControls directly
             if (e.Source != TabQueryControls) return;
 
-            if (TabQueryControls.SelectedItem is TabItem tabItem && tabItem.Content is QueryTabControl activeTab)
+            try
             {
-                var builder = new SqlConnectionStringBuilder(activeTab.ConnectionString);
-                string serverName = builder.DataSource;
-
-                TxtStatusServer.Text = $"Connected: {serverName}";
-                TxtStatusDatabase.Text = activeTab.DatabaseName;
-
-                // Sync the Toolbar database selection list
-                CboDatabases.SelectionChanged -= CboDatabases_SelectionChanged;
-                try
+                if (TabQueryControls.SelectedItem is TabItem tabItem && tabItem.Content is QueryTabControl activeTab)
                 {
-                    if (!_serverDatabasesCache.TryGetValue(activeTab.ConnectionString, out var dbs))
+                    var builder = new SqlConnectionStringBuilder(activeTab.ConnectionString);
+                    string serverName = builder.DataSource;
+
+                    TxtStatusServer.Text = $"Connected: {serverName}";
+                    TxtStatusDatabase.Text = activeTab.DatabaseName;
+
+                    // Sync the Toolbar database selection list
+                    CboDatabases.SelectionChanged -= CboDatabases_SelectionChanged;
+                    try
                     {
-                        dbs = await DatabaseHelper.GetDatabasesAsync(activeTab.ConnectionString);
-                        _serverDatabasesCache[activeTab.ConnectionString] = dbs;
+                        if (!_serverDatabasesCache.TryGetValue(activeTab.ConnectionString, out var dbs))
+                        {
+                            dbs = await DatabaseHelper.GetDatabasesAsync(activeTab.ConnectionString);
+                            _serverDatabasesCache[activeTab.ConnectionString] = dbs;
+                        }
+                        CboDatabases.ItemsSource = dbs;
+                        CboDatabases.SelectedItem = activeTab.DatabaseName;
                     }
-                    CboDatabases.ItemsSource = dbs;
-                    CboDatabases.SelectedItem = activeTab.DatabaseName;
+                    catch (Exception ex)
+                    {
+                        AppLogger.Error(ex, "Failed to load databases during tab selection");
+                        MessageBox.Show($"Failed to load databases for server: {ex.Message}", "Database Load Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                    finally
+                    {
+                        CboDatabases.SelectionChanged += CboDatabases_SelectionChanged;
+                    }
                 }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Failed to load databases for server: {ex.Message}", "Database Load Error", MessageBoxButton.OK, MessageBoxImage.Warning);
-                }
-                finally
-                {
-                    CboDatabases.SelectionChanged += CboDatabases_SelectionChanged;
-                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error(ex, "Tab selection changed failed");
+                MessageBox.Show($"Failed to switch query tab. Log saved to: {AppLogger.LogDirectory}", "Tab Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -692,6 +717,11 @@ namespace SSMS
                 ExecuteActiveTabQuery();
                 e.Handled = true;
             }
+            else if (e.Key == Key.F8)
+            {
+                ToggleObjectExplorer();
+                e.Handled = true;
+            }
             else if (e.Key == Key.N && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
             {
                 BtnNewQuery_Click(this, new RoutedEventArgs());
@@ -728,6 +758,40 @@ namespace SSMS
             else
             {
                 CreateNewQueryTab(_initialConnectionString, "master");
+            }
+        }
+
+        private void BtnToggleObjectExplorer_Click(object sender, RoutedEventArgs e)
+        {
+            ToggleObjectExplorer();
+        }
+
+        private void ToggleObjectExplorer()
+        {
+            if (_isObjectExplorerVisible)
+            {
+                if (ObjectExplorerColumn.ActualWidth > 0)
+                {
+                    _lastObjectExplorerWidth = ObjectExplorerColumn.Width;
+                }
+
+                ObjectExplorerPanel.Visibility = Visibility.Collapsed;
+                ObjectExplorerSplitter.Visibility = Visibility.Collapsed;
+                ObjectExplorerColumn.MinWidth = 0;
+                ObjectExplorerColumn.Width = new GridLength(0);
+                ObjectExplorerSplitterColumn.Width = new GridLength(0);
+                BtnToggleObjectExplorer.ToolTip = "Show Object Explorer (F8)";
+                _isObjectExplorerVisible = false;
+            }
+            else
+            {
+                ObjectExplorerColumn.MinWidth = 180;
+                ObjectExplorerColumn.Width = _lastObjectExplorerWidth.Value > 0 ? _lastObjectExplorerWidth : new GridLength(260);
+                ObjectExplorerSplitterColumn.Width = new GridLength(3);
+                ObjectExplorerPanel.Visibility = Visibility.Visible;
+                ObjectExplorerSplitter.Visibility = Visibility.Visible;
+                BtnToggleObjectExplorer.ToolTip = "Hide Object Explorer (F8)";
+                _isObjectExplorerVisible = true;
             }
         }
 
@@ -1017,6 +1081,12 @@ namespace SSMS
         {
             if (sender is TabItem tabItem)
             {
+                if (!IsQueryTabDragHandle(e.OriginalSource as DependencyObject))
+                {
+                    CancelTabDrag();
+                    return;
+                }
+
                 if (IsInteractiveTabChild(e.OriginalSource as DependencyObject))
                 {
                     return;
@@ -1031,6 +1101,7 @@ namespace SSMS
 
                 _draggedTab = tabItem;
                 _dragStartPoint = e.GetPosition(TabQueryControls);
+                _dragCurrentPoint = _dragStartPoint;
                 _draggedTabGrabOffsetX = _dragStartPoint.X - GetLayoutPosition(tabItem, TabQueryControls).X;
                 Panel.SetZIndex(tabItem, 1000);
             }
@@ -1038,12 +1109,19 @@ namespace SSMS
 
         private void TabItem_PreviewMouseMove(object sender, MouseEventArgs e)
         {
+            if (_draggedTab != null && e.LeftButton != MouseButtonState.Pressed)
+            {
+                CancelTabDrag();
+                return;
+            }
+
             if (_draggedTab != null && e.LeftButton == MouseButtonState.Pressed)
             {
                 var currentPoint = e.GetPosition(TabQueryControls);
-                
-                if (Math.Abs(currentPoint.X - _dragStartPoint.X) > SystemParameters.MinimumHorizontalDragDistance ||
-                    Math.Abs(currentPoint.Y - _dragStartPoint.Y) > SystemParameters.MinimumVerticalDragDistance)
+                _dragCurrentPoint = currentPoint;
+                double horizontalDelta = Math.Abs(currentPoint.X - _dragStartPoint.X);
+
+                if (horizontalDelta > SystemParameters.MinimumHorizontalDragDistance)
                 {
                     if (!_draggedTab.IsMouseCaptured)
                     {
@@ -1055,30 +1133,181 @@ namespace SSMS
                     int sourceIndex = tabItems.IndexOf(_draggedTab);
                     int targetIndex = GetReorderTargetIndex(tabItems, _draggedTab, currentPoint, sourceIndex, TabQueryControls);
 
-                    if (sourceIndex >= 0 && targetIndex >= 0)
-                    {
-                        var oldPositions = CaptureElementPositions(tabItems, TabQueryControls, _draggedTab);
-                        TabQueryControls.Items.RemoveAt(sourceIndex);
-                        TabQueryControls.Items.Insert(targetIndex, _draggedTab);
-                        TabQueryControls.SelectedItem = _draggedTab;
-                        AnimateElementsToNewPositions(oldPositions, TabQueryControls);
-                    }
+                    UpdateTabVisualPositions(_draggedTab, sourceIndex, targetIndex);
                 }
             }
         }
 
         private void TabItem_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
-            if (_draggedTab != null)
-            {
-                if (_draggedTab.IsMouseCaptured)
-                {
-                    AnimateDraggedElementToSlot(_draggedTab);
-                    _draggedTab.ReleaseMouseCapture();
-                }
-                Panel.SetZIndex(_draggedTab, 0);
-            }
+            CancelTabDrag(animateToSlot: true);
+        }
+
+        private void CancelTabDrag(bool animateToSlot = false)
+        {
+            var tab = _draggedTab;
             _draggedTab = null;
+            if (tab == null)
+            {
+                return;
+            }
+
+            try
+            {
+                if (animateToSlot && tab.IsMouseCaptured)
+                {
+                    CommitTabDrag(tab);
+                }
+                else
+                {
+                    // Reset all tab translations if drag was cancelled without drop (e.g. mouse lost capture)
+                    foreach (var item in TabQueryControls.Items.OfType<TabItem>())
+                    {
+                        if (item.RenderTransform is TranslateTransform transform)
+                        {
+                            transform.BeginAnimation(TranslateTransform.XProperty, null);
+                            transform.X = 0;
+                        }
+                    }
+                    _lastTargetIndex = -1;
+
+                    if (animateToSlot)
+                    {
+                        AnimateDraggedElementToSlot(tab);
+                    }
+                }
+                if (tab.IsMouseCaptured)
+                {
+                    tab.ReleaseMouseCapture();
+                }
+                Panel.SetZIndex(tab, 0);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error(ex, "Failed to cancel tab drag");
+            }
+        }
+
+        private void CommitTabDrag(TabItem tab)
+        {
+            var tabItems = TabQueryControls.Items.OfType<TabItem>().Cast<FrameworkElement>().ToList();
+            int sourceIndex = tabItems.IndexOf(tab);
+            int targetIndex = GetReorderTargetIndex(tabItems, tab, _dragCurrentPoint, sourceIndex, TabQueryControls);
+
+            // Get absolute position of the dragged tab before reordering
+            Point oldAbsolutePos = new Point(0, 0);
+            try
+            {
+                oldAbsolutePos = tab.TransformToAncestor(TabQueryControls).Transform(new Point(0, 0));
+            }
+            catch { }
+
+            // Clear all translations of other tabs
+            foreach (var item in tabItems)
+            {
+                if (item != tab && item.RenderTransform is TranslateTransform transform)
+                {
+                    transform.BeginAnimation(TranslateTransform.XProperty, null);
+                    transform.X = 0;
+                }
+            }
+
+            _lastTargetIndex = -1;
+
+            if (sourceIndex >= 0 && targetIndex >= 0 && sourceIndex != targetIndex)
+            {
+                TabQueryControls.SelectionChanged -= TabQueryControls_SelectionChanged;
+                try
+                {
+                    TabQueryControls.Items.RemoveAt(sourceIndex);
+                    TabQueryControls.Items.Insert(targetIndex, tab);
+                    TabQueryControls.SelectedItem = tab;
+                }
+                finally
+                {
+                    TabQueryControls.SelectionChanged += TabQueryControls_SelectionChanged;
+                }
+
+                // Force layout update so the new layout positions are calculated
+                TabQueryControls.UpdateLayout();
+
+                // Calculate the new layout position of the tab (which has TranslateTransform but we subtract it)
+                Point newLayoutPos = GetLayoutPosition(tab, TabQueryControls);
+
+                // Set the translation to keep the tab at the same visual position
+                var tabTransform = GetOrCreateTranslateTransform(tab);
+                tabTransform.BeginAnimation(TranslateTransform.XProperty, null);
+                tabTransform.X = oldAbsolutePos.X - newLayoutPos.X;
+            }
+
+            AnimateDraggedElementToSlot(tab);
+        }
+
+        private void UpdateTabVisualPositions(TabItem draggedTab, int sourceIndex, int targetIndex)
+        {
+            if (targetIndex == -1)
+            {
+                targetIndex = sourceIndex;
+            }
+
+            if (targetIndex == _lastTargetIndex)
+            {
+                return;
+            }
+            _lastTargetIndex = targetIndex;
+
+            var tabItems = TabQueryControls.Items.OfType<TabItem>().ToList();
+            double draggedWidth = draggedTab.ActualWidth;
+
+            for (int i = 0; i < tabItems.Count; i++)
+            {
+                var tab = tabItems[i];
+                if (tab == draggedTab)
+                {
+                    continue;
+                }
+
+                double targetTranslationX = 0;
+
+                if (sourceIndex < targetIndex)
+                {
+                    // Dragging right
+                    if (i > sourceIndex && i <= targetIndex)
+                    {
+                        targetTranslationX = -draggedWidth;
+                    }
+                }
+                else if (sourceIndex > targetIndex)
+                {
+                    // Dragging left
+                    if (i >= targetIndex && i < sourceIndex)
+                    {
+                        targetTranslationX = draggedWidth;
+                    }
+                }
+
+                var transform = GetOrCreateTranslateTransform(tab);
+                var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+                transform.BeginAnimation(TranslateTransform.XProperty, 
+                    new DoubleAnimation(targetTranslationX, TimeSpan.FromMilliseconds(200)) { EasingFunction = easing });
+            }
+        }
+
+        private bool IsQueryTabDragHandle(DependencyObject? source)
+        {
+            while (source != null)
+            {
+                if (source is FrameworkElement element && Equals(element.Tag, QueryTabDragHandleTag))
+                {
+                    return true;
+                }
+                if (source is TabItem)
+                {
+                    return false;
+                }
+                source = VisualTreeHelper.GetParent(source);
+            }
+            return false;
         }
 
         private bool IsInteractiveTabChild(DependencyObject? source)

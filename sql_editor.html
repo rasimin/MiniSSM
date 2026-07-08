@@ -213,7 +213,7 @@
 
             // Initialize Monaco Editor
             editor = monaco.editor.create(document.getElementById('container'), {
-                value: '-- Tulis query SQL di sini...\nSELECT * FROM sys.databases;',
+                value: '',
                 language: 'sql',
                 theme: 'vs-dark',
                 automaticLayout: true,
@@ -221,8 +221,8 @@
                 fontFamily: 'Consolas, Courier New, monospace',
                 minimap: { enabled: false },
                 scrollbar: {
-                    verticalScrollbarSize: 3,
-                    horizontalScrollbarSize: 3,
+                    verticalScrollbarSize: 6,
+                    horizontalScrollbarSize: 6,
                     useShadows: false
                 }
             });

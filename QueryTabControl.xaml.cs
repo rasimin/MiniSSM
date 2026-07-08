@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using Microsoft.Web.WebView2.Core;
 
@@ -19,6 +20,10 @@ namespace SSMS
         public bool IsWebViewInitialized { get; private set; } = false;
 
         private readonly Dictionary<string, Dictionary<string, List<string>>> _metadataCache = new(StringComparer.OrdinalIgnoreCase);
+        private const double EditorMinHeight = 60;
+        private const double ResultsMinHeight = 90;
+        private const double ResultsResizeGripHeight = 12;
+        private bool _isResultsPaneResizeActive;
 
         private static CoreWebView2Environment? _sharedEnvironment;
 
@@ -39,6 +44,69 @@ namespace SSMS
             DatabaseName = databaseName;
 
             Loaded += QueryTabControl_Loaded;
+        }
+
+        private void EditorResultsSplitter_DragDelta(object sender, DragDeltaEventArgs e)
+        {
+            ResizeEditorResults(e.VerticalChange);
+            e.Handled = true;
+        }
+
+        private void ResultsPane_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.GetPosition(ResultsPane).Y > ResultsResizeGripHeight)
+            {
+                return;
+            }
+
+            _isResultsPaneResizeActive = true;
+            ResultsPane.CaptureMouse();
+            e.Handled = true;
+        }
+
+        private void ResultsPane_PreviewMouseMove(object sender, MouseEventArgs e)
+        {
+            if (_isResultsPaneResizeActive && e.LeftButton == MouseButtonState.Pressed)
+            {
+                double desiredEditorHeight = e.GetPosition(QueryLayoutGrid).Y - EditorResultsSplitter.ActualHeight / 2;
+                ResizeEditorResultsTo(desiredEditorHeight);
+                e.Handled = true;
+                return;
+            }
+
+            ResultsPane.Cursor = e.GetPosition(ResultsPane).Y <= ResultsResizeGripHeight ? Cursors.SizeNS : Cursors.Arrow;
+        }
+
+        private void ResultsPane_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (_isResultsPaneResizeActive)
+            {
+                _isResultsPaneResizeActive = false;
+                ResultsPane.ReleaseMouseCapture();
+                e.Handled = true;
+            }
+        }
+
+        private void ResizeEditorResults(double verticalDelta)
+        {
+            double currentEditorHeight = EditorRow.ActualHeight > 0 ? EditorRow.ActualHeight : QueryLayoutGrid.RowDefinitions[0].ActualHeight;
+            ResizeEditorResultsTo(currentEditorHeight + verticalDelta);
+        }
+
+        private void ResizeEditorResultsTo(double desiredEditorHeight)
+        {
+            double availableHeight = Math.Max(0, QueryLayoutGrid.ActualHeight - EditorResultsSplitter.ActualHeight);
+            if (availableHeight <= EditorMinHeight + ResultsMinHeight)
+            {
+                return;
+            }
+
+            double editorHeight = desiredEditorHeight;
+            editorHeight = Math.Max(EditorMinHeight, Math.Min(editorHeight, availableHeight - ResultsMinHeight));
+            double resultsHeight = availableHeight - editorHeight;
+
+            EditorRow.Height = new GridLength(editorHeight);
+            ResultsRow.Height = new GridLength(resultsHeight);
         }
 
         private async void QueryTabControl_Loaded(object sender, RoutedEventArgs e)
@@ -85,6 +153,7 @@ namespace SSMS
             }
             catch (Exception ex)
             {
+                AppLogger.Error(ex, "Failed to initialize Monaco SQL Editor");
                 TxtMessages.Text = $"Error initializing Monaco SQL Editor: {ex.Message}";
             }
         }
@@ -115,6 +184,7 @@ namespace SSMS
             }
             catch (Exception ex)
             {
+                AppLogger.Error(ex, "Failed to fetch SQL query from editor");
                 MessageBox.Show($"Failed to fetch SQL query from editor: {ex.Message}", "Editor Error", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
@@ -159,6 +229,13 @@ namespace SSMS
                     TabResults.SelectedIndex = 1; // Select Messages Textbox Tab
                     mainWindow?.UpdateStatusTime($"Error: {result.ExecutionTime.TotalMilliseconds:F2} ms");
                 }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error(ex, "ExecuteQuery failed");
+                TxtMessages.Text = $"Unexpected query execution error: {ex.Message}";
+                TabResults.SelectedIndex = 1;
+                mainWindow?.UpdateStatusTime("Error");
             }
             finally
             {
@@ -284,14 +361,18 @@ namespace SSMS
                 ItemsSource = dataTable.DefaultView
             };
 
+            ScrollViewer.SetHorizontalScrollBarVisibility(dataGrid, ScrollBarVisibility.Auto);
+            ScrollViewer.SetVerticalScrollBarVisibility(dataGrid, ScrollBarVisibility.Auto);
+
             // Set virtualization properties
             VirtualizingPanel.SetIsVirtualizing(dataGrid, true);
             VirtualizingPanel.SetVirtualizationMode(dataGrid, VirtualizationMode.Recycling);
-            VirtualizingPanel.SetScrollUnit(dataGrid, ScrollUnit.Pixel);
+            VirtualizingPanel.SetScrollUnit(dataGrid, ScrollUnit.Item);
             VirtualizingPanel.SetCacheLengthUnit(dataGrid, VirtualizationCacheLengthUnit.Item);
             VirtualizingPanel.SetCacheLength(dataGrid, new VirtualizationCacheLength(10, 10));
             dataGrid.EnableRowVirtualization = true;
-            dataGrid.EnableColumnVirtualization = false;
+            dataGrid.EnableColumnVirtualization = true;
+            dataGrid.ColumnWidth = new DataGridLength(120);
             ScrollViewer.SetIsDeferredScrollingEnabled(dataGrid, false);
             ScrollViewer.SetCanContentScroll(dataGrid, true);
 
