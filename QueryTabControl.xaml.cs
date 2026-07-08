@@ -391,7 +391,7 @@ namespace SSMS
 
             dataGrid.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler((s, e) =>
             {
-                if (e.VerticalChange != 0)
+                if (AppLogger.EnablePerformanceLogging && e.VerticalChange != 0)
                 {
                     scrollStopwatch.Restart();
                     AppLogger.Info($"[Scroll] Start scrolling. Offset: {e.VerticalOffset:F1}, Change: {e.VerticalChange:F1}");
@@ -400,17 +400,23 @@ namespace SSMS
 
             dataGrid.LoadingRow += (s, e) =>
             {
-                rowsLoadedCount++;
+                if (AppLogger.EnablePerformanceLogging)
+                {
+                    rowsLoadedCount++;
+                }
             };
 
             dataGrid.UnloadingRow += (s, e) =>
             {
-                rowsUnloadedCount++;
+                if (AppLogger.EnablePerformanceLogging)
+                {
+                    rowsUnloadedCount++;
+                }
             };
 
             dataGrid.LayoutUpdated += (s, e) =>
             {
-                if (scrollStopwatch.IsRunning)
+                if (AppLogger.EnablePerformanceLogging && scrollStopwatch.IsRunning)
                 {
                     scrollStopwatch.Stop();
                     double elapsedMs = scrollStopwatch.Elapsed.TotalMilliseconds;

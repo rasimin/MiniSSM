@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
+using System.Text.Json;
 
 namespace SSMS
 {
@@ -9,6 +10,36 @@ namespace SSMS
         private static readonly object SyncRoot = new();
 
         public static string LogDirectory => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
+
+        private static bool? _enablePerformanceLogging;
+        public static bool EnablePerformanceLogging
+        {
+            get
+            {
+                if (!_enablePerformanceLogging.HasValue)
+                {
+                    try
+                    {
+                        string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "appsettings.json");
+                        if (File.Exists(path))
+                        {
+                            string json = File.ReadAllText(path);
+                            using var doc = JsonDocument.Parse(json);
+                            if (doc.RootElement.TryGetProperty("EnablePerformanceLogging", out var prop))
+                            {
+                                _enablePerformanceLogging = prop.GetBoolean();
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Default to false if error or not found
+                    }
+                    _enablePerformanceLogging ??= false;
+                }
+                return _enablePerformanceLogging.Value;
+            }
+        }
 
         public static void Info(string message)
         {
