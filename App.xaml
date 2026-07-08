@@ -12,8 +12,8 @@
         <Style TargetType="{x:Type ScrollBar}">
             <Setter Property="Background" Value="{StaticResource ScrollTrackBrush}"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Width" Value="5"/>
-            <Setter Property="Height" Value="5"/>
+            <Setter Property="Width" Value="3"/>
+            <Setter Property="Height" Value="3"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type ScrollBar}">
@@ -31,7 +31,7 @@
                                     <Thumb x:Name="Thumb">
                                         <Thumb.Template>
                                             <ControlTemplate TargetType="{x:Type Thumb}">
-                                                <Border x:Name="thumbBorder" Background="{StaticResource ScrollThumbBrush}" CornerRadius="2.5"/>
+                                                <Border x:Name="thumbBorder" Background="{StaticResource ScrollThumbBrush}" CornerRadius="1.5"/>
                                                 <ControlTemplate.Triggers>
                                                     <Trigger Property="IsMouseOver" Value="true">
                                                         <Setter TargetName="thumbBorder" Property="Background" Value="{StaticResource ScrollThumbHoverBrush}"/>
@@ -54,10 +54,10 @@
             <Style.Triggers>
                 <Trigger Property="Orientation" Value="Horizontal">
                     <Setter Property="Width" Value="Auto"/>
-                    <Setter Property="Height" Value="5"/>
+                    <Setter Property="Height" Value="3"/>
                 </Trigger>
                 <Trigger Property="Orientation" Value="Vertical">
-                    <Setter Property="Width" Value="5"/>
+                    <Setter Property="Width" Value="3"/>
                     <Setter Property="Height" Value="Auto"/>
                 </Trigger>
             </Style.Triggers>

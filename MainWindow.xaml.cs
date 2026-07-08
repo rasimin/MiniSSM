@@ -2,11 +2,15 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Threading;
 using Microsoft.Data.SqlClient;
 
 namespace SSMS
@@ -21,8 +25,12 @@ namespace SSMS
         private readonly Dictionary<string, string> _folderFilters = new(StringComparer.OrdinalIgnoreCase);
         private TabItem? _draggedTab;
         private Point _dragStartPoint;
+        private double _draggedTabGrabOffsetX;
         private Border? _draggedToolbarItem;
         private Point _toolbarDragStartPoint;
+        private double _draggedToolbarGrabOffsetX;
+
+        private static readonly Duration ReorderAnimationDuration = new(TimeSpan.FromMilliseconds(320));
 
         [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
@@ -778,7 +786,10 @@ namespace SSMS
                 {
                     _draggedToolbarItem = border;
                     _toolbarDragStartPoint = e.GetPosition(ToolbarPanel);
-                    border.Opacity = 0.6;
+                    _draggedToolbarGrabOffsetX = _toolbarDragStartPoint.X - GetLayoutPosition(border, ToolbarPanel).X;
+                    Panel.SetZIndex(border, 1000);
+                    border.CaptureMouse();
+                    AnimateOpacity(border, 0.7);
                 }
             }
         }
@@ -788,24 +799,20 @@ namespace SSMS
             if (_draggedToolbarItem != null && e.LeftButton == MouseButtonState.Pressed)
             {
                 var currentPoint = e.GetPosition(ToolbarPanel);
+                MoveDraggedElementWithCursor(_draggedToolbarItem, ToolbarPanel, currentPoint, _draggedToolbarGrabOffsetX);
                 
                 if (Math.Abs(currentPoint.X - _toolbarDragStartPoint.X) > SystemParameters.MinimumHorizontalDragDistance)
                 {
-                    var hitTestResult = System.Windows.Media.VisualTreeHelper.HitTest(ToolbarPanel, e.GetPosition(ToolbarPanel));
-                    if (hitTestResult != null)
-                    {
-                        var hoveredBorder = FindAncestor<Border>(hitTestResult.VisualHit);
-                        if (hoveredBorder != null && hoveredBorder != _draggedToolbarItem && ToolbarPanel.Children.Contains(hoveredBorder))
-                        {
-                            int sourceIndex = ToolbarPanel.Children.IndexOf(_draggedToolbarItem);
-                            int targetIndex = ToolbarPanel.Children.IndexOf(hoveredBorder);
+                    var toolbarItems = ToolbarPanel.Children.OfType<FrameworkElement>().ToList();
+                    int sourceIndex = toolbarItems.IndexOf(_draggedToolbarItem);
+                    int targetIndex = GetReorderTargetIndex(toolbarItems, _draggedToolbarItem, currentPoint, sourceIndex, ToolbarPanel);
 
-                            if (sourceIndex >= 0 && targetIndex >= 0)
-                            {
-                                ToolbarPanel.Children.RemoveAt(sourceIndex);
-                                ToolbarPanel.Children.Insert(targetIndex, _draggedToolbarItem);
-                            }
-                        }
+                    if (sourceIndex >= 0 && targetIndex >= 0)
+                    {
+                        var oldPositions = CaptureElementPositions(toolbarItems, ToolbarPanel, _draggedToolbarItem);
+                        ToolbarPanel.Children.RemoveAt(sourceIndex);
+                        ToolbarPanel.Children.Insert(targetIndex, _draggedToolbarItem);
+                        AnimateElementsToNewPositions(oldPositions, ToolbarPanel);
                     }
                 }
             }
@@ -815,7 +822,10 @@ namespace SSMS
         {
             if (_draggedToolbarItem != null)
             {
-                _draggedToolbarItem.Opacity = 1.0;
+                AnimateOpacity(_draggedToolbarItem, 1.0);
+                AnimateDraggedElementToSlot(_draggedToolbarItem);
+                Panel.SetZIndex(_draggedToolbarItem, 0);
+                _draggedToolbarItem.ReleaseMouseCapture();
                 _draggedToolbarItem = null;
             }
         }
@@ -826,6 +836,9 @@ namespace SSMS
             {
                 _draggedTab = tabItem;
                 _dragStartPoint = e.GetPosition(TabQueryControls);
+                _draggedTabGrabOffsetX = _dragStartPoint.X - GetLayoutPosition(tabItem, TabQueryControls).X;
+                Panel.SetZIndex(tabItem, 1000);
+                tabItem.CaptureMouse();
             }
         }
 
@@ -834,26 +847,22 @@ namespace SSMS
             if (_draggedTab != null && e.LeftButton == MouseButtonState.Pressed)
             {
                 var currentPoint = e.GetPosition(TabQueryControls);
+                MoveDraggedElementWithCursor(_draggedTab, TabQueryControls, currentPoint, _draggedTabGrabOffsetX);
                 
                 if (Math.Abs(currentPoint.X - _dragStartPoint.X) > SystemParameters.MinimumHorizontalDragDistance ||
                     Math.Abs(currentPoint.Y - _dragStartPoint.Y) > SystemParameters.MinimumVerticalDragDistance)
                 {
-                    var hitTestResult = System.Windows.Media.VisualTreeHelper.HitTest(TabQueryControls, e.GetPosition(TabQueryControls));
-                    if (hitTestResult != null)
-                    {
-                        var hoveredTabItem = FindAncestor<TabItem>(hitTestResult.VisualHit);
-                        if (hoveredTabItem != null && hoveredTabItem != _draggedTab)
-                        {
-                            int sourceIndex = TabQueryControls.Items.IndexOf(_draggedTab);
-                            int targetIndex = TabQueryControls.Items.IndexOf(hoveredTabItem);
+                    var tabItems = TabQueryControls.Items.OfType<TabItem>().Cast<FrameworkElement>().ToList();
+                    int sourceIndex = tabItems.IndexOf(_draggedTab);
+                    int targetIndex = GetReorderTargetIndex(tabItems, _draggedTab, currentPoint, sourceIndex, TabQueryControls);
 
-                            if (sourceIndex >= 0 && targetIndex >= 0)
-                            {
-                                TabQueryControls.Items.RemoveAt(sourceIndex);
-                                TabQueryControls.Items.Insert(targetIndex, _draggedTab);
-                                TabQueryControls.SelectedItem = _draggedTab;
-                            }
-                        }
+                    if (sourceIndex >= 0 && targetIndex >= 0)
+                    {
+                        var oldPositions = CaptureElementPositions(tabItems, TabQueryControls, _draggedTab);
+                        TabQueryControls.Items.RemoveAt(sourceIndex);
+                        TabQueryControls.Items.Insert(targetIndex, _draggedTab);
+                        TabQueryControls.SelectedItem = _draggedTab;
+                        AnimateElementsToNewPositions(oldPositions, TabQueryControls);
                     }
                 }
             }
@@ -861,7 +870,186 @@ namespace SSMS
 
         private void TabItem_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
+            if (_draggedTab != null)
+            {
+                AnimateDraggedElementToSlot(_draggedTab);
+                Panel.SetZIndex(_draggedTab, 0);
+                _draggedTab.ReleaseMouseCapture();
+            }
             _draggedTab = null;
+        }
+
+        private int GetReorderTargetIndex(
+            IReadOnlyList<FrameworkElement> elements,
+            FrameworkElement draggedElement,
+            Point cursorPosition,
+            int sourceIndex,
+            Visual relativeTo)
+        {
+            if (sourceIndex < 0)
+            {
+                return -1;
+            }
+
+            for (int i = 0; i < elements.Count; i++)
+            {
+                var element = elements[i];
+                if (element == draggedElement || !element.IsVisible)
+                {
+                    continue;
+                }
+
+                Point position;
+                try
+                {
+                    position = GetLayoutPosition(element, relativeTo);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                double left = position.X;
+                double right = left + element.ActualWidth;
+                if (cursorPosition.X < left || cursorPosition.X > right)
+                {
+                    continue;
+                }
+
+                double threshold = sourceIndex < i
+                    ? left + element.ActualWidth * 0.55
+                    : left + element.ActualWidth * 0.45;
+
+                if ((sourceIndex < i && cursorPosition.X >= threshold) ||
+                    (sourceIndex > i && cursorPosition.X <= threshold))
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private Dictionary<FrameworkElement, Point> CaptureElementPositions(IEnumerable<FrameworkElement> elements, Visual relativeTo, FrameworkElement? excludedElement = null)
+        {
+            var positions = new Dictionary<FrameworkElement, Point>();
+            foreach (var element in elements)
+            {
+                if (element == excludedElement || !element.IsVisible)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    positions[element] = GetLayoutPosition(element, relativeTo);
+                }
+                catch
+                {
+                    // Ignore elements while WPF is rebuilding the visual tree.
+                }
+            }
+            return positions;
+        }
+
+        private void AnimateElementsToNewPositions(Dictionary<FrameworkElement, Point> oldPositions, Visual relativeTo)
+        {
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                foreach (var (element, oldPosition) in oldPositions)
+                {
+                    if (!element.IsVisible)
+                    {
+                        continue;
+                    }
+
+                    Point newPosition;
+                    try
+                    {
+                        newPosition = GetLayoutPosition(element, relativeTo);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    double offsetX = oldPosition.X - newPosition.X;
+                    double offsetY = oldPosition.Y - newPosition.Y;
+                    if (Math.Abs(offsetX) < 0.5 && Math.Abs(offsetY) < 0.5)
+                    {
+                        continue;
+                    }
+
+                    if (element.RenderTransform is not TranslateTransform transform)
+                    {
+                        transform = new TranslateTransform();
+                        element.RenderTransform = transform;
+                    }
+
+                    transform.BeginAnimation(TranslateTransform.XProperty, null);
+                    transform.BeginAnimation(TranslateTransform.YProperty, null);
+                    transform.X = offsetX;
+                    transform.Y = offsetY;
+
+                    var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+                    transform.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(0, ReorderAnimationDuration) { EasingFunction = easing });
+                    transform.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, ReorderAnimationDuration) { EasingFunction = easing });
+                }
+            }), DispatcherPriority.Render);
+        }
+
+        private void MoveDraggedElementWithCursor(FrameworkElement element, Visual relativeTo, Point cursorPosition, double grabOffsetX)
+        {
+            var layoutPosition = GetLayoutPosition(element, relativeTo);
+            var transform = GetOrCreateTranslateTransform(element);
+
+            transform.BeginAnimation(TranslateTransform.XProperty, null);
+            transform.BeginAnimation(TranslateTransform.YProperty, null);
+            transform.X = cursorPosition.X - grabOffsetX - layoutPosition.X;
+            transform.Y = 0;
+        }
+
+        private void AnimateDraggedElementToSlot(FrameworkElement element)
+        {
+            if (element.RenderTransform is not TranslateTransform transform)
+            {
+                return;
+            }
+
+            var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+            transform.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(0, ReorderAnimationDuration) { EasingFunction = easing });
+            transform.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, ReorderAnimationDuration) { EasingFunction = easing });
+        }
+
+        private TranslateTransform GetOrCreateTranslateTransform(FrameworkElement element)
+        {
+            if (element.RenderTransform is TranslateTransform transform)
+            {
+                return transform;
+            }
+
+            transform = new TranslateTransform();
+            element.RenderTransform = transform;
+            return transform;
+        }
+
+        private Point GetLayoutPosition(FrameworkElement element, Visual relativeTo)
+        {
+            var point = element.TransformToAncestor(relativeTo).Transform(new Point(0, 0));
+            if (element.RenderTransform is TranslateTransform transform)
+            {
+                point.X -= transform.X;
+                point.Y -= transform.Y;
+            }
+            return point;
+        }
+
+        private void AnimateOpacity(UIElement element, double targetOpacity)
+        {
+            element.BeginAnimation(OpacityProperty, new DoubleAnimation(targetOpacity, TimeSpan.FromMilliseconds(110))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            });
         }
 
         private static T? FindAncestor<T>(DependencyObject current) where T : DependencyObject
