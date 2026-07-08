@@ -9,6 +9,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Data;
 using Microsoft.Web.WebView2.Core;
 
 namespace SSMS
@@ -20,6 +21,8 @@ namespace SSMS
         public string InitialSql { get; set; } = string.Empty;
         public bool AutoExecute { get; set; } = false;
         public bool IsWebViewInitialized { get; private set; } = false;
+        public int TotalResultRows { get; private set; } = 0;
+        public int TotalResultColumns { get; private set; } = 0;
 
         private readonly Dictionary<string, Dictionary<string, List<string>>> _metadataCache = new(StringComparer.OrdinalIgnoreCase);
         private const double EditorMinHeight = 60;
@@ -249,28 +252,45 @@ namespace SSMS
                     TxtMessages.Text = result.Message;
                     if (result.DataTables != null && result.DataTables.Count > 0)
                     {
+                        TotalResultRows = 0;
+                        TotalResultColumns = 0;
+                        foreach (var dt in result.DataTables)
+                        {
+                            TotalResultRows += dt.Rows.Count;
+                            TotalResultColumns += dt.Columns.Count;
+                        }
+
                         DisplayQueryResults(result.DataTables);
                         TabResults.SelectedIndex = 0; // Select Results DataGrid Tab
                     }
                     else
                     {
+                        TotalResultRows = 0;
+                        TotalResultColumns = 0;
                         TabResults.SelectedIndex = 1; // Select Messages Textbox Tab
                     }
                     mainWindow?.UpdateStatusTime($"Success: {result.ExecutionTime.TotalMilliseconds:F2} ms");
+                    mainWindow?.UpdateStatusRowsAndColumns(TotalResultRows, TotalResultColumns);
                 }
                 else
                 {
+                    TotalResultRows = 0;
+                    TotalResultColumns = 0;
                     TxtMessages.Text = result.Message;
                     TabResults.SelectedIndex = 1; // Select Messages Textbox Tab
                     mainWindow?.UpdateStatusTime($"Error: {result.ExecutionTime.TotalMilliseconds:F2} ms");
+                    mainWindow?.UpdateStatusRowsAndColumns(0, 0);
                 }
             }
             catch (Exception ex)
             {
+                TotalResultRows = 0;
+                TotalResultColumns = 0;
                 AppLogger.Error(ex, "ExecuteQuery failed");
                 TxtMessages.Text = $"Unexpected query execution error: {ex.Message}";
                 TabResults.SelectedIndex = 1;
                 mainWindow?.UpdateStatusTime("Error");
+                mainWindow?.UpdateStatusRowsAndColumns(0, 0);
             }
             finally
             {
@@ -398,6 +418,8 @@ namespace SSMS
                 UseLayoutRounding = true
             };
 
+            dataGrid.AutoGeneratingColumn += DataGrid_AutoGeneratingColumn;
+
             // Set high-performance text rendering parameters (disable sub-pixel text measurement layout shifts during scroll)
             TextOptions.SetTextFormattingMode(dataGrid, TextFormattingMode.Display);
             TextOptions.SetTextRenderingMode(dataGrid, TextRenderingMode.ClearType);
@@ -511,6 +533,113 @@ namespace SSMS
         private string GetDefaultHtmlContent()
         {
             return @"<!DOCTYPE html><html><head><style>html,body,#container{width:100%;height:100%;margin:0;padding:0;overflow:hidden;background-color:#1e1e1e;}</style></head><body><div id='container'></div><script src='https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js'></script><script>require.config({paths:{vs:'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.39.0/min/vs'}});var editor;var tables=[];var columns=[];require(['vs/editor/editor.main'],function(){monaco.languages.registerCompletionItemProvider('sql',{provideCompletionItems:function(model,position){var word=model.getWordUntilPosition(position);var range={startLineNumber:position.lineNumber,endLineNumber:position.lineNumber,startColumn:word.startColumn,endColumn:word.endColumn};var suggestions=[];var keywords=['SELECT','FROM','WHERE','INSERT','INTO','UPDATE','SET','DELETE','CREATE','TABLE','JOIN','INNER','LEFT','ON','GROUP','BY','ORDER','AND','OR','AS'];keywords.forEach(kw=>{suggestions.push({label:kw,kind:monaco.languages.CompletionItemKind.Keyword,insertText:kw,range:range});});tables.forEach(t=>{suggestions.push({label:t,kind:monaco.languages.CompletionItemKind.Class,insertText:t,detail:'Table',range:range});});columns.forEach(c=>{suggestions.push({label:c,kind:monaco.languages.CompletionItemKind.Field,insertText:c,detail:'Column',range:range});});return{suggestions:suggestions};}});editor=monaco.editor.create(document.getElementById('container'),{value:'-- Write SQL Query\nSELECT * FROM sys.databases;',language:'sql',theme:'vs-dark',automaticLayout:true,fontSize:14,scrollbar:{verticalScrollbarSize:5,horizontalScrollbarSize:5,useShadows:false}});editor.addCommand(monaco.KeyCode.F5,function(){window.chrome.webview.postMessage({action:'execute'});});});function getQueryText(){if(editor){var selection=editor.getSelection();var selectedText=editor.getModel().getValueInRange(selection);if(selectedText&&selectedText.trim().length>0){return selectedText;}return editor.getValue();}return'';}function setQueryText(text){if(editor)editor.setValue(text);}function updateMetadata(t,c){tables=t||[];columns=c||[];}</script></body></html>";
+        }
+
+        private void DataGrid_AutoGeneratingColumn(object? sender, DataGridAutoGeneratingColumnEventArgs e)
+        {
+            if (e.PropertyType == typeof(bool) || e.PropertyType == typeof(bool?))
+            {
+                var textCol = new DataGridTextColumn
+                {
+                    Header = e.Column.Header,
+                    Binding = new Binding(e.PropertyName)
+                    {
+                        Converter = new SqlCellTextConverter(),
+                        Mode = BindingMode.OneWay
+                    }
+                };
+                e.Column = textCol;
+            }
+
+            if (e.Column is DataGridTextColumn textColumn)
+            {
+                string bindingPath = e.PropertyName;
+                
+                var textBinding = new Binding(bindingPath)
+                {
+                    Converter = new SqlCellTextConverter(),
+                    Mode = BindingMode.OneWay
+                };
+                textColumn.Binding = textBinding;
+
+                var textBlockStyle = new Style(typeof(TextBlock));
+                
+                textBlockStyle.Setters.Add(new Setter(TextBlock.FontStyleProperty, new Binding(bindingPath)
+                {
+                    Converter = new SqlCellFontStyleConverter(),
+                    Mode = BindingMode.OneWay
+                }));
+
+                textBlockStyle.Setters.Add(new Setter(TextBlock.ForegroundProperty, new Binding(bindingPath)
+                {
+                    Converter = new SqlCellForegroundConverter(),
+                    Mode = BindingMode.OneWay
+                }));
+
+                textColumn.ElementStyle = textBlockStyle;
+            }
+        }
+    }
+
+    public class SqlCellTextConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            if (value == null || value == DBNull.Value)
+            {
+                return "NULL";
+            }
+            if (value is bool b)
+            {
+                return b ? "1" : "0";
+            }
+            if (value is DateTime dt)
+            {
+                return dt.ToString("yyyy-MM-dd HH:mm:ss.fff");
+            }
+            return value.ToString() ?? "";
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    public class SqlCellForegroundConverter : IValueConverter
+    {
+        private static readonly SolidColorBrush NullBrush = (SolidColorBrush)new BrushConverter().ConvertFromString("#666666")!;
+        private static readonly SolidColorBrush NormalBrush = (SolidColorBrush)new BrushConverter().ConvertFromString("#CCCCCC")!;
+
+        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            if (value == null || value == DBNull.Value)
+            {
+                return NullBrush;
+            }
+            return NormalBrush;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    public class SqlCellFontStyleConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            if (value == null || value == DBNull.Value)
+            {
+                return FontStyles.Italic;
+            }
+            return FontStyles.Normal;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            throw new NotImplementedException();
         }
     }
 }

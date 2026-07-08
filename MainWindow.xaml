@@ -186,20 +186,119 @@
         </Style>
 
         <Style TargetType="TreeViewItem">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="2,1,0,1"/>
+            <Setter Property="Foreground" Value="#CCCCCC"/>
+            <EventSetter Event="PreviewMouseRightButtonDown" Handler="OnTreeViewItemPreviewMouseRightButtonDown"/>
             <Setter Property="HeaderTemplate">
                 <Setter.Value>
                     <DataTemplate>
-                        <TextBlock Text="{Binding}" Foreground="#CCCCCC" Margin="3,2" FontSize="12.5"/>
+                        <TextBlock Text="{Binding}" Margin="3,2" FontSize="12.5"/>
                     </DataTemplate>
                 </Setter.Value>
             </Setter>
-            <Style.Resources>
-                <!-- Remove bright Windows blue highlight, use a subtle dark color -->
-                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#2A2D2E"/>
-                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#FFFFFF"/>
-                <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#252526"/>
-                <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="#CCCCCC"/>
-            </Style.Resources>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TreeViewItem">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition/>
+                            </Grid.RowDefinitions>
+                            
+                            <!-- Header content container -->
+                            <Border x:Name="Bd"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    Padding="{TemplateBinding Padding}"
+                                    MinHeight="22"
+                                    SnapsToDevicePixels="True"
+                                    CornerRadius="3"
+                                    Margin="0,1">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="19"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    
+                                    <!-- Expander ToggleButton -->
+                                    <ToggleButton x:Name="Expander"
+                                                  ClickMode="Press"
+                                                  IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}">
+                                        <ToggleButton.Template>
+                                            <ControlTemplate TargetType="ToggleButton">
+                                                <Border Background="Transparent" Width="16" Height="16">
+                                                    <Path x:Name="Arrow"
+                                                          Fill="#888888"
+                                                          HorizontalAlignment="Center"
+                                                          VerticalAlignment="Center"
+                                                          Data="M 0,0 L 4,4 L 0,8 Z"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Arrow" Property="Fill" Value="#FFFFFF"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsChecked" Value="True">
+                                                        <Setter TargetName="Arrow" Property="Data" Value="M 0,0 L 8,0 L 4,4 Z"/>
+                                                        <Setter TargetName="Arrow" Property="Fill" Value="#CCCCCC"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </ToggleButton.Template>
+                                    </ToggleButton>
+                                    
+                                    <!-- Header Content -->
+                                    <ContentPresenter Grid.Column="1"
+                                                      ContentSource="Header"
+                                                      HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                                </Grid>
+                            </Border>
+                            
+                            <!-- Items Host (for children nodes) -->
+                            <ItemsPresenter x:Name="ItemsHost"
+                                            Grid.Row="1"
+                                            Margin="15,0,0,0"
+                                            Visibility="Collapsed"/>
+                        </Grid>
+                        
+                        <ControlTemplate.Triggers>
+                            <!-- Expand/collapse logic -->
+                            <Trigger Property="IsExpanded" Value="True">
+                                <Setter TargetName="ItemsHost" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <!-- Hide expander if no children -->
+                            <Trigger Property="HasItems" Value="False">
+                                <Setter TargetName="Expander" Property="Visibility" Value="Hidden"/>
+                            </Trigger>
+                            
+                            <!-- Hover state -->
+                            <Trigger Property="IsMouseOver" SourceName="Bd" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#2D2F35"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                            
+                            <!-- Selected state -->
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#007ACC"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                            <!-- Selected but Inactive state -->
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsSelected" Value="True"/>
+                                    <Condition Property="IsSelectionActive" Value="False"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Bd" Property="Background" Value="#3E4249"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </MultiTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style TargetType="TabControl">
@@ -538,7 +637,13 @@
                     <TextBlock x:Name="TxtStatusDatabase" Text="master" Foreground="White" FontSize="11" VerticalAlignment="Center" FontWeight="SemiBold"/>
                 </StackPanel>
                 
-                <TextBlock x:Name="TxtStatusTime" Grid.Column="2" Text="0 ms" Foreground="White" FontSize="11" VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock x:Name="TxtStatusRows" Text="0 rows" Foreground="White" FontSize="11" VerticalAlignment="Center"/>
+                    <Separator Width="1" Margin="8,4" Background="#3399FF"/>
+                    <TextBlock x:Name="TxtStatusColumns" Text="0 columns" Foreground="White" FontSize="11" VerticalAlignment="Center"/>
+                    <Separator Width="1" Margin="8,4" Background="#3399FF"/>
+                    <TextBlock x:Name="TxtStatusTime" Text="0 ms" Foreground="White" FontSize="11" VerticalAlignment="Center"/>
+                </StackPanel>
             </Grid>
         </Border>
     </Grid>

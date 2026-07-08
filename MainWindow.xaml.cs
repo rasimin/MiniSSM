@@ -96,6 +96,12 @@ namespace SSMS
             TxtStatusTime.Text = text;
         }
 
+        public void UpdateStatusRowsAndColumns(int rows, int cols)
+        {
+            TxtStatusRows.Text = $"{rows} rows";
+            TxtStatusColumns.Text = $"{cols} columns";
+        }
+
         #endregion
 
         #region Tab Management
@@ -233,6 +239,7 @@ namespace SSMS
                 TxtStatusDatabase.Text = "";
                 TxtStatusServer.Text = "No Connection";
                 TxtStatusTime.Text = "";
+                UpdateStatusRowsAndColumns(0, 0);
             }
         }
 
@@ -300,6 +307,7 @@ namespace SSMS
                         CboDatabases.SelectionChanged += CboDatabases_SelectionChanged;
                     }
 
+                    UpdateStatusRowsAndColumns(activeTab.TotalResultRows, activeTab.TotalResultColumns);
                     activeTab.FocusEditor();
                 }
             }
@@ -1829,6 +1837,20 @@ namespace SSMS
             if (dialog.ShowDialog() == true && dialog.IsGenerated)
             {
                 CreateNewQueryTab(connectionString, databaseName, dialog.GeneratedSql, $"{tableName}_InsertData.sql");
+            }
+        }
+
+        private void OnTreeViewItemPreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is TreeViewItem treeViewItem && e.OriginalSource is DependencyObject dep)
+            {
+                var clickedItem = FindAncestor<TreeViewItem>(dep);
+                if (clickedItem == treeViewItem)
+                {
+                    treeViewItem.IsSelected = true;
+                    treeViewItem.Focus();
+                }
+                e.Handled = false;
             }
         }
 
