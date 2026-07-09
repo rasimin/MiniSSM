@@ -1938,6 +1938,11 @@ namespace SSMS
             return menu;
         }
 
+        public Task OpenObjectDefinitionFromEditorAsync(string connectionString, string databaseName, string objectType, string objectName)
+        {
+            return GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "CREATE");
+        }
+
         private async Task GenerateScriptObjectAsync(string connectionString, string databaseName, string objectType, string objectName, string scriptType)
         {
             string sql = "";

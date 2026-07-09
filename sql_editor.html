@@ -27,6 +27,7 @@
         var scalarFunctions = [];
         var tableFunctions = [];
         var objectTypes = {};
+        var columnDetails = {};
         var routineParameters = {};
         var databases = [];
         var activeDatabase = '';
@@ -398,6 +399,62 @@
                 }
             });
 
+            monaco.editor.registerCommand('minissms.viewObject', function (_, objectName, objectType) {
+                window.chrome.webview.postMessage({
+                    action: 'viewObjectDefinition',
+                    objectName: objectName,
+                    objectType: objectType
+                });
+            });
+
+            monaco.languages.registerHoverProvider('sql', {
+                provideHover: function (model, position) {
+                    var tokenInfo = getSqlTokenAtPosition(model, position);
+                    if (!tokenInfo || !tokenInfo.token) {
+                        return null;
+                    }
+
+                    var token = tokenInfo.token.replace(/[\[\]]/g, '');
+                    var columnInfo = findColumnHoverInfo(token, model.getValue());
+                    if (columnInfo) {
+                        var isNullable = columnInfo.info.isNullable ?? columnInfo.info.IsNullable;
+                        var isIdentity = columnInfo.info.isIdentity ?? columnInfo.info.IsIdentity;
+                        var isPrimaryKey = columnInfo.info.isPrimaryKey ?? columnInfo.info.IsPrimaryKey;
+                        var dataType = columnInfo.info.dataType || columnInfo.info.DataType;
+                        var flags = [];
+                        flags.push(isNullable ? "NULL" : "NOT NULL");
+                        if (isIdentity) flags.push("IDENTITY");
+                        if (isPrimaryKey) flags.push("PRIMARY KEY");
+                        return {
+                            range: tokenInfo.range,
+                            contents: [{
+                                value: "**Column:** `" + columnInfo.name + "`  \n" +
+                                    "**Type:** `" + dataType + "`  \n" +
+                                    flags.join(" · ")
+                            }]
+                        };
+                    }
+
+                    var objectInfo = findObjectHoverInfo(token);
+                    if (!objectInfo) {
+                        return null;
+                    }
+
+                    var commandArgs = encodeURIComponent(JSON.stringify([
+                        objectInfo.name,
+                        objectInfo.type
+                    ]));
+                    return {
+                        range: tokenInfo.range,
+                        contents: [{
+                            value: "**" + objectInfo.label + ":** `" + objectInfo.name + "`  \n\n" +
+                                "[View Schema / Definition in New Query](command:minissms.viewObject?" + commandArgs + ")",
+                            isTrusted: true
+                        }]
+                    };
+                }
+            });
+
             // Initialize Monaco Editor
             editor = monaco.editor.create(document.getElementById('container'), {
                 value: '',
@@ -482,6 +539,113 @@
                 var schemaObject = parts.slice(-2).join('.');
                 var metadata = databaseMetadata[databaseName];
                 return metadata && metadata.columns ? metadata.columns[schemaObject] : null;
+            }
+            return null;
+        }
+
+        function getSqlTokenAtPosition(model, position) {
+            var selection = editor ? editor.getSelection() : null;
+            if (selection && !selection.isEmpty() && monaco.Range.containsPosition(selection, position)) {
+                var selectedToken = model.getValueInRange(selection).trim();
+                if (/^[#\[\]a-zA-Z0-9_.]+$/.test(selectedToken)) {
+                    return { token: selectedToken, range: selection };
+                }
+            }
+
+            var line = model.getLineContent(position.lineNumber);
+            var offset = position.column - 1;
+            var regex = /[#\[\]a-zA-Z0-9_.]+/g;
+            var match;
+            while ((match = regex.exec(line)) !== null) {
+                if (offset >= match.index && offset <= match.index + match[0].length) {
+                    return {
+                        token: match[0],
+                        range: new monaco.Range(
+                            position.lineNumber,
+                            match.index + 1,
+                            position.lineNumber,
+                            match.index + match[0].length + 1)
+                    };
+                }
+            }
+            return null;
+        }
+
+        function findCaseInsensitiveProperty(object, propertyName) {
+            if (!object) return null;
+            var key = Object.keys(object).find(name => name.toLowerCase() === propertyName.toLowerCase());
+            return key ? { key: key, value: object[key] } : null;
+        }
+
+        function findColumnHoverInfo(token, sqlText) {
+            var parts = token.split('.');
+            var columnName = parts[parts.length - 1];
+            var objectCandidates = [];
+
+            if (parts.length > 1) {
+                var qualifier = parts.slice(0, -1).join('.');
+                var aliasObject = getTableForAlias(qualifier, sqlText);
+                objectCandidates.push(aliasObject || qualifier);
+            } else {
+                objectCandidates = getTablesInQuery(sqlText);
+            }
+
+            for (var i = 0; i < objectCandidates.length; i++) {
+                var objectName = objectCandidates[i];
+                var detailsEntry = findCaseInsensitiveProperty(columnDetails, objectName);
+                if (!detailsEntry) {
+                    detailsEntry = Object.keys(columnDetails)
+                        .filter(key => key.toLowerCase().endsWith('.' + objectName.toLowerCase()))
+                        .map(key => ({ key: key, value: columnDetails[key] }))[0];
+                }
+                if (!detailsEntry) continue;
+
+                var columnEntry = findCaseInsensitiveProperty(detailsEntry.value, columnName);
+                if (columnEntry) {
+                    return {
+                        name: detailsEntry.key + "." + columnEntry.key,
+                        info: columnEntry.value
+                    };
+                }
+            }
+            return null;
+        }
+
+        function findObjectHoverInfo(token) {
+            var objectEntry = findCaseInsensitiveProperty(objectTypes, token);
+            if (!objectEntry) {
+                objectEntry = Object.keys(objectTypes)
+                    .filter(key => key.toLowerCase().endsWith('.' + token.toLowerCase()))
+                    .map(key => ({ key: key, value: objectTypes[key] }))[0];
+            }
+            if (objectEntry) {
+                var canonicalName = objectEntry.key.indexOf('.') > -1
+                    ? objectEntry.key
+                    : Object.keys(objectTypes).find(key =>
+                        key.indexOf('.') > -1 && key.toLowerCase().endsWith('.' + objectEntry.key.toLowerCase())) || objectEntry.key;
+                return {
+                    name: canonicalName,
+                    type: objectEntry.value,
+                    label: objectEntry.value
+                };
+            }
+
+            var routineGroups = [
+                { items: storedProcedures, type: "StoredProcedure", label: "Stored Procedure" },
+                { items: scalarFunctions, type: "Function", label: "Scalar Function" },
+                { items: tableFunctions, type: "Function", label: "Table-valued Function" }
+            ];
+            for (var i = 0; i < routineGroups.length; i++) {
+                var routineName = routineGroups[i].items.find(name =>
+                    name.toLowerCase() === token.toLowerCase() ||
+                    name.toLowerCase().endsWith('.' + token.toLowerCase()));
+                if (routineName) {
+                    return {
+                        name: routineName,
+                        type: routineGroups[i].type,
+                        label: routineGroups[i].label
+                    };
+                }
             }
             return null;
         }
@@ -642,6 +806,7 @@
             meta = meta || {};
             tableColumns = meta.columns || {};
             objectTypes = meta.objectTypes || {};
+            columnDetails = meta.columnDetails || {};
             storedProcedures = meta.storedProcedures || [];
             scalarFunctions = meta.scalarFunctions || [];
             tableFunctions = meta.tableFunctions || [];

@@ -14,6 +14,14 @@ using Microsoft.Web.WebView2.Core;
 
 namespace SSMS
 {
+    public sealed class SqlColumnAutocompleteInfo
+    {
+        public string DataType { get; init; } = string.Empty;
+        public bool IsNullable { get; init; }
+        public bool IsIdentity { get; init; }
+        public bool IsPrimaryKey { get; init; }
+    }
+
     public partial class QueryTabControl : UserControl
     {
         public string ConnectionString { get; set; }
@@ -30,6 +38,7 @@ namespace SSMS
         private readonly Dictionary<string, List<string>> _scalarFunctionCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<string>> _tableFunctionCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, Dictionary<string, string>> _objectTypeCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Dictionary<string, Dictionary<string, SqlColumnAutocompleteInfo>>> _columnDetailCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, Dictionary<string, List<string>>> _routineParameterCache = new(StringComparer.OrdinalIgnoreCase);
         private List<string>? _databaseCache;
         private const double EditorMinHeight = 60;
@@ -238,6 +247,19 @@ namespace SSMS
                         _ = LoadCrossDatabaseMetadataAsync(databaseName);
                     }
                 }
+                else if (action.GetString() == "viewObjectDefinition" &&
+                         doc.RootElement.TryGetProperty("objectName", out var objectNameElement) &&
+                         doc.RootElement.TryGetProperty("objectType", out var objectTypeElement))
+                {
+                    string? objectName = objectNameElement.GetString();
+                    string? objectType = objectTypeElement.GetString();
+                    if (!string.IsNullOrWhiteSpace(objectName) && !string.IsNullOrWhiteSpace(objectType) &&
+                        Window.GetWindow(this) is MainWindow mainWindow)
+                    {
+                        _ = mainWindow.OpenObjectDefinitionFromEditorAsync(
+                            ConnectionString, DatabaseName, objectType, objectName);
+                    }
+                }
             }
             catch { }
         }
@@ -355,15 +377,37 @@ namespace SSMS
                         SELECT s.name AS SchemaName,
                                o.name AS ObjectName,
                                c.name AS ColumnName,
-                               CASE WHEN o.type = 'V' THEN 'View' ELSE 'Table' END AS ObjectType
+                               CASE WHEN o.type = 'V' THEN 'View' ELSE 'Table' END AS ObjectType,
+                               ty.name +
+                                   CASE
+                                       WHEN ty.name IN ('varchar','char','varbinary','binary') THEN
+                                           '(' + CASE WHEN c.max_length = -1 THEN 'MAX' ELSE CAST(c.max_length AS varchar(10)) END + ')'
+                                       WHEN ty.name IN ('nvarchar','nchar') THEN
+                                           '(' + CASE WHEN c.max_length = -1 THEN 'MAX' ELSE CAST(c.max_length / 2 AS varchar(10)) END + ')'
+                                       WHEN ty.name IN ('decimal','numeric') THEN
+                                           '(' + CAST(c.precision AS varchar(10)) + ',' + CAST(c.scale AS varchar(10)) + ')'
+                                       ELSE ''
+                                   END AS DataType,
+                               c.is_nullable,
+                               c.is_identity,
+                               CAST(CASE WHEN EXISTS (
+                                   SELECT 1
+                                   FROM sys.index_columns ic
+                                   JOIN sys.indexes i ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+                                   WHERE ic.object_id = c.object_id
+                                     AND ic.column_id = c.column_id
+                                     AND i.is_primary_key = 1
+                               ) THEN 1 ELSE 0 END AS bit) AS IsPrimaryKey
                         FROM sys.objects o
                         JOIN sys.schemas s ON o.schema_id = s.schema_id
                         JOIN sys.columns c ON o.object_id = c.object_id
+                        JOIN sys.types ty ON c.user_type_id = ty.user_type_id
                         WHERE o.type IN ('U', 'V')
                         ORDER BY s.name, o.name, c.column_id;";
 
                     var tableColumns = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
                     var objectTypes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                    var columnDetails = new Dictionary<string, Dictionary<string, SqlColumnAutocompleteInfo>>(StringComparer.OrdinalIgnoreCase);
 
                     using var command = new Microsoft.Data.SqlClient.SqlCommand(query, connection);
                     using var reader = await command.ExecuteReaderAsync();
@@ -373,11 +417,31 @@ namespace SSMS
                         string table = reader.GetString(1);
                         string column = reader.GetString(2);
                         string objectType = reader.GetString(3);
+                        var columnInfo = new SqlColumnAutocompleteInfo
+                        {
+                            DataType = reader.GetString(4),
+                            IsNullable = reader.GetBoolean(5),
+                            IsIdentity = reader.GetBoolean(6),
+                            IsPrimaryKey = reader.GetBoolean(7)
+                        };
                         
                         string fullKey = $"{schema}.{table}";
                         string shortKey = table;
                         objectTypes[fullKey] = objectType;
                         objectTypes.TryAdd(shortKey, objectType);
+                        if (!columnDetails.TryGetValue(fullKey, out var fullDetails))
+                        {
+                            fullDetails = new Dictionary<string, SqlColumnAutocompleteInfo>(StringComparer.OrdinalIgnoreCase);
+                            columnDetails[fullKey] = fullDetails;
+                        }
+                        fullDetails[column] = columnInfo;
+
+                        if (!columnDetails.TryGetValue(shortKey, out var shortDetails))
+                        {
+                            shortDetails = new Dictionary<string, SqlColumnAutocompleteInfo>(StringComparer.OrdinalIgnoreCase);
+                            columnDetails[shortKey] = shortDetails;
+                        }
+                        shortDetails[column] = columnInfo;
 
                         if (!tableColumns.TryGetValue(fullKey, out var cols))
                         {
@@ -398,6 +462,7 @@ namespace SSMS
                     }
                     _metadataCache[DatabaseName] = tableColumns;
                     _objectTypeCache[DatabaseName] = objectTypes;
+                    _columnDetailCache[DatabaseName] = columnDetails;
                 }
 
                 if (!_storedProcedureCache.ContainsKey(DatabaseName))
@@ -458,6 +523,7 @@ namespace SSMS
                 {
                     columns = meta,
                     objectTypes = _objectTypeCache[DatabaseName],
+                    columnDetails = _columnDetailCache[DatabaseName],
                     storedProcedures,
                     scalarFunctions,
                     tableFunctions,
@@ -478,6 +544,7 @@ namespace SSMS
         {
             _metadataCache.Remove(databaseName);
             _objectTypeCache.Remove(databaseName);
+            _columnDetailCache.Remove(databaseName);
             _storedProcedureCache.Remove(databaseName);
             _scalarFunctionCache.Remove(databaseName);
             _tableFunctionCache.Remove(databaseName);

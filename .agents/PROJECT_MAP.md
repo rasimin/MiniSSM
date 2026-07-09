@@ -103,6 +103,7 @@ Hal penting:
 - `SaveActiveTabQuery()` menyimpan ke path tab aktif, sedangkan Save As selalu meminta path baru; `OpenSqlFile()` dan drag-drop file `.sql` membuka setiap file sebagai tab baru. External drop WebView2 dimatikan agar drop di area Monaco tetap ditangani window.
 - `QueryTabControl.CacheAndRefreshAutocompleteAsync()` mengirim payload metadata terpadu: tabel/view beserta kolom dan jenis object, stored procedure, scalar/table-valued function, parameter routine, daftar database, dan database aktif.
 - Provider Monaco memfilter suggestion berdasarkan konteks: table/view/table-valued function setelah `FROM`/`JOIN`/`APPLY`, scalar function di expression, SP setelah `EXEC`/`EXECUTE`, dan parameter setelah routine dipilih.
+- Hover atau selection pada table/view/SP/function menampilkan aksi `View Schema / Definition in New Query`; definition diambil secara lazy hanya saat link diklik. Hover kolom menampilkan data type, nullable, identity, dan primary-key dari cache metadata.
 - Autocomplete mengenali bracketed identifier, CTE, temporary table, dan kolom lokal yang dapat diinferensikan. Metadata lintas database dimuat on-demand melalui pesan `loadDatabaseMetadata` saat pola `Database.Schema.` diketik.
 - Eksekusi DDL `CREATE`/`ALTER`/`DROP` untuk table, view, procedure, atau function menginvalidasi cache database aktif dan me-refresh autocomplete.
 - Monaco mengirim pesan `editorReady` dan memasang binding eksplisit `Ctrl+Space`; metadata dikirim ulang setelah editor siap agar suggestion tidak kosong akibat race saat navigasi.
