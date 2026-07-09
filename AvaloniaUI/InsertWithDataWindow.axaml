@@ -1,0 +1,34 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="SSMS.InsertWithDataWindow"
+        Title="Script INSERT To (with data)"
+        Width="460" Height="410" CanResize="False"
+        WindowStartupLocation="CenterOwner">
+  <Grid Margin="22" RowDefinitions="Auto,*,Auto">
+    <StackPanel Margin="0,0,0,20">
+      <TextBlock Text="Script INSERT To (with data)" FontSize="17"
+                 FontWeight="Bold" Foreground="White"/>
+      <TextBlock Text="Generate INSERT statements from table data and an optional WHERE clause."
+                 Foreground="#888C94" FontSize="11" Margin="0,5,0,0"/>
+    </StackPanel>
+    <StackPanel Grid.Row="1" Spacing="8">
+      <TextBlock Text="Table:" Foreground="#4EC9B0" FontWeight="SemiBold"/>
+      <TextBlock x:Name="TableNameText" FontSize="16" FontWeight="Bold"
+                 Foreground="White" Margin="0,0,0,10"/>
+      <TextBlock Text="WHERE Clause (optional):" FontWeight="SemiBold"/>
+      <TextBox x:Name="WhereBox" PlaceholderText="Example: IDAgentStructure = 144"
+               Padding="8" FontFamily="Consolas"/>
+      <TextBlock Text="Leave empty to fetch all data (maximum 1000 rows)."
+                 Foreground="#888C94" FontSize="11"/>
+      <CheckBox x:Name="VariablesBox"
+                Content="Use T-SQL variables (DECLARE &amp; SET)" Margin="0,12,0,0"/>
+      <TextBlock x:Name="StatusText" Foreground="#F48B8B" TextWrapping="Wrap"/>
+    </StackPanel>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right"
+                Spacing="10" Margin="0,15,0,0">
+      <Button Content="Cancel" Click="Cancel_OnClick"/>
+      <Button x:Name="GenerateButton" Content="Generate Script"
+              Background="#0E639C" Click="Generate_OnClick"/>
+    </StackPanel>
+  </Grid>
+</Window>

@@ -1,0 +1,52 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="SSMS.ConnectionWindow"
+        Title="Connect to Server"
+        Width="480" Height="400"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen">
+  <Grid RowDefinitions="Auto,*,Auto,Auto">
+    <Border Background="#252526" BorderBrush="#3F3F46" BorderThickness="0,0,0,1"
+            Padding="24,18" Margin="0,0,0,18">
+      <StackPanel Orientation="Horizontal" Spacing="12">
+        <TextBlock Text="▣" FontSize="24" Foreground="#8CDCFE" VerticalAlignment="Center"/>
+        <StackPanel>
+          <TextBlock Text="SQL Server" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
+          <TextBlock Text="Connect to Database Engine" FontSize="11" Foreground="#858585"/>
+        </StackPanel>
+      </StackPanel>
+    </Border>
+
+    <Grid Grid.Row="1" Margin="24,0" ColumnDefinitions="130,*"
+          RowDefinitions="40,40,40,40,35">
+      <TextBlock Text="Server name:" VerticalAlignment="Center"/>
+      <ComboBox x:Name="ServerBox" Grid.Column="1" IsEditable="True"
+                HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                SelectionChanged="ServerBox_OnSelectionChanged"/>
+      <TextBlock Grid.Row="1" Text="Authentication:" VerticalAlignment="Center"/>
+      <ComboBox x:Name="AuthenticationBox" Grid.Row="1" Grid.Column="1"
+                HorizontalAlignment="Stretch" SelectedIndex="0"
+                SelectionChanged="AuthenticationBox_OnSelectionChanged">
+        <ComboBoxItem Content="Windows Authentication"/>
+        <ComboBoxItem Content="SQL Server Authentication"/>
+      </ComboBox>
+      <TextBlock x:Name="LoginLabel" Grid.Row="2" Text="Login:" VerticalAlignment="Center"/>
+      <TextBox x:Name="LoginBox" Grid.Row="2" Grid.Column="1" VerticalAlignment="Center"/>
+      <TextBlock x:Name="PasswordLabel" Grid.Row="3" Text="Password:" VerticalAlignment="Center"/>
+      <TextBox x:Name="PasswordBox" Grid.Row="3" Grid.Column="1"
+               PasswordChar="●" VerticalAlignment="Center"/>
+      <CheckBox x:Name="RememberBox" Grid.Row="4" Grid.Column="1"
+                Content="Remember Connection" VerticalAlignment="Center"/>
+    </Grid>
+
+    <TextBlock x:Name="StatusText" Grid.Row="2" Margin="24,8"
+               Foreground="#F48B8B" TextWrapping="Wrap"/>
+
+    <Grid Grid.Row="3" Margin="24,8,24,20" ColumnDefinitions="Auto,*,Auto,10,Auto">
+      <Button x:Name="TestButton" Content="Test Connection" Click="TestButton_OnClick"/>
+      <Button x:Name="ConnectButton" Grid.Column="2" Content="Connect"
+              Background="#0E639C" Click="ConnectButton_OnClick"/>
+      <Button Grid.Column="4" Content="Cancel" Click="CancelButton_OnClick"/>
+    </Grid>
+  </Grid>
+</Window>

@@ -1,0 +1,138 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:SSMS"
+        x:Class="SSMS.MainWindow"
+        Title="MiniSSMS - Avalonia SQL Client"
+        Width="1180" Height="780" MinWidth="820" MinHeight="540"
+        WindowStartupLocation="CenterScreen"
+        DragDrop.AllowDrop="True">
+  <Window.KeyBindings>
+    <KeyBinding Gesture="F5" Command="{Binding ExecuteCommand}"/>
+    <KeyBinding Gesture="Ctrl+N" Command="{Binding NewQueryCommand}"/>
+    <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenCommand}"/>
+    <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveCommand}"/>
+  </Window.KeyBindings>
+
+  <Grid RowDefinitions="Auto,Auto,*,24">
+    <Menu Background="#252526">
+      <MenuItem Header="_File">
+        <MenuItem Header="_New Query" Click="NewQuery_OnClick" InputGesture="Ctrl+N"/>
+        <MenuItem Header="_Open SQL..." Click="Open_OnClick" InputGesture="Ctrl+O"/>
+        <MenuItem Header="_Save" Click="Save_OnClick" InputGesture="Ctrl+S"/>
+        <Separator/>
+        <MenuItem Header="E_xit" Click="Exit_OnClick"/>
+      </MenuItem>
+      <MenuItem Header="_Query">
+        <MenuItem Header="_Execute" Click="Execute_OnClick" InputGesture="F5"/>
+        <MenuItem Header="_Comment Selection" Click="Comment_OnClick"/>
+        <MenuItem Header="_Uncomment Selection" Click="Uncomment_OnClick"/>
+      </MenuItem>
+      <MenuItem Header="_Tools">
+        <MenuItem Header="_Settings" Click="Settings_OnClick"/>
+        <MenuItem Header="_Reconnect" Click="Reconnect_OnClick"/>
+      </MenuItem>
+    </Menu>
+
+    <Border Grid.Row="1" Background="#2D2D30" BorderBrush="#3E3E42"
+            BorderThickness="0,0,0,1" Padding="6">
+      <StackPanel Orientation="Horizontal" Spacing="5">
+        <Button Content="＋ New Query" Click="NewQuery_OnClick"/>
+        <Button Content="Open" Click="Open_OnClick"/>
+        <Button Content="Save" Click="Save_OnClick"/>
+        <Separator/>
+        <ComboBox x:Name="DatabaseBox" Width="220"
+                  SelectionChanged="DatabaseBox_OnSelectionChanged"/>
+        <Button Content="▶ Execute" Background="#0E639C" Click="Execute_OnClick"/>
+        <Button Content="Comment" Click="Comment_OnClick"/>
+        <Button Content="Uncomment" Click="Uncomment_OnClick"/>
+        <Button Content="INSERT Script" Click="InsertScript_OnClick"/>
+        <Button Content="Close Tab" Click="CloseTab_OnClick"/>
+        <Button Content="Settings" Click="Settings_OnClick"/>
+      </StackPanel>
+    </Border>
+
+    <Grid Grid.Row="2" ColumnDefinitions="260,5,*">
+      <Border Background="#181818" BorderBrush="#2D2D30" BorderThickness="0,0,1,0">
+        <Grid RowDefinitions="Auto,*">
+          <Border Background="#252526" Padding="10,7">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="OBJECT EXPLORER" FontWeight="SemiBold" FontSize="12"/>
+              <Button Grid.Column="1" Content="↻" Padding="7,2" Click="RefreshExplorer_OnClick"/>
+            </Grid>
+          </Border>
+          <TreeView x:Name="ExplorerTree" Grid.Row="1"
+                    ItemsSource="{Binding ExplorerRoots}"
+                    DoubleTapped="ExplorerTree_OnDoubleTapped">
+            <TreeView.Styles>
+              <Style Selector="TreeViewItem">
+                <Setter Property="ContextMenu" Value="{Binding NodeContextMenu}"/>
+                <Setter Property="MinHeight" Value="20"/>
+                <Setter Property="Padding" Value="2,1,0,1"/>
+                <Setter Property="Margin" Value="0"/>
+                <Setter Property="FontSize" Value="12"/>
+              </Style>
+            </TreeView.Styles>
+            <TreeView.DataTemplates>
+              <TreeDataTemplate DataType="local:ExplorerNode" ItemsSource="{Binding Children}">
+                <TextBlock Text="{Binding Name}" Margin="0"/>
+              </TreeDataTemplate>
+            </TreeView.DataTemplates>
+          </TreeView>
+        </Grid>
+      </Border>
+      <GridSplitter Grid.Column="1" Background="#3A3A3A" ResizeDirection="Columns"/>
+      <Grid Grid.Column="2" RowDefinitions="Auto,*">
+        <TabControl x:Name="QueryTabs" Grid.Row="0"
+                    SelectionChanged="QueryTabs_OnSelectionChanged"
+                    Padding="0" Margin="0">
+          <TabControl.Styles>
+            <Style Selector="TabItem">
+              <Setter Property="FontSize" Value="12"/>
+              <Setter Property="MinHeight" Value="26"/>
+              <Setter Property="Height" Value="26"/>
+              <Setter Property="Padding" Value="8, 2, 6, 2"/>
+              <Setter Property="Margin" Value="0, 0, 2, 0"/>
+              <Setter Property="VerticalAlignment" Value="Center"/>
+              <Setter Property="Background" Value="#2D2D2D"/>
+              <Setter Property="Foreground" Value="#969696"/>
+              <Setter Property="BorderBrush" Value="Transparent"/>
+            </Style>
+            <Style Selector="TabItem:selected">
+              <Setter Property="Background" Value="#1E1E1E"/>
+              <Setter Property="Foreground" Value="White"/>
+            </Style>
+            <Style Selector="TabItem:pointerover">
+              <Setter Property="Background" Value="#3E3E40"/>
+              <Setter Property="Foreground" Value="White"/>
+            </Style>
+            <!-- Style for custom close button in tabs -->
+            <Style Selector="Button.tab-close-btn">
+              <Setter Property="Background" Value="Transparent"/>
+              <Setter Property="BorderThickness" Value="0"/>
+              <Setter Property="Padding" Value="0"/>
+              <Setter Property="Width" Value="14"/>
+              <Setter Property="Height" Value="14"/>
+              <Setter Property="CornerRadius" Value="7"/>
+              <Setter Property="Foreground" Value="#999999"/>
+              <Setter Property="HorizontalContentAlignment" Value="Center"/>
+              <Setter Property="VerticalContentAlignment" Value="Center"/>
+            </Style>
+            <Style Selector="Button.tab-close-btn:pointerover">
+              <Setter Property="Background" Value="#E81123"/>
+              <Setter Property="Foreground" Value="White"/>
+            </Style>
+          </TabControl.Styles>
+        </TabControl>
+        <Panel x:Name="QueryTabContentContainer" Grid.Row="1" Background="#1E1E1E"/>
+      </Grid>
+    </Grid>
+
+    <Border Grid.Row="3" Background="#007ACC" Padding="8,2">
+      <Grid ColumnDefinitions="*,Auto,20,Auto">
+        <TextBlock x:Name="StatusText" Text="Ready" Foreground="White"/>
+        <TextBlock x:Name="TimeText" Grid.Column="1" Foreground="White"/>
+        <TextBlock x:Name="RowsText" Grid.Column="3" Foreground="White"/>
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

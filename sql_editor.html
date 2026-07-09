@@ -20,6 +20,14 @@
         require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.39.0/min/vs' } });
         
         var editor;
+        function hostPostMessage(message) {
+            var json = JSON.stringify(message);
+            if (typeof invokeCSharpAction === 'function') {
+                invokeCSharpAction(json);
+            } else if (window.chrome && window.chrome.webview) {
+                window.chrome.webview.postMessage(message);
+            }
+        }
         var tableColumns = {}; // Key: "schema.table" & "table", Value: ["col1", "col2", ...]
         var schemas = [];      // Unique schema list
         var tables = [];       // Unique table list
@@ -400,7 +408,7 @@
             });
 
             monaco.editor.registerCommand('minissms.viewObject', function (_, objectName, objectType) {
-                window.chrome.webview.postMessage({
+                hostPostMessage({
                     action: 'viewObjectDefinition',
                     objectName: objectName,
                     objectType: objectType
@@ -471,9 +479,13 @@
                 }
             });
 
+            editor.onDidChangeModelContent(function() {
+                hostPostMessage({ action: 'textChanged', text: editor.getValue() });
+            });
+
             // Send signal to C# on keydown inside Monaco for F5
             editor.addCommand(monaco.KeyCode.F5, function() {
-                window.chrome.webview.postMessage({ action: 'execute' });
+                hostPostMessage({ action: 'execute' });
             });
 
             // WebView2 can consume Ctrl+Space before Monaco's default keybinding runs.
@@ -482,7 +494,7 @@
                 editor.trigger('keyboard', 'editor.action.triggerSuggest', {});
             });
 
-            window.chrome.webview.postMessage({ action: 'editorReady' });
+            hostPostMessage({ action: 'editorReady' });
         });
 
         // Extract tables used in the query (FROM TableName / JOIN TableName)
@@ -505,7 +517,7 @@
                 return;
             }
             pendingDatabaseMetadata[key] = true;
-            window.chrome.webview.postMessage({
+            hostPostMessage({
                 action: 'loadDatabaseMetadata',
                 databaseName: databaseName
             });

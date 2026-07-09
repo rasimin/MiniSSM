@@ -1,0 +1,29 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="SSMS.InputDialog"
+        Title="Input"
+        Width="360" Height="175" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        WindowDecorations="None"
+        Background="#1E1E1E" Foreground="White"
+        BorderBrush="#2D2D30" BorderThickness="1">
+  <Grid RowDefinitions="Auto,*">
+    <!-- Custom Title Bar -->
+    <Border Background="#252526" BorderBrush="#2D2D30" BorderThickness="0,0,0,1" Padding="12,6" PointerPressed="TitleBar_OnPointerPressed">
+      <TextBlock x:Name="TitleText" Text="Input Dialog" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
+    </Border>
+    <!-- Content Area -->
+    <Grid Grid.Row="1" Margin="15" RowDefinitions="Auto,*,Auto">
+      <TextBlock x:Name="PromptText" Text="Enter text:" Foreground="LightGray" Margin="0,0,0,8" FontSize="12"/>
+      <TextBox x:Name="InputBox" Grid.Row="1" Background="#252526" Foreground="White"
+               CaretBrush="White" BorderBrush="#3E3E42" BorderThickness="1"
+               Padding="6,4" Margin="0,0,0,15" FontSize="12" KeyDown="InputBox_OnKeyDown"/>
+      <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <Button Content="OK" Width="75" Height="25" Background="#007ACC" Foreground="White"
+                BorderThickness="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="Ok_OnClick"/>
+        <Button Content="Cancel" Width="75" Height="25" Background="#3E3E42" Foreground="White"
+                BorderThickness="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="Cancel_OnClick"/>
+      </StackPanel>
+    </Grid>
+  </Grid>
+</Window>
