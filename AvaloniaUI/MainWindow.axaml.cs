@@ -584,67 +584,70 @@ public partial class MainWindow : Window
         menu.Items.Add(copyNameItem);
         menu.Items.Add(new Separator());
 
-        if (node.Kind is "Table" or "View" or "StoredProcedure" or "Function")
+        if (node.Kind is "Table" or "View" or "StoredProcedure" or "Function" or "Database")
         {
             var newQueryItem = new MenuItem { Header = "New Query" };
             newQueryItem.Click += (s, e) => CreateQueryTab(databaseName: node.Database);
             menu.Items.Add(newQueryItem);
 
-            if (node.Kind is "Table" or "View")
+            if (node.Kind is "Table" or "View" or "StoredProcedure" or "Function")
             {
-                var selectTopItem = new MenuItem { Header = "Select Top 200" };
-                selectTopItem.Click += (s, e) =>
+                if (node.Kind is "Table" or "View")
                 {
-                    string safeName = node.ObjectName;
-                    var parts = node.ObjectName.Split('.');
-                    safeName = parts.Length == 2 ? $"[{parts[0]}].[{parts[1]}]" : $"[{node.ObjectName}]";
-                    string sql = $"SELECT TOP 200 * FROM {safeName};";
-                    CreateQueryTab(sql, $"{node.ObjectName} (Top 200)", node.Database, autoExecute: true);
-                };
-                menu.Items.Add(selectTopItem);
+                    var selectTopItem = new MenuItem { Header = "Select Top 200" };
+                    selectTopItem.Click += (s, e) =>
+                    {
+                        string safeName = node.ObjectName;
+                        var parts = node.ObjectName.Split('.');
+                        safeName = parts.Length == 2 ? $"[{parts[0]}].[{parts[1]}]" : $"[{node.ObjectName}]";
+                        string sql = $"SELECT TOP 200 * FROM {safeName};";
+                        CreateQueryTab(sql, $"{node.ObjectName} (Top 200)", node.Database, autoExecute: true);
+                    };
+                    menu.Items.Add(selectTopItem);
+                }
+
+                var scriptAsMenu = new MenuItem { Header = "Script Object as" };
+
+                // CREATE To
+                var createToMenu = new MenuItem { Header = "CREATE To" };
+                var createNewQuery = new MenuItem { Header = "New Query Editor Window" };
+                createNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(node, "CREATE");
+                createToMenu.Items.Add(createNewQuery);
+                scriptAsMenu.Items.Add(createToMenu);
+
+                if (node.Kind == "Table")
+                {
+                    var insertToMenu = new MenuItem { Header = "INSERT To" };
+                    
+                    var insertNewQuery = new MenuItem { Header = "New Query Editor Window (Standard)" };
+                    insertNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(node, "INSERT");
+                    insertToMenu.Items.Add(insertNewQuery);
+
+                    var insertVarsNewQuery = new MenuItem { Header = "New Query Editor Window (with Variables)" };
+                    insertVarsNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(node, "INSERT_VARS");
+                    insertToMenu.Items.Add(insertVarsNewQuery);
+
+                    var insertDataNewQuery = new MenuItem { Header = "New Query Editor Window (with Data)" };
+                    insertDataNewQuery.Click += (s, e) => ShowInsertWithDataDialog(node);
+                    insertToMenu.Items.Add(insertDataNewQuery);
+
+                    scriptAsMenu.Items.Add(insertToMenu);
+                }
+
+                var alterToMenu = new MenuItem { Header = "ALTER To" };
+                var alterNewQuery = new MenuItem { Header = "New Query Editor Window" };
+                alterNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(node, "ALTER");
+                alterToMenu.Items.Add(alterNewQuery);
+                scriptAsMenu.Items.Add(alterToMenu);
+
+                var dropToMenu = new MenuItem { Header = "DROP To" };
+                var dropNewQuery = new MenuItem { Header = "New Query Editor Window" };
+                dropNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(node, "DROP");
+                dropToMenu.Items.Add(dropNewQuery);
+                scriptAsMenu.Items.Add(dropToMenu);
+
+                menu.Items.Add(scriptAsMenu);
             }
-
-            var scriptAsMenu = new MenuItem { Header = "Script Object as" };
-
-            // CREATE To
-            var createToMenu = new MenuItem { Header = "CREATE To" };
-            var createNewQuery = new MenuItem { Header = "New Query Editor Window" };
-            createNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(node, "CREATE");
-            createToMenu.Items.Add(createNewQuery);
-            scriptAsMenu.Items.Add(createToMenu);
-
-            if (node.Kind == "Table")
-            {
-                var insertToMenu = new MenuItem { Header = "INSERT To" };
-                
-                var insertNewQuery = new MenuItem { Header = "New Query Editor Window (Standard)" };
-                insertNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(node, "INSERT");
-                insertToMenu.Items.Add(insertNewQuery);
-
-                var insertVarsNewQuery = new MenuItem { Header = "New Query Editor Window (with Variables)" };
-                insertVarsNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(node, "INSERT_VARS");
-                insertToMenu.Items.Add(insertVarsNewQuery);
-
-                var insertDataNewQuery = new MenuItem { Header = "New Query Editor Window (with Data)" };
-                insertDataNewQuery.Click += (s, e) => ShowInsertWithDataDialog(node);
-                insertToMenu.Items.Add(insertDataNewQuery);
-
-                scriptAsMenu.Items.Add(insertToMenu);
-            }
-
-            var alterToMenu = new MenuItem { Header = "ALTER To" };
-            var alterNewQuery = new MenuItem { Header = "New Query Editor Window" };
-            alterNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(node, "ALTER");
-            alterToMenu.Items.Add(alterNewQuery);
-            scriptAsMenu.Items.Add(alterToMenu);
-
-            var dropToMenu = new MenuItem { Header = "DROP To" };
-            var dropNewQuery = new MenuItem { Header = "New Query Editor Window" };
-            dropNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(node, "DROP");
-            dropToMenu.Items.Add(dropNewQuery);
-            scriptAsMenu.Items.Add(dropToMenu);
-
-            menu.Items.Add(scriptAsMenu);
         }
 
         return menu;

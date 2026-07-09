@@ -63,6 +63,9 @@
           <TreeView x:Name="ExplorerTree" Grid.Row="1"
                     ItemsSource="{Binding ExplorerRoots}"
                     DoubleTapped="ExplorerTree_OnDoubleTapped">
+            <TreeView.Resources>
+              <x:Double x:Key="TreeViewItemIndent">8</x:Double>
+            </TreeView.Resources>
             <TreeView.Styles>
               <Style Selector="TreeViewItem">
                 <Setter Property="ContextMenu" Value="{Binding NodeContextMenu}"/>
@@ -70,6 +73,18 @@
                 <Setter Property="Padding" Value="2,1,0,1"/>
                 <Setter Property="Margin" Value="0"/>
                 <Setter Property="FontSize" Value="12"/>
+              </Style>
+              <Style Selector="TreeViewItem /template/ ToggleButton#PART_ExpandCollapseChevron">
+                <Setter Property="Width" Value="12"/>
+                <Setter Property="Height" Value="12"/>
+                <Setter Property="Margin" Value="0,0,2,0"/>
+              </Style>
+              <Style Selector="TreeViewItem /template/ ToggleButton#PART_ExpandCollapseChevron /template/ Path">
+                <Setter Property="RenderTransform">
+                  <Setter.Value>
+                    <ScaleTransform ScaleX="0.65" ScaleY="0.65"/>
+                  </Setter.Value>
+                </Setter>
               </Style>
             </TreeView.Styles>
             <TreeView.DataTemplates>
