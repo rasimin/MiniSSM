@@ -381,6 +381,9 @@ namespace SSMS
             if (item.Items.Count == 1 && (item.Items[0] as TreeViewItem)?.Header.ToString() == "Loading...")
             {
                 item.Items.Clear();
+                var (loadingItem, loadingTimer) = CreateAnimatedLoadingItem();
+                item.Items.Add(loadingItem);
+                await Dispatcher.Yield(DispatcherPriority.Render);
                 var node = (ObjectExplorerNode)item.Tag;
                 string type = node.NodeType;
                 string connStr = node.ConnectionString;
@@ -525,8 +528,28 @@ namespace SSMS
                     }
                     else if (type == "FuncsFolder")
                     {
-                        string filter = GetFolderFilter(dbName, "FuncsFolder");
-                        var funcs = await DatabaseHelper.GetFunctionsAsync(connStr, dbName);
+                        var scalarFolder = new TreeViewItem
+                        {
+                            Header = GetFolderHeader(dbName, "ScalarFunctionsFolder", "Scalar-valued Functions"),
+                            Tag = new ObjectExplorerNode { NodeType = "ScalarFunctionsFolder", ConnectionString = connStr, DatabaseName = dbName }
+                        };
+                        scalarFolder.Items.Add(new TreeViewItem { Header = "Loading..." });
+                        scalarFolder.ContextMenu = CreateFolderContextMenu(scalarFolder, connStr, dbName, "ScalarFunctionsFolder", "Scalar-valued Functions");
+                        item.Items.Add(scalarFolder);
+
+                        var tableFolder = new TreeViewItem
+                        {
+                            Header = GetFolderHeader(dbName, "TableFunctionsFolder", "Table-valued Functions"),
+                            Tag = new ObjectExplorerNode { NodeType = "TableFunctionsFolder", ConnectionString = connStr, DatabaseName = dbName }
+                        };
+                        tableFolder.Items.Add(new TreeViewItem { Header = "Loading..." });
+                        tableFolder.ContextMenu = CreateFolderContextMenu(tableFolder, connStr, dbName, "TableFunctionsFolder", "Table-valued Functions");
+                        item.Items.Add(tableFolder);
+                    }
+                    else if (type == "ScalarFunctionsFolder" || type == "TableFunctionsFolder")
+                    {
+                        string filter = GetFolderFilter(dbName, type);
+                        var funcs = await DatabaseHelper.GetFunctionsAsync(connStr, dbName, type == "TableFunctionsFolder");
                         foreach (var func in funcs)
                         {
                             if (!string.IsNullOrEmpty(filter) && !func.Contains(filter, StringComparison.OrdinalIgnoreCase))
@@ -620,7 +643,34 @@ namespace SSMS
                 {
                     item.Items.Add(new TreeViewItem { Header = $"⚠️ Error: {ex.Message}" });
                 }
+                finally
+                {
+                    loadingTimer.Stop();
+                    item.Items.Remove(loadingItem);
+                }
             }
+        }
+
+        private static (TreeViewItem Item, DispatcherTimer Timer) CreateAnimatedLoadingItem()
+        {
+            var loadingItem = new TreeViewItem
+            {
+                Header = "Loading.",
+                IsHitTestVisible = false,
+                Foreground = Brushes.Gray
+            };
+            int frame = 1;
+            var timer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(280)
+            };
+            timer.Tick += (_, _) =>
+            {
+                frame = frame % 3 + 1;
+                loadingItem.Header = $"Loading{new string('.', frame)}";
+            };
+            timer.Start();
+            return (loadingItem, timer);
         }
 
         #endregion
@@ -1574,6 +1624,14 @@ namespace SSMS
         {
             var menu = new ContextMenu();
 
+            if (TryGetCreateObjectLabel(folderType, out string createLabel))
+            {
+                var createItem = new MenuItem { Header = $"Create New {createLabel}" };
+                createItem.Click += (s, e) => CreateNewObjectScript(connStr, dbName, folderType);
+                menu.Items.Add(createItem);
+                menu.Items.Add(new Separator());
+            }
+
             var newQueryItem = new MenuItem { Header = "New Query" };
             newQueryItem.Click += (s, e) => CreateNewQueryTab(connStr, dbName);
             menu.Items.Add(newQueryItem);
@@ -1587,6 +1645,38 @@ namespace SSMS
             menu.Items.Add(clearFilterItem);
 
             return menu;
+        }
+
+        private static bool TryGetCreateObjectLabel(string folderType, out string label)
+        {
+            label = folderType switch
+            {
+                "TablesFolder" => "Table",
+                "ViewsFolder" => "View",
+                "SpsFolder" => "Stored Procedure",
+                "ScalarFunctionsFolder" => "Scalar-valued Function",
+                "TableFunctionsFolder" => "Table-valued Function",
+                _ => string.Empty
+            };
+            return label.Length > 0;
+        }
+
+        private void CreateNewObjectScript(string connectionString, string databaseName, string folderType)
+        {
+            string sql = folderType switch
+            {
+                "TablesFolder" => "CREATE TABLE [dbo].[NewTable]\n(\n    [Id] INT NOT NULL PRIMARY KEY\n);",
+                "ViewsFolder" => "CREATE VIEW [dbo].[NewView]\nAS\nSELECT\n    1 AS [Value];",
+                "SpsFolder" => "CREATE PROCEDURE [dbo].[NewProcedure]\nAS\nBEGIN\n    SET NOCOUNT ON;\n\n    SELECT 1 AS [Value];\nEND;",
+                "ScalarFunctionsFolder" => "CREATE FUNCTION [dbo].[NewScalarFunction]\n(\n    @Value INT\n)\nRETURNS INT\nAS\nBEGIN\n    RETURN @Value;\nEND;",
+                "TableFunctionsFolder" => "CREATE FUNCTION [dbo].[NewTableFunction]\n(\n    @Value INT\n)\nRETURNS TABLE\nAS\nRETURN\n(\n    SELECT @Value AS [Value]\n);",
+                _ => string.Empty
+            };
+
+            if (!string.IsNullOrEmpty(sql))
+            {
+                CreateNewQueryTab(connectionString, databaseName, sql, $"Create {folderType.Replace("Folder", "")}.sql");
+            }
         }
 
         private void OpenFilterDialog(TreeViewItem folderItem, string connStr, string dbName, string folderType, string baseName)

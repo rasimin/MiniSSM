@@ -154,6 +154,10 @@ namespace SSMS
                     {
                         SqlEditorWebView.Focus();
                     }), System.Windows.Threading.DispatcherPriority.Input);
+
+                    // The first metadata push can happen before Monaco finishes loading.
+                    // Push it again after navigation so autocomplete has the table list.
+                    await CacheAndRefreshAutocompleteAsync();
                 };
                 
                 IsWebViewInitialized = true;
@@ -202,9 +206,18 @@ namespace SSMS
             {
                 string json = e.WebMessageAsJson;
                 using var doc = JsonDocument.Parse(json);
-                if (doc.RootElement.TryGetProperty("action", out var action) && action.GetString() == "execute")
+                if (!doc.RootElement.TryGetProperty("action", out var action))
+                {
+                    return;
+                }
+
+                if (action.GetString() == "execute")
                 {
                     ExecuteQuery();
+                }
+                else if (action.GetString() == "editorReady")
+                {
+                    _ = CacheAndRefreshAutocompleteAsync();
                 }
             }
             catch { }
@@ -354,9 +367,9 @@ namespace SSMS
                 string jsonMeta = JsonSerializer.Serialize(meta);
                 await SqlEditorWebView.ExecuteScriptAsync($"updateMetadata({jsonMeta});");
             }
-            catch 
+            catch (Exception ex)
             {
-                // Silently bypass autocomplete load errors (e.g. permission restriction on metadata tables)
+                AppLogger.Error(ex, $"Failed to load autocomplete metadata for database '{DatabaseName}'");
             }
         }
 

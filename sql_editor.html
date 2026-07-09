@@ -231,6 +231,14 @@
             editor.addCommand(monaco.KeyCode.F5, function() {
                 window.chrome.webview.postMessage({ action: 'execute' });
             });
+
+            // WebView2 can consume Ctrl+Space before Monaco's default keybinding runs.
+            // Register it explicitly so manual autocomplete always opens.
+            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Space, function() {
+                editor.trigger('keyboard', 'editor.action.triggerSuggest', {});
+            });
+
+            window.chrome.webview.postMessage({ action: 'editorReady' });
         });
 
         // Extract tables used in the query (FROM TableName / JOIN TableName)

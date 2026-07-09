@@ -226,10 +226,26 @@ namespace SSMS
                                 {
                                     var dataTable = new DataTable();
                                     
-                                    // Manually build columns to avoid closing/advancing the reader
+                                    // SQL Server permits duplicate result column names (for example:
+                                    // SELECT Units, *). DataTable requires every column name to be
+                                    // unique, so only the display name of duplicates is suffixed.
+                                    var usedColumnNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                                     for (int i = 0; i < reader.FieldCount; i++)
                                     {
-                                        dataTable.Columns.Add(reader.GetName(i), reader.GetFieldType(i));
+                                        string baseName = reader.GetName(i);
+                                        if (string.IsNullOrWhiteSpace(baseName))
+                                        {
+                                            baseName = $"Column{i + 1}";
+                                        }
+
+                                        string uniqueName = baseName;
+                                        int duplicateNumber = 2;
+                                        while (!usedColumnNames.Add(uniqueName))
+                                        {
+                                            uniqueName = $"{baseName} ({duplicateNumber++})";
+                                        }
+
+                                        dataTable.Columns.Add(uniqueName, reader.GetFieldType(i));
                                     }
 
                                     // Manually load rows
@@ -320,7 +336,7 @@ namespace SSMS
             return sps;
         }
 
-        public static async Task<List<string>> GetFunctionsAsync(string connectionString, string databaseName)
+        public static async Task<List<string>> GetFunctionsAsync(string connectionString, string databaseName, bool tableValued)
         {
             var funcs = new List<string>();
             var dbConnString = BuildConnectionString(connectionString, databaseName);
@@ -328,16 +344,21 @@ namespace SSMS
             {
                 await connection.OpenAsync();
                 var query = @"
-                    SELECT SCHEMA_NAME(schema_id) + '.' + name AS FunctionName 
+                    SELECT SCHEMA_NAME(schema_id) + '.' + name AS FunctionName, type
                     FROM sys.objects 
-                    WHERE type IN ('FN', 'IF', 'TF', 'FS', 'FT') 
+                    WHERE type IN ('FN', 'IF', 'TF', 'FS', 'FT')
                     ORDER BY SCHEMA_NAME(schema_id), name;";
                 using (var command = new SqlCommand(query, connection))
                 using (var reader = await command.ExecuteReaderAsync())
                 {
                     while (await reader.ReadAsync())
                     {
-                        funcs.Add(reader.GetString(0));
+                        string objectType = reader.GetString(1);
+                        bool isTableValued = objectType is "IF" or "TF" or "FT";
+                        if (isTableValued == tableValued)
+                        {
+                            funcs.Add(reader.GetString(0));
+                        }
                     }
                 }
             }

@@ -29,6 +29,7 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 | `ObjectExplorerNode.cs` | Model data `Tag` untuk node TreeView Object Explorer. |
 | `AppLogger.cs` | Logger file sederhana untuk error global dan event penting seperti create/close tab. Log tersimpan di `logs\minissms-YYYYMMDD.log` dalam output app. |
 | `sql_editor.html` | Monaco SQL editor, command JavaScript, autocomplete, bridge message ke WPF. |
+| `Assets/MiniSSMS.ico`, `Assets/MiniSSMS.png` | Icon aplikasi untuk executable dan window WPF. |
 
 ## Alur Aplikasi
 
@@ -55,11 +56,14 @@ Lokasi utama: `MainWindow.xaml.cs`.
   - `DatabasesFolder`
   - `Database`
   - `TablesFolder`, `ViewsFolder`, `SpsFolder`, `FuncsFolder`
+  - `ScalarFunctionsFolder`, `TableFunctionsFolder` di bawah `FuncsFolder`
   - `Table`, `View`, `StoredProcedure`, `Function`
   - `ColumnsFolder`, `IndexesFolder`, `TriggersFolder`
   - `Column`, `Index`, `Trigger`
 - Folder filter ada di `_folderFilters`, `CreateFolderContextMenu`, `OpenFilterDialog`, `GetFolderHeader`.
 - Context menu object ada di `CreateObjectContextMenu`.
+- Context menu folder object dibuat oleh `CreateFolderContextMenu`; Tables, Views, Stored Procedures, dan kedua jenis Functions menyediakan template `Create New`.
+- Saat lazy-load metadata berjalan, node menampilkan teks titik bergerak lewat `CreateAnimatedLoadingItem`.
 - Script object dibuat lewat `ScriptObjectToQueryTabAsync`.
 
 Saat menambah node baru:
@@ -94,6 +98,7 @@ Hal penting:
 - `RunEditorCommand(...)` menjalankan fungsi JavaScript di Monaco.
 - `SaveActiveTabQuery()` dan `OpenSqlFile()` untuk file `.sql`.
 - `QueryTabControl.CacheAndRefreshAutocompleteAsync()` mengambil metadata tabel/kolom dan memanggil `updateMetadata(...)` di editor.
+- Monaco mengirim pesan `editorReady` dan memasang binding eksplisit `Ctrl+Space`; metadata dikirim ulang setelah editor siap agar suggestion tidak kosong akibat race saat navigasi.
 
 Jika mengubah fitur editor seperti autocomplete, comment/uncomment, keyboard shortcut Monaco, atau get/set text, cek `sql_editor.html` dulu.
 
@@ -109,7 +114,7 @@ Method penting:
 - `GetTablesAsync`
 - `GetViewsAsync`
 - `GetStoredProceduresAsync`
-- `GetFunctionsAsync`
+- `GetFunctionsAsync` (memisahkan scalar-valued dan table-valued)
 - `GetColumnsAsync`
 - `GetIndexesAsync`
 - `GetTriggersAsync`
@@ -123,6 +128,7 @@ Pola yang dipakai:
 - Pakai `using` untuk `SqlConnection`, `SqlCommand`, dan reader.
 - Metadata memakai query ke `sys.*`.
 - Parameter object name memakai parameter SQL seperti `@TableFullName`.
+- Result set dengan nama kolom duplikat (misalnya `SELECT Units, *`) diberi suffix tampilan `(2)`, `(3)`, dan seterusnya karena `DataTable` memerlukan nama unik.
 
 ## UI dan Style
 
