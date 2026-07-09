@@ -11,6 +11,7 @@
     <KeyBinding Gesture="Ctrl+N" Command="{Binding NewQueryCommand}"/>
     <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenCommand}"/>
     <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveCommand}"/>
+    <KeyBinding Gesture="Ctrl+Shift+S" Command="{Binding SaveAsCommand}"/>
     <KeyBinding Gesture="F8" Command="{Binding ToggleExplorerCommand}"/>
   </Window.KeyBindings>
 
@@ -20,6 +21,7 @@
         <MenuItem Header="_New Query" Click="NewQuery_OnClick" InputGesture="Ctrl+N"/>
         <MenuItem Header="_Open SQL..." Click="Open_OnClick" InputGesture="Ctrl+O"/>
         <MenuItem Header="_Save" Click="Save_OnClick" InputGesture="Ctrl+S"/>
+        <MenuItem Header="Save _As..." Click="SaveAs_OnClick" InputGesture="Ctrl+Shift+S"/>
         <Separator/>
         <MenuItem Header="E_xit" Click="Exit_OnClick"/>
       </MenuItem>
@@ -169,47 +171,63 @@
       </Border>
       <GridSplitter x:Name="ExplorerSplitter" Grid.Column="2" Background="#3A3A3A" ResizeDirection="Columns"/>
       <Grid Grid.Column="3" RowDefinitions="Auto,*">
-        <TabControl x:Name="QueryTabs" Grid.Row="0"
-                    SelectionChanged="QueryTabs_OnSelectionChanged"
-                    Padding="0" Margin="0">
-          <TabControl.Styles>
-            <Style Selector="TabItem">
-              <Setter Property="FontSize" Value="12"/>
-              <Setter Property="MinHeight" Value="26"/>
-              <Setter Property="Height" Value="26"/>
-              <Setter Property="Padding" Value="8, 2, 6, 2"/>
-              <Setter Property="Margin" Value="0, 0, 2, 0"/>
-              <Setter Property="VerticalAlignment" Value="Center"/>
-              <Setter Property="Background" Value="#2D2D2D"/>
-              <Setter Property="Foreground" Value="#969696"/>
-              <Setter Property="BorderBrush" Value="Transparent"/>
-            </Style>
-            <Style Selector="TabItem:selected">
-              <Setter Property="Background" Value="#1E1E1E"/>
-              <Setter Property="Foreground" Value="White"/>
-            </Style>
-            <Style Selector="TabItem:pointerover">
-              <Setter Property="Background" Value="#3E3E40"/>
-              <Setter Property="Foreground" Value="White"/>
-            </Style>
-            <!-- Style for custom close button in tabs -->
-            <Style Selector="Button.tab-close-btn">
-              <Setter Property="Background" Value="Transparent"/>
-              <Setter Property="BorderThickness" Value="0"/>
-              <Setter Property="Padding" Value="0"/>
-              <Setter Property="Width" Value="14"/>
-              <Setter Property="Height" Value="14"/>
-              <Setter Property="CornerRadius" Value="7"/>
-              <Setter Property="Foreground" Value="#999999"/>
-              <Setter Property="HorizontalContentAlignment" Value="Center"/>
-              <Setter Property="VerticalContentAlignment" Value="Center"/>
-            </Style>
-            <Style Selector="Button.tab-close-btn:pointerover">
-              <Setter Property="Background" Value="#E81123"/>
-              <Setter Property="Foreground" Value="White"/>
-            </Style>
-          </TabControl.Styles>
-        </TabControl>
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Background="#2D2D2D">
+          <!-- Plus button for new query tab -->
+          <Button Grid.Column="0" Content="＋" Width="26" Height="26" 
+                  Background="Transparent" BorderThickness="0" Padding="0" 
+                  VerticalAlignment="Center" HorizontalAlignment="Center"
+                  FontSize="16" Foreground="#969696"
+                  Click="NewQuery_OnClick" ToolTip.Tip="New Query (Ctrl+N)">
+            <Button.Styles>
+              <Style Selector="Button:pointerover">
+                <Setter Property="Background" Value="#3E3E40"/>
+                <Setter Property="Foreground" Value="White"/>
+              </Style>
+            </Button.Styles>
+          </Button>
+ 
+          <TabControl x:Name="QueryTabs" Grid.Column="1"
+                      SelectionChanged="QueryTabs_OnSelectionChanged"
+                      Padding="0" Margin="0">
+            <TabControl.Styles>
+              <Style Selector="TabItem">
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="MinHeight" Value="26"/>
+                <Setter Property="Height" Value="26"/>
+                <Setter Property="Padding" Value="8, 2, 6, 2"/>
+                <Setter Property="Margin" Value="0, 0, 2, 0"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="Background" Value="#2D2D2D"/>
+                <Setter Property="Foreground" Value="#969696"/>
+                <Setter Property="BorderBrush" Value="Transparent"/>
+              </Style>
+              <Style Selector="TabItem:selected">
+                <Setter Property="Background" Value="#1E1E1E"/>
+                <Setter Property="Foreground" Value="White"/>
+              </Style>
+              <Style Selector="TabItem:pointerover">
+                <Setter Property="Background" Value="#3E3E40"/>
+                <Setter Property="Foreground" Value="White"/>
+              </Style>
+              <!-- Style for custom close button in tabs -->
+              <Style Selector="Button.tab-close-btn">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="Width" Value="14"/>
+                <Setter Property="Height" Value="14"/>
+                <Setter Property="CornerRadius" Value="7"/>
+                <Setter Property="Foreground" Value="#999999"/>
+                <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+              </Style>
+              <Style Selector="Button.tab-close-btn:pointerover">
+                <Setter Property="Background" Value="#E81123"/>
+                <Setter Property="Foreground" Value="White"/>
+              </Style>
+            </TabControl.Styles>
+          </TabControl>
+        </Grid>
         <Panel x:Name="QueryTabContentContainer" Grid.Row="1" Background="#1E1E1E"/>
       </Grid>
     </Grid>

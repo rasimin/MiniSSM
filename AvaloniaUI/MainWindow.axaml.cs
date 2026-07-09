@@ -40,6 +40,7 @@ public partial class MainWindow : Window
     public ICommand NewQueryCommand { get; }
     public ICommand OpenCommand { get; }
     public ICommand SaveCommand { get; }
+    public ICommand SaveAsCommand { get; }
     public ICommand ToggleExplorerCommand { get; }
 
     public MainWindow() : this("") { }
@@ -51,6 +52,7 @@ public partial class MainWindow : Window
         NewQueryCommand = new ActionCommand(() => CreateQueryTab());
         OpenCommand = new ActionCommand(() => _ = OpenSqlAsync());
         SaveCommand = new ActionCommand(() => _ = SaveSqlAsync());
+        SaveAsCommand = new ActionCommand(() => _ = SaveSqlAsync(true));
         ToggleExplorerCommand = new ActionCommand(ToggleExplorer);
         InitializeComponent();
         DataContext = this;
@@ -569,6 +571,7 @@ public partial class MainWindow : Window
     private async void Execute_OnClick(object? sender, RoutedEventArgs e) => await ExecuteActiveAsync();
     private async void Open_OnClick(object? sender, RoutedEventArgs e) => await OpenSqlAsync();
     private async void Save_OnClick(object? sender, RoutedEventArgs e) => await SaveSqlAsync();
+    private async void SaveAs_OnClick(object? sender, RoutedEventArgs e) => await SaveSqlAsync(true);
     
     private async void Comment_OnClick(object? sender, RoutedEventArgs e)
     {
