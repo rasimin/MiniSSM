@@ -63,6 +63,7 @@ Lokasi utama: `MainWindow.xaml.cs`.
   - `Column`, `Index`, `Trigger`
 - Folder filter ada di `_folderFilters`, `CreateFolderContextMenu`, `OpenFilterDialog`, `GetFolderHeader`.
 - Context menu object ada di `CreateObjectContextMenu`.
+- Semua node Object Explorer yang memiliki `ObjectExplorerNode` mendapat menu `Copy Name` secara otomatis saat diklik kanan; nama diambil dari `DetailName` atau identitas node/folder tanpa icon header.
 - Context menu folder object dibuat oleh `CreateFolderContextMenu`; Tables, Views, Stored Procedures, dan kedua jenis Functions menyediakan template `Create New`.
 - Saat lazy-load metadata berjalan, node menampilkan teks titik bergerak lewat `CreateAnimatedLoadingItem`.
 - Script object dibuat lewat `ScriptObjectToQueryTabAsync`.
@@ -100,7 +101,10 @@ Hal penting:
 - `MainWindow` meneruskan pesan native `WM_MOUSEHWHEEL` dari gesture dua jari touchpad ke `ScrollViewer` horizontal di bawah pointer.
 - `RunEditorCommand(...)` menjalankan fungsi JavaScript di Monaco.
 - `SaveActiveTabQuery()` menyimpan ke path tab aktif, sedangkan Save As selalu meminta path baru; `OpenSqlFile()` dan drag-drop file `.sql` membuka setiap file sebagai tab baru. External drop WebView2 dimatikan agar drop di area Monaco tetap ditangani window.
-- `QueryTabControl.CacheAndRefreshAutocompleteAsync()` mengambil metadata tabel/kolom dan memanggil `updateMetadata(...)` di editor.
+- `QueryTabControl.CacheAndRefreshAutocompleteAsync()` mengirim payload metadata terpadu: tabel/view beserta kolom dan jenis object, stored procedure, scalar/table-valued function, parameter routine, daftar database, dan database aktif.
+- Provider Monaco memfilter suggestion berdasarkan konteks: table/view/table-valued function setelah `FROM`/`JOIN`/`APPLY`, scalar function di expression, SP setelah `EXEC`/`EXECUTE`, dan parameter setelah routine dipilih.
+- Autocomplete mengenali bracketed identifier, CTE, temporary table, dan kolom lokal yang dapat diinferensikan. Metadata lintas database dimuat on-demand melalui pesan `loadDatabaseMetadata` saat pola `Database.Schema.` diketik.
+- Eksekusi DDL `CREATE`/`ALTER`/`DROP` untuk table, view, procedure, atau function menginvalidasi cache database aktif dan me-refresh autocomplete.
 - Monaco mengirim pesan `editorReady` dan memasang binding eksplisit `Ctrl+Space`; metadata dikirim ulang setelah editor siap agar suggestion tidak kosong akibat race saat navigasi.
 
 Jika mengubah fitur editor seperti autocomplete, comment/uncomment, keyboard shortcut Monaco, atau get/set text, cek `sql_editor.html` dulu.

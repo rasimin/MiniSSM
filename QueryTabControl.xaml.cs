@@ -26,6 +26,12 @@ namespace SSMS
         public int TotalResultColumns { get; private set; } = 0;
 
         private readonly Dictionary<string, Dictionary<string, List<string>>> _metadataCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, List<string>> _storedProcedureCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, List<string>> _scalarFunctionCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, List<string>> _tableFunctionCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Dictionary<string, string>> _objectTypeCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Dictionary<string, List<string>>> _routineParameterCache = new(StringComparer.OrdinalIgnoreCase);
+        private List<string>? _databaseCache;
         private const double EditorMinHeight = 60;
         private const double ResultsMinHeight = 90;
         private const double ResultsResizeGripHeight = 12;
@@ -223,6 +229,15 @@ namespace SSMS
                 {
                     _ = CacheAndRefreshAutocompleteAsync();
                 }
+                else if (action.GetString() == "loadDatabaseMetadata" &&
+                         doc.RootElement.TryGetProperty("databaseName", out var databaseElement))
+                {
+                    string? databaseName = databaseElement.GetString();
+                    if (!string.IsNullOrWhiteSpace(databaseName))
+                    {
+                        _ = LoadCrossDatabaseMetadataAsync(databaseName);
+                    }
+                }
             }
             catch { }
         }
@@ -288,6 +303,15 @@ namespace SSMS
                     }
                     mainWindow?.UpdateStatusTime($"Success: {result.ExecutionTime.TotalMilliseconds:F2} ms");
                     mainWindow?.UpdateStatusRowsAndColumns(TotalResultRows, TotalResultColumns);
+
+                    if (System.Text.RegularExpressions.Regex.IsMatch(
+                        sqlQuery,
+                        @"\b(CREATE|ALTER|DROP)\s+(TABLE|VIEW|PROCEDURE|PROC|FUNCTION)\b",
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                    {
+                        InvalidateAutocompleteCache(DatabaseName);
+                        await CacheAndRefreshAutocompleteAsync();
+                    }
                 }
                 else
                 {
@@ -328,13 +352,18 @@ namespace SSMS
                     await connection.OpenAsync();
                     
                     var query = @"
-                        SELECT s.name AS SchemaName, t.name AS TableName, c.name AS ColumnName
-                        FROM sys.tables t
-                        JOIN sys.schemas s ON t.schema_id = s.schema_id
-                        JOIN sys.columns c ON t.object_id = c.object_id
-                        ORDER BY s.name, t.name, c.column_id;";
+                        SELECT s.name AS SchemaName,
+                               o.name AS ObjectName,
+                               c.name AS ColumnName,
+                               CASE WHEN o.type = 'V' THEN 'View' ELSE 'Table' END AS ObjectType
+                        FROM sys.objects o
+                        JOIN sys.schemas s ON o.schema_id = s.schema_id
+                        JOIN sys.columns c ON o.object_id = c.object_id
+                        WHERE o.type IN ('U', 'V')
+                        ORDER BY s.name, o.name, c.column_id;";
 
                     var tableColumns = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+                    var objectTypes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
                     using var command = new Microsoft.Data.SqlClient.SqlCommand(query, connection);
                     using var reader = await command.ExecuteReaderAsync();
@@ -343,9 +372,12 @@ namespace SSMS
                         string schema = reader.GetString(0);
                         string table = reader.GetString(1);
                         string column = reader.GetString(2);
+                        string objectType = reader.GetString(3);
                         
                         string fullKey = $"{schema}.{table}";
                         string shortKey = table;
+                        objectTypes[fullKey] = objectType;
+                        objectTypes.TryAdd(shortKey, objectType);
 
                         if (!tableColumns.TryGetValue(fullKey, out var cols))
                         {
@@ -365,15 +397,137 @@ namespace SSMS
                         }
                     }
                     _metadataCache[DatabaseName] = tableColumns;
+                    _objectTypeCache[DatabaseName] = objectTypes;
                 }
 
+                if (!_storedProcedureCache.ContainsKey(DatabaseName))
+                {
+                    _storedProcedureCache[DatabaseName] =
+                        await DatabaseHelper.GetStoredProceduresAsync(ConnectionString, DatabaseName);
+                }
+
+                if (!_scalarFunctionCache.ContainsKey(DatabaseName))
+                {
+                    _scalarFunctionCache[DatabaseName] =
+                        await DatabaseHelper.GetFunctionsAsync(ConnectionString, DatabaseName, tableValued: false);
+                }
+
+                if (!_tableFunctionCache.ContainsKey(DatabaseName))
+                {
+                    _tableFunctionCache[DatabaseName] =
+                        await DatabaseHelper.GetFunctionsAsync(ConnectionString, DatabaseName, tableValued: true);
+                }
+
+                if (!_routineParameterCache.ContainsKey(DatabaseName))
+                {
+                    var parameters = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+                    var dbConnString = DatabaseHelper.BuildConnectionString(ConnectionString, DatabaseName);
+                    using var parameterConnection = new Microsoft.Data.SqlClient.SqlConnection(dbConnString);
+                    await parameterConnection.OpenAsync();
+                    const string parameterQuery = @"
+                        SELECT s.name + '.' + o.name AS RoutineName, p.name AS ParameterName
+                        FROM sys.objects o
+                        JOIN sys.schemas s ON o.schema_id = s.schema_id
+                        JOIN sys.parameters p ON o.object_id = p.object_id
+                        WHERE o.type IN ('P', 'PC', 'FN', 'IF', 'TF', 'FS', 'FT')
+                          AND p.parameter_id > 0
+                        ORDER BY s.name, o.name, p.parameter_id;";
+                    using var parameterCommand = new Microsoft.Data.SqlClient.SqlCommand(parameterQuery, parameterConnection);
+                    using var parameterReader = await parameterCommand.ExecuteReaderAsync();
+                    while (await parameterReader.ReadAsync())
+                    {
+                        string routineName = parameterReader.GetString(0);
+                        string parameterName = parameterReader.GetString(1);
+                        if (!parameters.TryGetValue(routineName, out var routineParameters))
+                        {
+                            routineParameters = new List<string>();
+                            parameters[routineName] = routineParameters;
+                        }
+                        routineParameters.Add(parameterName);
+                    }
+                    _routineParameterCache[DatabaseName] = parameters;
+                }
+
+                _databaseCache ??= await DatabaseHelper.GetDatabasesAsync(ConnectionString);
+
                 var meta = _metadataCache[DatabaseName];
-                string jsonMeta = JsonSerializer.Serialize(meta);
-                await SqlEditorWebView.ExecuteScriptAsync($"updateMetadata({jsonMeta});");
+                var storedProcedures = _storedProcedureCache[DatabaseName];
+                var scalarFunctions = _scalarFunctionCache[DatabaseName];
+                var tableFunctions = _tableFunctionCache[DatabaseName];
+                var payload = new
+                {
+                    columns = meta,
+                    objectTypes = _objectTypeCache[DatabaseName],
+                    storedProcedures,
+                    scalarFunctions,
+                    tableFunctions,
+                    routineParameters = _routineParameterCache[DatabaseName],
+                    databases = _databaseCache,
+                    activeDatabase = DatabaseName
+                };
+                string jsonPayload = JsonSerializer.Serialize(payload);
+                await SqlEditorWebView.ExecuteScriptAsync($"updateMetadata({jsonPayload});");
             }
             catch (Exception ex)
             {
                 AppLogger.Error(ex, $"Failed to load autocomplete metadata for database '{DatabaseName}'");
+            }
+        }
+
+        private void InvalidateAutocompleteCache(string databaseName)
+        {
+            _metadataCache.Remove(databaseName);
+            _objectTypeCache.Remove(databaseName);
+            _storedProcedureCache.Remove(databaseName);
+            _scalarFunctionCache.Remove(databaseName);
+            _tableFunctionCache.Remove(databaseName);
+            _routineParameterCache.Remove(databaseName);
+        }
+
+        private async Task LoadCrossDatabaseMetadataAsync(string databaseName)
+        {
+            try
+            {
+                var columns = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+                var objectTypes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                string dbConnectionString = DatabaseHelper.BuildConnectionString(ConnectionString, databaseName);
+                using var connection = new Microsoft.Data.SqlClient.SqlConnection(dbConnectionString);
+                await connection.OpenAsync();
+                const string query = @"
+                    SELECT s.name, o.name, c.name,
+                           CASE WHEN o.type = 'V' THEN 'View' ELSE 'Table' END
+                    FROM sys.objects o
+                    JOIN sys.schemas s ON o.schema_id = s.schema_id
+                    JOIN sys.columns c ON o.object_id = c.object_id
+                    WHERE o.type IN ('U', 'V')
+                    ORDER BY s.name, o.name, c.column_id;";
+                using var command = new Microsoft.Data.SqlClient.SqlCommand(query, connection);
+                using var reader = await command.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    string key = $"{reader.GetString(0)}.{reader.GetString(1)}";
+                    if (!columns.TryGetValue(key, out var objectColumns))
+                    {
+                        objectColumns = new List<string>();
+                        columns[key] = objectColumns;
+                    }
+                    objectColumns.Add(reader.GetString(2));
+                    objectTypes[key] = reader.GetString(3);
+                }
+
+                var scalarFunctions =
+                    await DatabaseHelper.GetFunctionsAsync(ConnectionString, databaseName, tableValued: false);
+                var tableFunctions =
+                    await DatabaseHelper.GetFunctionsAsync(ConnectionString, databaseName, tableValued: true);
+                var payload = new { columns, objectTypes, scalarFunctions, tableFunctions };
+                string jsonDatabase = JsonSerializer.Serialize(databaseName);
+                string jsonPayload = JsonSerializer.Serialize(payload);
+                await SqlEditorWebView.ExecuteScriptAsync(
+                    $"updateDatabaseMetadata({jsonDatabase}, {jsonPayload});");
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error(ex, $"Failed to load cross-database autocomplete metadata for '{databaseName}'");
             }
         }
 

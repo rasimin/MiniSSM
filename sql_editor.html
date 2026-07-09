@@ -23,11 +23,20 @@
         var tableColumns = {}; // Key: "schema.table" & "table", Value: ["col1", "col2", ...]
         var schemas = [];      // Unique schema list
         var tables = [];       // Unique table list
+        var storedProcedures = [];
+        var scalarFunctions = [];
+        var tableFunctions = [];
+        var objectTypes = {};
+        var routineParameters = {};
+        var databases = [];
+        var activeDatabase = '';
+        var databaseMetadata = {};
+        var pendingDatabaseMetadata = {};
 
         require(['vs/editor/editor.main'], function () {
             // Register custom completion item provider for sql
             monaco.languages.registerCompletionItemProvider('sql', {
-                triggerCharacters: ['.'],
+                triggerCharacters: ['.', ' '],
                 provideCompletionItems: function (model, position) {
                     var word = model.getWordUntilPosition(position);
                     var range = {
@@ -42,24 +51,171 @@
                     var isAfterDot = textBeforeCursor.endsWith('.');
                     
                     var suggestions = [];
+                    var fullSql = model.getValue();
+                    var sourceContext = /\b(?:FROM|JOIN|APPLY)\s+[\[\]a-zA-Z0-9_.#]*$/i.test(textBeforeCursor);
+
+                    // Suggest routine parameters after EXEC proc or inside a function call.
+                    var routineContext = textBeforeCursor.match(/\bEXEC(?:UTE)?\s+([\[\]a-zA-Z0-9_.]+)\s+(?:[^;]*)$/i) ||
+                        textBeforeCursor.match(/([\[\]a-zA-Z0-9_.]+)\s*\([^)]*$/i);
+                    if (routineContext) {
+                        var routineName = routineContext[1].replace(/[\[\]]/g, '');
+                        var parameters = routineParameters[routineName];
+                        if (!parameters) {
+                            Object.keys(routineParameters).some(key => {
+                                if (key.toLowerCase().endsWith('.' + routineName.toLowerCase())) {
+                                    parameters = routineParameters[key];
+                                    return true;
+                                }
+                                return false;
+                            });
+                        }
+                        if (parameters) {
+                            parameters.forEach(parameterName => {
+                                suggestions.push({
+                                    label: parameterName,
+                                    kind: monaco.languages.CompletionItemKind.Variable,
+                                    insertText: parameterName,
+                                    detail: "Routine Parameter (" + routineName + ")",
+                                    sortText: "0_" + parameterName,
+                                    range: range
+                                });
+                            });
+                            return { suggestions: suggestions };
+                        }
+                    }
+
+                    // After EXEC/EXECUTE, suggest stored procedures instead of tables/columns.
+                    var execMatch = textBeforeCursor.match(/\bEXEC(?:UTE)?\s+([a-zA-Z0-9_.]*)$/i);
+                    if (execMatch) {
+                        var procedureToken = execMatch[1];
+                        var schemaPrefix = procedureToken.indexOf('.') > -1
+                            ? procedureToken.substring(0, procedureToken.lastIndexOf('.') + 1)
+                            : '';
+
+                        storedProcedures.forEach(procedureName => {
+                            if (schemaPrefix && !procedureName.toLowerCase().startsWith(schemaPrefix.toLowerCase())) {
+                                return;
+                            }
+
+                            var insertName = schemaPrefix
+                                ? procedureName.substring(procedureName.lastIndexOf('.') + 1)
+                                : procedureName;
+
+                            suggestions.push({
+                                label: procedureName,
+                                kind: monaco.languages.CompletionItemKind.Function,
+                                insertText: insertName,
+                                detail: "Stored Procedure",
+                                sortText: "0_" + procedureName,
+                                range: range
+                            });
+                        });
+
+                        return { suggestions: suggestions };
+                    }
 
                     if (isAfterDot) {
+                        var crossDatabaseMatch = textBeforeCursor.match(/(?:\[([^\]]+)\]|([a-zA-Z0-9_]+))\.(?:\[([^\]]+)\]|([a-zA-Z0-9_]+))\.$/);
+                        if (crossDatabaseMatch) {
+                            var crossDatabase = crossDatabaseMatch[1] || crossDatabaseMatch[2];
+                            var crossSchema = crossDatabaseMatch[3] || crossDatabaseMatch[4];
+                            var crossMeta = databaseMetadata[crossDatabase.toLowerCase()];
+                            if (!crossMeta) {
+                                requestDatabaseMetadata(crossDatabase);
+                                return { suggestions: [] };
+                            }
+                            Object.keys(crossMeta.columns || {}).forEach(objectName => {
+                                if (sourceContext && objectName.toLowerCase().startsWith(crossSchema.toLowerCase() + '.')) {
+                                    var shortName = objectName.substring(crossSchema.length + 1);
+                                    suggestions.push({
+                                        label: shortName,
+                                        kind: monaco.languages.CompletionItemKind.Class,
+                                        insertText: shortName,
+                                        detail: (crossMeta.objectTypes[objectName] || "Table") + " (" + crossDatabase + "." + crossSchema + ")",
+                                        range: range
+                                    });
+                                }
+                            });
+                            var crossFunctions = sourceContext
+                                ? (crossMeta.tableFunctions || [])
+                                : (crossMeta.scalarFunctions || []);
+                            crossFunctions.forEach(functionName => {
+                                if (functionName.toLowerCase().startsWith(crossSchema.toLowerCase() + '.')) {
+                                    suggestions.push({
+                                        label: functionName.substring(crossSchema.length + 1),
+                                        kind: monaco.languages.CompletionItemKind.Function,
+                                        insertText: functionName.substring(crossSchema.length + 1),
+                                        detail: (sourceContext ? "Table-valued" : "Scalar") + " Function (" + crossDatabase + "." + crossSchema + ")",
+                                        range: range
+                                    });
+                                }
+                            });
+                            return { suggestions: suggestions };
+                        }
+
                         // Find the word preceding the dot
-                        var match = textBeforeCursor.match(/([a-zA-Z0-9_\u00c0-\u00ff]+)\.$/);
+                        var match = textBeforeCursor.match(/(\[?[a-zA-Z0-9_\u00c0-\u00ff]+\]?)\.$/);
                         if (match) {
-                            var identifier = match[1];
+                            var identifier = match[1].replace(/[\[\]]/g, '');
+
+                            var databaseName = databases.find(name => name.toLowerCase() === identifier.toLowerCase());
+                            if (databaseName && databaseName.toLowerCase() !== activeDatabase.toLowerCase()) {
+                                var databaseMeta = databaseMetadata[databaseName.toLowerCase()];
+                                if (!databaseMeta) {
+                                    requestDatabaseMetadata(databaseName);
+                                    return { suggestions: [] };
+                                }
+                                var databaseSchemas = new Set();
+                                Object.keys(databaseMeta.columns || {}).forEach(name => databaseSchemas.add(name.split('.')[0]));
+                                databaseSchemas.forEach(schemaName => {
+                                    suggestions.push({
+                                        label: schemaName,
+                                        kind: monaco.languages.CompletionItemKind.Module,
+                                        insertText: schemaName,
+                                        detail: "Schema (" + databaseName + ")",
+                                        range: range
+                                    });
+                                });
+                                return { suggestions: suggestions };
+                            }
 
                             // 1. Check if the identifier is a Schema
                             if (schemas.indexOf(identifier) > -1) {
                                 // List tables under this schema
                                 tables.forEach(t => {
-                                    if (t.startsWith(identifier + '.')) {
+                                    if (sourceContext && t.toLowerCase().startsWith((identifier + '.').toLowerCase())) {
                                         var tableNameOnly = t.substring(identifier.length + 1);
                                         suggestions.push({
                                             label: tableNameOnly,
                                             kind: monaco.languages.CompletionItemKind.Class,
                                             insertText: tableNameOnly,
-                                            detail: "Table (" + identifier + ")",
+                                            detail: (objectTypes[t] || "Table") + " (" + identifier + ")",
+                                            range: range
+                                        });
+                                    }
+                                });
+
+                                scalarFunctions.forEach(functionName => {
+                                    if (!sourceContext && functionName.toLowerCase().startsWith((identifier + '.').toLowerCase())) {
+                                        var shortName = functionName.substring(identifier.length + 1);
+                                        suggestions.push({
+                                            label: shortName,
+                                            kind: monaco.languages.CompletionItemKind.Function,
+                                            insertText: shortName,
+                                            detail: "Scalar Function (" + identifier + ")",
+                                            range: range
+                                        });
+                                    }
+                                });
+
+                                tableFunctions.forEach(functionName => {
+                                    if (sourceContext && functionName.toLowerCase().startsWith((identifier + '.').toLowerCase())) {
+                                        var shortName = functionName.substring(identifier.length + 1);
+                                        suggestions.push({
+                                            label: shortName,
+                                            kind: monaco.languages.CompletionItemKind.Function,
+                                            insertText: shortName,
+                                            detail: "Table-valued Function (" + identifier + ")",
                                             range: range
                                         });
                                     }
@@ -72,7 +228,6 @@
 
                             // 3. Check if the identifier is a Table Alias
                             if (!columns) {
-                                var fullSql = model.getValue();
                                 var realTableName = getTableForAlias(identifier, fullSql);
                                 if (realTableName) {
                                     columns = tableColumns[realTableName];
@@ -102,15 +257,7 @@
                     if (endsWithAsterisk) {
                         var queryTables = getTablesInQuery(model.getValue());
                         queryTables.forEach(qt => {
-                            var cols = tableColumns[qt];
-                            if (!cols) {
-                                for (var key in tableColumns) {
-                                    if (key.endsWith('.' + qt)) {
-                                        cols = tableColumns[key];
-                                        break;
-                                    }
-                                }
-                            }
+                            var cols = findColumns(qt);
                             if (cols) {
                                 var columnList = cols.join(', ');
                                 suggestions.push({
@@ -133,6 +280,17 @@
                     }
 
                     // Otherwise, provide general suggestions (Keywords, Snippets, Schemas, and Tables)
+
+                    var localObjects = getLocalObjects(fullSql);
+                    Object.keys(localObjects).forEach(objectName => {
+                        suggestions.push({
+                            label: objectName,
+                            kind: monaco.languages.CompletionItemKind.Struct,
+                            insertText: objectName,
+                            detail: localObjects[objectName].type,
+                            range: range
+                        });
+                    });
                     
                     // 1. Snippet ssf: SELECT TOP 50 * FROM
                     suggestions.push({
@@ -147,15 +305,7 @@
                     // 2. Columns of tables present in the current query (Smart Autocomplete like Redgate)
                     var queryTables = getTablesInQuery(model.getValue());
                     queryTables.forEach(qt => {
-                        var cols = tableColumns[qt];
-                        if (!cols) {
-                            for (var key in tableColumns) {
-                                if (key.endsWith('.' + qt)) {
-                                    cols = tableColumns[key];
-                                    break;
-                                }
-                            }
-                        }
+                        var cols = findColumns(qt);
                         if (cols) {
                             cols.forEach(col => {
                                 suggestions.push({
@@ -197,12 +347,49 @@
                     });
 
                     // 5. Tables
-                    tables.forEach(t => {
+                    if (sourceContext || textBeforeCursor.trim().length === 0) {
+                        tables.forEach(t => {
+                            suggestions.push({
+                                label: t,
+                                kind: monaco.languages.CompletionItemKind.Class,
+                                insertText: t,
+                                detail: objectTypes[t] || "Table",
+                                range: range
+                            });
+                        });
+                    }
+
+                    // 6. Scalar and table-valued functions
+                    if (!sourceContext) {
+                        scalarFunctions.forEach(functionName => {
+                            suggestions.push({
+                                label: functionName,
+                                kind: monaco.languages.CompletionItemKind.Function,
+                                insertText: functionName,
+                                detail: "Scalar Function",
+                                range: range
+                            });
+                        });
+                    }
+
+                    if (sourceContext) {
+                        tableFunctions.forEach(functionName => {
+                            suggestions.push({
+                                label: functionName,
+                                kind: monaco.languages.CompletionItemKind.Function,
+                                insertText: functionName,
+                                detail: "Table-valued Function",
+                                range: range
+                            });
+                        });
+                    }
+
+                    databases.forEach(databaseName => {
                         suggestions.push({
-                            label: t,
-                            kind: monaco.languages.CompletionItemKind.Class,
-                            insertText: t,
-                            detail: "Table",
+                            label: databaseName,
+                            kind: monaco.languages.CompletionItemKind.Module,
+                            insertText: '[' + databaseName + ']',
+                            detail: databaseName === activeDatabase ? "Active Database" : "Database",
                             range: range
                         });
                     });
@@ -244,7 +431,7 @@
         // Extract tables used in the query (FROM TableName / JOIN TableName)
         function getTablesInQuery(sqlText) {
             var tablesFound = [];
-            var regex = /(?:FROM|JOIN)\s+([a-zA-Z0-9_\.\[\]]+)/gi;
+            var regex = /(?:FROM|JOIN|APPLY)\s+([#a-zA-Z0-9_\.\[\]]+)/gi;
             var match;
             while ((match = regex.exec(sqlText)) !== null) {
                 var tableName = match[1].replace(/[\[\]]/g, ''); // Strip square brackets
@@ -255,14 +442,104 @@
             return tablesFound;
         }
 
+        function requestDatabaseMetadata(databaseName) {
+            var key = databaseName.toLowerCase();
+            if (pendingDatabaseMetadata[key] || databaseMetadata[key]) {
+                return;
+            }
+            pendingDatabaseMetadata[key] = true;
+            window.chrome.webview.postMessage({
+                action: 'loadDatabaseMetadata',
+                databaseName: databaseName
+            });
+        }
+
+        function updateDatabaseMetadata(databaseName, metadata) {
+            var key = databaseName.toLowerCase();
+            databaseMetadata[key] = metadata || { columns: {}, objectTypes: {} };
+            delete pendingDatabaseMetadata[key];
+            if (editor) {
+                editor.trigger('metadata', 'editor.action.triggerSuggest', {});
+            }
+        }
+
+        function findColumns(objectName) {
+            var normalized = objectName.replace(/[\[\]]/g, '');
+            var columns = tableColumns[normalized];
+            if (columns) {
+                return columns;
+            }
+
+            for (var key in tableColumns) {
+                if (key.toLowerCase().endsWith('.' + normalized.toLowerCase())) {
+                    return tableColumns[key];
+                }
+            }
+
+            var parts = normalized.split('.');
+            if (parts.length >= 3) {
+                var databaseName = parts[parts.length - 3].toLowerCase();
+                var schemaObject = parts.slice(-2).join('.');
+                var metadata = databaseMetadata[databaseName];
+                return metadata && metadata.columns ? metadata.columns[schemaObject] : null;
+            }
+            return null;
+        }
+
         // Resolve Table Alias by searching backwards in sql text
         function getTableForAlias(alias, sqlText) {
-            var regex = new RegExp("(?:FROM|JOIN)\\s+([a-zA-Z0-9_\\.\\[\\]]+)\\s+(?:AS\\s+)?" + alias + "\\b", "i");
+            var regex = new RegExp("(?:FROM|JOIN|APPLY)\\s+([#a-zA-Z0-9_\\.\\[\\]]+)\\s+(?:AS\\s+)?" + alias + "\\b", "i");
             var match = sqlText.match(regex);
             if (match) {
                 return match[1].replace(/[\[\]]/g, '');
             }
             return null;
+        }
+
+        // Extract CTEs and temporary tables declared in the current editor text.
+        function getLocalObjects(sqlText) {
+            var objects = {};
+            var cteRegex = /(?:\bWITH|,)\s*(\[?[a-zA-Z0-9_]+\]?)\s*(?:\(([^)]*)\))?\s+AS\s*\(/gi;
+            var match;
+            while ((match = cteRegex.exec(sqlText)) !== null) {
+                var cteName = match[1].replace(/[\[\]]/g, '');
+                var cteColumns = match[2]
+                    ? match[2].split(',').map(c => c.trim().replace(/[\[\]]/g, '')).filter(Boolean)
+                    : [];
+                objects[cteName] = { type: "CTE", columns: cteColumns };
+                tableColumns[cteName] = cteColumns;
+            }
+
+            var inferredCteRegex = /(?:\bWITH|,)\s*(\[?[a-zA-Z0-9_]+\]?)\s+AS\s*\(\s*SELECT\s+([\s\S]*?)\s+FROM\b/gi;
+            while ((match = inferredCteRegex.exec(sqlText)) !== null) {
+                var inferredName = match[1].replace(/[\[\]]/g, '');
+                var inferredColumns = match[2].split(',').map(expression => {
+                    var aliasMatch = expression.trim().match(/\bAS\s+(\[?[a-zA-Z0-9_]+\]?)\s*$/i);
+                    if (aliasMatch) {
+                        return aliasMatch[1].replace(/[\[\]]/g, '');
+                    }
+                    var cleanExpression = expression.trim().replace(/[\[\]]/g, '');
+                    var parts = cleanExpression.split('.');
+                    var candidate = parts[parts.length - 1].match(/[a-zA-Z0-9_]+$/);
+                    return candidate ? candidate[0] : null;
+                }).filter(Boolean);
+                if (objects[inferredName] && objects[inferredName].columns.length === 0) {
+                    objects[inferredName].columns = inferredColumns;
+                    tableColumns[inferredName] = inferredColumns;
+                }
+            }
+
+            var tempRegex = /\bCREATE\s+TABLE\s+(#(?:#)?[a-zA-Z0-9_]+)\s*\(([\s\S]*?)\)/gi;
+            while ((match = tempRegex.exec(sqlText)) !== null) {
+                var tempColumns = match[2].split(',').map(definition => {
+                    var columnMatch = definition.trim().match(/^(\[?[a-zA-Z0-9_]+\]?)/);
+                    return columnMatch ? columnMatch[1].replace(/[\[\]]/g, '') : null;
+                }).filter(Boolean);
+                objects[match[1]] = { type: "Temporary Table", columns: tempColumns };
+                tableColumns[match[1]] = tempColumns;
+            }
+
+            return objects;
         }
 
         // C# callable functions:
@@ -362,7 +639,15 @@
         }
 
         function updateMetadata(meta) {
-            tableColumns = meta || {};
+            meta = meta || {};
+            tableColumns = meta.columns || {};
+            objectTypes = meta.objectTypes || {};
+            storedProcedures = meta.storedProcedures || [];
+            scalarFunctions = meta.scalarFunctions || [];
+            tableFunctions = meta.tableFunctions || [];
+            routineParameters = meta.routineParameters || {};
+            databases = meta.databases || [];
+            activeDatabase = meta.activeDatabase || '';
             tables = Object.keys(tableColumns);
             
             // Extract unique schemas from keys (e.g. "dbo" from "dbo.customers")
@@ -370,6 +655,11 @@
             tables.forEach(t => {
                 if (t.indexOf('.') > -1) {
                     schemaSet.add(t.split('.')[0]);
+                }
+            });
+            scalarFunctions.concat(tableFunctions).forEach(functionName => {
+                if (functionName.indexOf('.') > -1) {
+                    schemaSet.add(functionName.split('.')[0]);
                 }
             });
             schemas = Array.from(schemaSet);

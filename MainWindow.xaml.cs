@@ -2083,9 +2083,78 @@ namespace SSMS
                 {
                     treeViewItem.IsSelected = true;
                     treeViewItem.Focus();
+                    EnsureCopyNameContextMenu(treeViewItem);
                 }
                 e.Handled = false;
             }
+        }
+
+        private void EnsureCopyNameContextMenu(TreeViewItem item)
+        {
+            if (item.Tag is not ObjectExplorerNode node)
+            {
+                return;
+            }
+
+            string copyName = GetObjectExplorerCopyName(node);
+            if (string.IsNullOrWhiteSpace(copyName))
+            {
+                return;
+            }
+
+            item.ContextMenu ??= new ContextMenu();
+            if (item.ContextMenu.Items.OfType<MenuItem>().Any(menuItem => Equals(menuItem.Tag, "CopyObjectName")))
+            {
+                return;
+            }
+
+            var copyNameItem = new MenuItem
+            {
+                Header = "Copy Name",
+                Tag = "CopyObjectName"
+            };
+            copyNameItem.Click += (_, _) =>
+            {
+                try
+                {
+                    Clipboard.SetText(copyName);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Failed to copy name: {ex.Message}", "Copy Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            };
+
+            item.ContextMenu.Items.Insert(0, copyNameItem);
+            if (item.ContextMenu.Items.Count > 1)
+            {
+                item.ContextMenu.Items.Insert(1, new Separator());
+            }
+        }
+
+        private static string GetObjectExplorerCopyName(ObjectExplorerNode node)
+        {
+            if (!string.IsNullOrWhiteSpace(node.DetailName))
+            {
+                return node.DetailName;
+            }
+
+            return node.NodeType switch
+            {
+                "Server" => new SqlConnectionStringBuilder(node.ConnectionString).DataSource,
+                "Database" => node.DatabaseName,
+                "DatabasesFolder" => "Databases",
+                "TablesFolder" => "Tables",
+                "ViewsFolder" => "Views",
+                "SpsFolder" => "Stored Procedures",
+                "FuncsFolder" => "Functions",
+                "ScalarFunctionsFolder" => "Scalar-valued Functions",
+                "TableFunctionsFolder" => "Table-valued Functions",
+                "ColumnsFolder" => "Columns",
+                "IndexesFolder" => "Indexes",
+                "TriggersFolder" => "Triggers",
+                _ => string.Empty
+            };
         }
 
         #endregion
