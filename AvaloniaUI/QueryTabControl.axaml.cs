@@ -1,8 +1,11 @@
 using System.Data;
+using System.Text;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Data;
+using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Avalonia.Media;
@@ -187,7 +190,9 @@ public partial class QueryTabControl : UserControl
                 ColumnHeaderHeight = 28,
                 Background = Brush.Parse("#1E1E1E"),
                 GridLinesVisibility = DataGridGridLinesVisibility.All,
-                HeadersVisibility = DataGridHeadersVisibility.All
+                HeadersVisibility = DataGridHeadersVisibility.All,
+                SelectionMode = DataGridSelectionMode.Extended,
+                CanUserResizeColumns = true
             };
 
             // Custom row header numbers
@@ -198,9 +203,21 @@ public partial class QueryTabControl : UserControl
 
             foreach (DataColumn column in table.Columns)
             {
+                var headerTextBox = new TextBox
+                {
+                    Text = column.ColumnName,
+                    IsReadOnly = true,
+                    BorderThickness = new Thickness(0),
+                    Background = Brush.Parse("Transparent"),
+                    Foreground = Brush.Parse("White"),
+                    Padding = new Thickness(0),
+                    Margin = new Thickness(0),
+                    Cursor = new Cursor(StandardCursorType.Ibeam)
+                };
+
                 grid.Columns.Add(new DataGridTextColumn
                 {
-                    Header = column.ColumnName,
+                    Header = headerTextBox,
                     Binding = new Binding($"ItemArray[{column.Ordinal}]")
                     {
                         Converter = SqlResultValueConverter.Instance
@@ -208,6 +225,31 @@ public partial class QueryTabControl : UserControl
                     Width = new DataGridLength(120)
                 });
             }
+
+            // Context Menu (Copy & Copy with Headers)
+            var contextMenu = new ContextMenu
+            {
+                Background = Brush.Parse("#1E1E1E"),
+                BorderBrush = Brush.Parse("#2D2D30")
+            };
+
+            var copyMenu = new MenuItem
+            {
+                Header = "Copy",
+                Foreground = Brush.Parse("#CCCCCC")
+            };
+            copyMenu.Click += (s, e) => CopyGridToClipboard(grid, false);
+
+            var copyHeadersMenu = new MenuItem
+            {
+                Header = "Copy with Headers",
+                Foreground = Brush.Parse("#CCCCCC")
+            };
+            copyHeadersMenu.Click += (s, e) => CopyGridToClipboard(grid, true);
+
+            contextMenu.Items.Add(copyMenu);
+            contextMenu.Items.Add(copyHeadersMenu);
+            grid.ContextMenu = contextMenu;
 
             Grid.SetRow(grid, ResultsGridContainer.RowDefinitions.Count - 1);
             ResultsGridContainer.Children.Add(grid);
@@ -393,6 +435,55 @@ public partial class QueryTabControl : UserControl
         {
             EditorWebView.Focus();
             _ = EditorWebView.InvokeScript("focusEditor();");
+        }
+    }
+
+    private async void CopyGridToClipboard(DataGrid grid, bool includeHeaders)
+    {
+        try
+        {
+            var selectedItems = grid.SelectedItems;
+            if (selectedItems == null || selectedItems.Count == 0) return;
+
+            var rows = selectedItems.Cast<DataRow>().OrderBy(r => r.Table.Rows.IndexOf(r)).ToList();
+            if (rows.Count == 0) return;
+
+            var sb = new StringBuilder();
+            var table = rows[0].Table;
+
+            if (includeHeaders)
+            {
+                var headers = new List<string>();
+                foreach (DataColumn col in table.Columns)
+                {
+                    headers.Add(col.ColumnName);
+                }
+                sb.AppendLine(string.Join("\t", headers));
+            }
+
+            foreach (var row in rows)
+            {
+                var cells = new List<string>();
+                foreach (DataColumn col in table.Columns)
+                {
+                    var val = row[col];
+                    string cellText = val == null || val == DBNull.Value ? "NULL" : val.ToString() ?? "";
+                    cellText = cellText.Trim().Replace("\t", " ").Replace("\r", " ").Replace("\n", " ");
+                    cells.Add(cellText);
+                }
+                sb.AppendLine(string.Join("\t", cells));
+            }
+
+            var topLevel = TopLevel.GetTopLevel(grid);
+            var clipboard = topLevel?.Clipboard;
+            if (clipboard != null)
+            {
+                await clipboard.SetTextAsync(sb.ToString().TrimEnd('\r', '\n'));
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error(ex, "Failed to copy Grid data to Clipboard.");
         }
     }
 
