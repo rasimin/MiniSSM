@@ -55,6 +55,7 @@ public partial class QueryTabControl : UserControl
     {
         if (!e.IsSuccess) return;
         _editorReady = true;
+        EditorWebView.Opacity = 1.0;
         
         string checkScript = @"
             (function() {

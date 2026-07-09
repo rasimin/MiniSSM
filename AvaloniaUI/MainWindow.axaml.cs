@@ -33,12 +33,14 @@ public partial class MainWindow : Window
     private int _lastTargetIndex = -1;
 
     private readonly Dictionary<string, string> _folderFilters = new(StringComparer.OrdinalIgnoreCase);
+    private double _lastExplorerWidth = 260;
 
     public ObservableCollection<ExplorerNode> ExplorerRoots { get; } = [];
     public ICommand ExecuteCommand { get; }
     public ICommand NewQueryCommand { get; }
     public ICommand OpenCommand { get; }
     public ICommand SaveCommand { get; }
+    public ICommand ToggleExplorerCommand { get; }
 
     public MainWindow() : this("") { }
 
@@ -49,6 +51,7 @@ public partial class MainWindow : Window
         NewQueryCommand = new ActionCommand(() => CreateQueryTab());
         OpenCommand = new ActionCommand(() => _ = OpenSqlAsync());
         SaveCommand = new ActionCommand(() => _ = SaveSqlAsync());
+        ToggleExplorerCommand = new ActionCommand(ToggleExplorer);
         InitializeComponent();
         DataContext = this;
         ExplorerTree.AddHandler(TreeViewItem.ExpandedEvent, ExplorerNode_OnExpanded);
@@ -126,22 +129,22 @@ public partial class MainWindow : Window
         {
             database.Children.Clear();
 
-            var tablesFolder = new ExplorerNode { Name = "📁 Tables", Kind = "TablesFolder", Database = database.Database, ConnectionString = _connectionString };
+            var tablesFolder = new ExplorerNode { Name = "📁 Tables", Kind = "TablesFolder", Database = database.Database, ConnectionString = database.ConnectionString };
             tablesFolder.Children.Add(new ExplorerNode { Name = "Loading...", Kind = "Placeholder" });
             tablesFolder.NodeContextMenu = CreateFolderContextMenu(tablesFolder, "TablesFolder", "Tables");
             database.Children.Add(tablesFolder);
 
-            var viewsFolder = new ExplorerNode { Name = "📁 Views", Kind = "ViewsFolder", Database = database.Database, ConnectionString = _connectionString };
+            var viewsFolder = new ExplorerNode { Name = "📁 Views", Kind = "ViewsFolder", Database = database.Database, ConnectionString = database.ConnectionString };
             viewsFolder.Children.Add(new ExplorerNode { Name = "Loading...", Kind = "Placeholder" });
             viewsFolder.NodeContextMenu = CreateFolderContextMenu(viewsFolder, "ViewsFolder", "Views");
             database.Children.Add(viewsFolder);
 
-            var spsFolder = new ExplorerNode { Name = "📁 Stored Procedures", Kind = "SpsFolder", Database = database.Database, ConnectionString = _connectionString };
+            var spsFolder = new ExplorerNode { Name = "📁 Stored Procedures", Kind = "SpsFolder", Database = database.Database, ConnectionString = database.ConnectionString };
             spsFolder.Children.Add(new ExplorerNode { Name = "Loading...", Kind = "Placeholder" });
             spsFolder.NodeContextMenu = CreateFolderContextMenu(spsFolder, "SpsFolder", "Stored Procedures");
             database.Children.Add(spsFolder);
 
-            var funcsFolder = new ExplorerNode { Name = "📁 Functions", Kind = "FuncsFolder", Database = database.Database, ConnectionString = _connectionString };
+            var funcsFolder = new ExplorerNode { Name = "📁 Functions", Kind = "FuncsFolder", Database = database.Database, ConnectionString = database.ConnectionString };
             funcsFolder.Children.Add(new ExplorerNode { Name = "Loading...", Kind = "Placeholder" });
             funcsFolder.NodeContextMenu = CreateFolderContextMenu(funcsFolder, "FuncsFolder", "Functions");
             database.Children.Add(funcsFolder);
@@ -164,7 +167,7 @@ public partial class MainWindow : Window
         node.Children.Add(new ExplorerNode { Name = "Loading...", Kind = "Placeholder" });
         try
         {
-            var connStr = _connectionString;
+            var connStr = node.ConnectionString;
             var dbName = node.Database;
             var objName = node.ObjectName;
 
@@ -235,11 +238,24 @@ public partial class MainWindow : Window
         }
     }
 
-    private void CreateQueryTab(string? sql = null, string? title = null,
-        string? databaseName = null, string? filePath = null, bool autoExecute = false)
+    private void ToggleExplorer()
     {
+        if (ObjectExplorerBorder.IsVisible)
+        {
+            HideExplorer_OnClick(null, null!);
+        }
+        else
+        {
+            ShowExplorer_OnClick(null, null!);
+        }
+    }
+
+    private void CreateQueryTab(string? sql = null, string? title = null,
+        string? databaseName = null, string? filePath = null, bool autoExecute = false, string? connectionString = null)
+    {
+        var connStr = connectionString ?? _connectionString;
         var database = databaseName ?? DatabaseBox.SelectedItem as string ?? "master";
-        var query = new QueryTabControl(_connectionString, database, sql, autoExecute) { FilePath = filePath };
+        var query = new QueryTabControl(connStr, database, sql, autoExecute) { FilePath = filePath };
         
         TabItem? tab = null;
 
@@ -254,7 +270,7 @@ public partial class MainWindow : Window
         };
         
         query.ObjectDefinitionRequested += async (_, e) =>
-            await OpenObjectDefinitionAsync(database, e.ObjectType, e.ObjectName);
+            await OpenObjectDefinitionAsync(database, e.ObjectType, e.ObjectName, connStr);
 
         // Build tab header panel with close button
         var headerPanel = new StackPanel { Orientation = Orientation.Horizontal, Tag = "QueryTabDragHandle" };
@@ -295,21 +311,22 @@ public partial class MainWindow : Window
         tab.PointerPressed += TabItem_PointerPressed;
         tab.PointerMoved += TabItem_PointerMoved;
         tab.PointerReleased += TabItem_PointerReleased;
+        tab.DoubleTapped += TabItem_DoubleTapped;
 
         QueryTabContentContainer.Children.Add(query);
-        QueryTabs.Items.Add(tab);
+        QueryTabs.Items.Insert(0, tab);
         QueryTabs.SelectedItem = tab;
     }
 
-    private async Task OpenObjectDefinitionAsync(string database, string kind, string objectName)
+    private async Task OpenObjectDefinitionAsync(string database, string kind, string objectName, string connectionString)
     {
         try
         {
             StatusText.Text = $"Scripting {objectName}...";
             var sql = kind.Equals("Table", StringComparison.OrdinalIgnoreCase)
-                ? await DatabaseHelper.GenerateTableCreateScriptAsync(_connectionString, database, objectName)
-                : await DatabaseHelper.GetObjectDefinitionAsync(_connectionString, database, objectName);
-            CreateQueryTab(sql, objectName, database);
+                ? await DatabaseHelper.GenerateTableCreateScriptAsync(connectionString, database, objectName)
+                : await DatabaseHelper.GetObjectDefinitionAsync(connectionString, database, objectName);
+            CreateQueryTab(sql, objectName, database, connectionString: connectionString);
             StatusText.Text = "Ready";
         }
         catch (Exception ex)
@@ -377,6 +394,32 @@ public partial class MainWindow : Window
             return tb.Text ?? "";
         return tabItem.Header?.ToString() ?? "(untitled)";
     }
+ 
+    private async void TabItem_DoubleTapped(object? sender, Avalonia.Input.TappedEventArgs e)
+    {
+        if (sender is TabItem tabItem)
+        {
+            var currentTitle = GetTabHeaderText(tabItem);
+            var dialog = new InputDialog("Rename Tab", "Enter new tab name:", currentTitle);
+            var newTitle = await dialog.ShowInputAsync(this);
+            if (!string.IsNullOrWhiteSpace(newTitle))
+            {
+                SetTabHeaderText(tabItem, newTitle);
+            }
+        }
+    }
+ 
+    private void SetTabHeaderText(TabItem tabItem, string newTitle)
+    {
+        if (tabItem.Header is Panel p && p.Children.Count > 0 && p.Children[0] is TextBlock tb)
+        {
+            tb.Text = newTitle;
+        }
+        else
+        {
+            tabItem.Header = newTitle;
+        }
+    }
 
     private async void ExplorerTree_OnDoubleTapped(object? sender, Avalonia.Input.TappedEventArgs e)
     {
@@ -387,7 +430,7 @@ public partial class MainWindow : Window
         }
         else if (node.Kind is "Table" or "View" or "StoredProcedure" or "Function")
         {
-            await OpenObjectDefinitionAsync(node.Database, node.Kind, node.ObjectName);
+            await OpenObjectDefinitionAsync(node.Database, node.Kind, node.ObjectName, node.ConnectionString);
         }
     }
 
@@ -419,12 +462,12 @@ public partial class MainWindow : Window
         if (funcsFolder.Children.Count == 1 && funcsFolder.Children[0].Kind == "Placeholder")
         {
             funcsFolder.Children.Clear();
-            var scalarFolder = new ExplorerNode { Name = "📁 Scalar-valued Functions", Kind = "ScalarFunctionsFolder", Database = funcsFolder.Database, ConnectionString = _connectionString };
+            var scalarFolder = new ExplorerNode { Name = "📁 Scalar-valued Functions", Kind = "ScalarFunctionsFolder", Database = funcsFolder.Database, ConnectionString = funcsFolder.ConnectionString };
             scalarFolder.Children.Add(new ExplorerNode { Name = "Loading...", Kind = "Placeholder" });
             scalarFolder.NodeContextMenu = CreateFolderContextMenu(scalarFolder, "ScalarFunctionsFolder", "Scalar-valued Functions");
             funcsFolder.Children.Add(scalarFolder);
 
-            var tableFolder = new ExplorerNode { Name = "📁 Table-valued Functions", Kind = "TableFunctionsFolder", Database = funcsFolder.Database, ConnectionString = _connectionString };
+            var tableFolder = new ExplorerNode { Name = "📁 Table-valued Functions", Kind = "TableFunctionsFolder", Database = funcsFolder.Database, ConnectionString = funcsFolder.ConnectionString };
             tableFolder.Children.Add(new ExplorerNode { Name = "Loading...", Kind = "Placeholder" });
             tableFolder.NodeContextMenu = CreateFolderContextMenu(tableFolder, "TableFunctionsFolder", "Table-valued Functions");
             funcsFolder.Children.Add(tableFolder);
@@ -480,8 +523,46 @@ public partial class MainWindow : Window
 
     private async void RefreshExplorer_OnClick(object? sender, RoutedEventArgs e)
     {
-        var databases = await DatabaseHelper.GetDatabasesAsync(_connectionString);
-        await LoadExplorerAsync(databases);
+        try
+        {
+            StatusText.Text = "Refreshing Object Explorer...";
+            var roots = ExplorerRoots.ToList();
+            ExplorerRoots.Clear();
+            foreach (var root in roots)
+            {
+                if (root.Kind == "Server")
+                {
+                    var databases = await DatabaseHelper.GetDatabasesAsync(root.ConnectionString);
+                    var server = new ExplorerNode { Name = root.Name, Kind = "Server", IsLoaded = true, ConnectionString = root.ConnectionString };
+                    server.NodeContextMenu = CreateObjectContextMenu(server);
+ 
+                    var databasesFolder = new ExplorerNode
+                    {
+                        Name = "📁 Databases", Kind = "DatabasesFolder", IsLoaded = true, Database = "master", ConnectionString = root.ConnectionString
+                    };
+                    databasesFolder.NodeContextMenu = CreateObjectContextMenu(databasesFolder);
+ 
+                    foreach (var database in databases)
+                    {
+                        var node = new ExplorerNode
+                        {
+                            Name = "🛢️ " + database, Database = database, ObjectName = database, Kind = "Database", ConnectionString = root.ConnectionString
+                        };
+                        node.Children.Add(new ExplorerNode { Name = "Loading...", Kind = "Placeholder" });
+                        node.NodeContextMenu = CreateObjectContextMenu(node);
+                        databasesFolder.Children.Add(node);
+                    }
+                    server.Children.Add(databasesFolder);
+                    ExplorerRoots.Add(server);
+                }
+            }
+            StatusText.Text = "Ready";
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error(ex, "Failed to refresh explorer.");
+            await DialogService.ShowAsync(this, "Refresh Error", ex.Message);
+        }
     }
 
     private void NewQuery_OnClick(object? sender, RoutedEventArgs e) => CreateQueryTab();
@@ -517,10 +598,10 @@ public partial class MainWindow : Window
                         "Select a table in Object Explorer first.");
                     return;
                 }
-                var dialog = new InsertWithDataWindow(_connectionString, table.Database, table.ObjectName);
+                var dialog = new InsertWithDataWindow(table.ConnectionString, table.Database, table.ObjectName);
                 var sql = await dialog.ShowDialog<string?>(this);
                 if (!string.IsNullOrWhiteSpace(sql))
-                    CreateQueryTab(sql, $"INSERT {table.ObjectName}", table.Database);
+                    CreateQueryTab(sql, $"INSERT {table.ObjectName}", table.Database, connectionString: table.ConnectionString);
             };
             menu.Items.Add(insertDataItem);
             menu.Items.Add(new Separator());
@@ -655,16 +736,16 @@ public partial class MainWindow : Window
 
     private void ShowInsertWithDataDialog(ExplorerNode node)
     {
-        var dialog = new InsertWithDataWindow(_connectionString, node.Database, node.ObjectName);
-        _ = ShowInsertWithDataDialogAsync(dialog, node.ObjectName, node.Database);
+        var dialog = new InsertWithDataWindow(node.ConnectionString, node.Database, node.ObjectName);
+        _ = ShowInsertWithDataDialogAsync(dialog, node.ObjectName, node.Database, node.ConnectionString);
     }
 
-    private async Task ShowInsertWithDataDialogAsync(InsertWithDataWindow dialog, string tableName, string database)
+    private async Task ShowInsertWithDataDialogAsync(InsertWithDataWindow dialog, string tableName, string database, string connectionString)
     {
         var sql = await dialog.ShowDialog<string?>(this);
         if (!string.IsNullOrWhiteSpace(sql))
         {
-            CreateQueryTab(sql, $"{tableName}_InsertData.sql", database);
+            CreateQueryTab(sql, $"{tableName}_InsertData.sql", database, connectionString: connectionString);
         }
     }
 
@@ -673,7 +754,7 @@ public partial class MainWindow : Window
         string sql = "";
         try
         {
-            var connStr = _connectionString;
+            var connStr = node.ConnectionString;
             var dbName = node.Database;
             var objName = node.ObjectName;
             var objType = node.Kind;
@@ -777,7 +858,7 @@ public partial class MainWindow : Window
             sql = $"-- Error generating script: {ex.Message}";
         }
 
-        CreateQueryTab(sql, $"{node.ObjectName}_{scriptType}.sql", node.Database);
+        CreateQueryTab(sql, $"{node.ObjectName}_{scriptType}.sql", node.Database, connectionString: node.ConnectionString);
     }
 
     private ContextMenu CreateFolderContextMenu(ExplorerNode folder, string folderType, string baseName)
@@ -787,7 +868,7 @@ public partial class MainWindow : Window
         if (TryGetCreateObjectLabel(folderType, out string createLabel))
         {
             var createItem = new MenuItem { Header = $"Create New {createLabel}" };
-            createItem.Click += (s, e) => CreateNewObjectScript(folder.Database, folderType);
+            createItem.Click += (s, e) => CreateNewObjectScript(folder.Database, folderType, folder.ConnectionString);
             menu.Items.Add(createItem);
             menu.Items.Add(new Separator());
         }
@@ -821,7 +902,7 @@ public partial class MainWindow : Window
         return label.Length > 0;
     }
 
-    private void CreateNewObjectScript(string databaseName, string folderType)
+    private void CreateNewObjectScript(string databaseName, string folderType, string connectionString)
     {
         string sql = folderType switch
         {
@@ -835,7 +916,7 @@ public partial class MainWindow : Window
 
         if (!string.IsNullOrEmpty(sql))
         {
-            CreateQueryTab(sql, $"Create {folderType.Replace("Folder", "")}.sql", databaseName);
+            CreateQueryTab(sql, $"Create {folderType.Replace("Folder", "")}.sql", databaseName, connectionString: connectionString);
         }
     }
 
@@ -857,7 +938,6 @@ public partial class MainWindow : Window
         string currentFilter = GetFolderFilter(folderItem.Database, folderType);
         var dialog = new InputDialog("Filter Objects", "Enter filter query (wildcard/substring):", currentFilter);
         string filterText = await dialog.ShowInputAsync(this);
-
         if (filterText != currentFilter)
         {
             if (string.IsNullOrEmpty(filterText))
@@ -873,7 +953,7 @@ public partial class MainWindow : Window
             await ReloadFolderNodeAsync(folderItem, folderType);
         }
     }
-
+ 
     private async void ClearFilter(ExplorerNode folderItem, string folderType, string baseName)
     {
         string key = $"{folderItem.Database}_{folderType}";
@@ -884,7 +964,7 @@ public partial class MainWindow : Window
             await ReloadFolderNodeAsync(folderItem, folderType);
         }
     }
-
+ 
     private async Task ReloadFolderNodeAsync(ExplorerNode folderNode, string folderType)
     {
         folderNode.Children.Clear();
@@ -892,13 +972,13 @@ public partial class MainWindow : Window
         
         try
         {
-            var connStr = _connectionString;
+            var connStr = folderNode.ConnectionString;
             var dbName = folderNode.Database;
             string filter = GetFolderFilter(dbName, folderType);
             
             IEnumerable<string> items;
             string childKind;
-
+  
             if (folderType == "TablesFolder")
             {
                 items = await DatabaseHelper.GetTablesAsync(connStr, dbName);
@@ -942,7 +1022,8 @@ public partial class MainWindow : Window
                     ObjectName = item,
                     Database = dbName,
                     Kind = childKind,
-                    IsLoaded = false
+                    IsLoaded = false,
+                    ConnectionString = connStr
                 };
                 if (childKind is "Table" or "View")
                 {
@@ -1331,6 +1412,87 @@ public partial class MainWindow : Window
     }
 
     #endregion
+
+    private void HideExplorer_OnClick(object? sender, RoutedEventArgs e)
+    {
+        ObjectExplorerBorder.IsVisible = false;
+        ExplorerSplitter.IsVisible = false;
+        CollapsedExplorerTab.IsVisible = true;
+        
+        if (MainGrid != null)
+        {
+            _lastExplorerWidth = MainGrid.ColumnDefinitions[1].Width.Value;
+            MainGrid.ColumnDefinitions[1].Width = new GridLength(0);
+            MainGrid.ColumnDefinitions[2].Width = new GridLength(0);
+        }
+    }
+
+    private void ShowExplorer_OnClick(object? sender, RoutedEventArgs e)
+    {
+        ObjectExplorerBorder.IsVisible = true;
+        ExplorerSplitter.IsVisible = true;
+        CollapsedExplorerTab.IsVisible = false;
+        
+        if (MainGrid != null)
+        {
+            MainGrid.ColumnDefinitions[1].Width = new GridLength(_lastExplorerWidth > 50 ? _lastExplorerWidth : 260);
+            MainGrid.ColumnDefinitions[2].Width = new GridLength(5);
+        }
+    }
+
+    private async void AddConnection_OnClick(object? sender, RoutedEventArgs e)
+    {
+        var window = new ConnectionWindow();
+        window.Show();
+        var connectionString = await window.WaitForResultAsync();
+        if (string.IsNullOrWhiteSpace(connectionString)) return;
+
+        try
+        {
+            StatusText.Text = "Adding connection...";
+            var databases = await DatabaseHelper.GetDatabasesAsync(connectionString);
+            
+            // Build server name
+            string serverName = "SQL Server";
+            try { serverName = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(connectionString).DataSource; } catch { }
+
+            var server = new ExplorerNode { Name = "🖥️ " + serverName, Kind = "Server", IsLoaded = true, ConnectionString = connectionString };
+            server.NodeContextMenu = CreateObjectContextMenu(server);
+
+            var databasesFolder = new ExplorerNode
+            {
+                Name = "📁 Databases", Kind = "DatabasesFolder", IsLoaded = true, Database = "master", ConnectionString = connectionString
+            };
+            databasesFolder.NodeContextMenu = CreateObjectContextMenu(databasesFolder);
+
+            foreach (var database in databases)
+            {
+                var node = new ExplorerNode
+                {
+                    Name = "🛢️ " + database, Database = database, ObjectName = database, Kind = "Database", ConnectionString = connectionString
+                };
+                node.Children.Add(new ExplorerNode { Name = "Loading...", Kind = "Placeholder" });
+                node.NodeContextMenu = CreateObjectContextMenu(node);
+                databasesFolder.Children.Add(node);
+            }
+            server.Children.Add(databasesFolder);
+            ExplorerRoots.Add(server);
+            
+            _connectionString = connectionString;
+            _changingDatabase = true;
+            DatabaseBox.ItemsSource = databases;
+            DatabaseBox.SelectedItem = databases.Contains("master") ? "master" : databases.FirstOrDefault();
+            _changingDatabase = false;
+            
+            CreateQueryTab(databaseName: DatabaseBox.SelectedItem as string ?? "master", connectionString: connectionString);
+            StatusText.Text = "Ready";
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error(ex, "Failed to add connection.");
+            await DialogService.ShowAsync(this, "Connection Error", ex.Message);
+        }
+    }
 
     private sealed class ActionCommand(Action action) : ICommand
     {

@@ -3,14 +3,35 @@
              x:Class="SSMS.QueryTabControl"
              Background="#1E1E1E">
   <Grid RowDefinitions="3*,6,2*" MinHeight="300">
-    <Border BorderBrush="#2D2D30" BorderThickness="0,0,0,1">
+    <Border BorderBrush="#2D2D30" BorderThickness="0,0,0,1" Background="#1E1E1E">
       <NativeWebView x:Name="EditorWebView"
+                     Opacity="0"
                      NavigationCompleted="EditorWebView_OnNavigationCompleted"
                      WebMessageReceived="EditorWebView_OnWebMessageReceived"/>
     </Border>
     <GridSplitter Grid.Row="1" Background="#3A3A3A" ResizeDirection="Rows"/>
     <Grid Grid.Row="2">
       <TabControl x:Name="ResultTabs" Background="#1E1E1E">
+        <TabControl.Styles>
+          <Style Selector="TabItem">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="MinHeight" Value="22"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="Padding" Value="10, 0, 10, 0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Background" Value="#2D2D2D"/>
+            <Setter Property="Foreground" Value="#969696"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+          </Style>
+          <Style Selector="TabItem:selected">
+            <Setter Property="Background" Value="#1E1E1E"/>
+            <Setter Property="Foreground" Value="White"/>
+          </Style>
+          <Style Selector="TabItem:pointerover">
+            <Setter Property="Background" Value="#3E3E40"/>
+            <Setter Property="Foreground" Value="White"/>
+          </Style>
+        </TabControl.Styles>
         <TabItem Header="Results">
           <Grid x:Name="ResultsGridContainer" Background="#1E1E1E"/>
         </TabItem>
