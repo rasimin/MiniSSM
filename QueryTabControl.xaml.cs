@@ -29,6 +29,9 @@ namespace SSMS
         private const double ResultsMinHeight = 90;
         private const double ResultsResizeGripHeight = 12;
         private bool _isResultsPaneResizeActive;
+        private static readonly SqlCellTextConverter CellTextConverter = new();
+        private static readonly SqlCellFontStyleConverter CellFontStyleConverter = new();
+        private static readonly SqlCellForegroundConverter CellForegroundConverter = new();
 
         private static CoreWebView2Environment? _sharedEnvironment;
 
@@ -421,9 +424,13 @@ namespace SSMS
                 AlternatingRowBackground = (SolidColorBrush)new BrushConverter().ConvertFromString("#252526")!,
                 GridLinesVisibility = DataGridGridLinesVisibility.All,
                 HorizontalGridLinesBrush = (SolidColorBrush)new BrushConverter().ConvertFromString("#2D2D30")!,
-                VerticalGridLinesBrush = (SolidColorBrush)new BrushConverter().ConvertFromString("#2D2D30")!,
-                HeadersVisibility = DataGridHeadersVisibility.Column,
+                VerticalGridLinesBrush = (SolidColorBrush)new BrushConverter().ConvertFromString("#48484C")!,
+                HeadersVisibility = DataGridHeadersVisibility.All,
+                RowHeaderWidth = 46,
+                RowHeight = 24,
+                ColumnHeaderHeight = 28,
                 FontSize = 12,
+                CanUserSortColumns = false,
                 SelectionUnit = DataGridSelectionUnit.Cell,
                 SelectionMode = DataGridSelectionMode.Extended,
                 ItemsSource = dataTable.DefaultView,
@@ -432,6 +439,10 @@ namespace SSMS
             };
 
             dataGrid.AutoGeneratingColumn += DataGrid_AutoGeneratingColumn;
+            dataGrid.LoadingRow += (_, e) =>
+            {
+                e.Row.Header = (e.Row.GetIndex() + 1).ToString();
+            };
 
             // Set high-performance text rendering parameters (disable sub-pixel text measurement layout shifts during scroll)
             TextOptions.SetTextFormattingMode(dataGrid, TextFormattingMode.Display);
@@ -444,66 +455,14 @@ namespace SSMS
             // Set virtualization properties
             VirtualizingPanel.SetIsVirtualizing(dataGrid, true);
             VirtualizingPanel.SetVirtualizationMode(dataGrid, VirtualizationMode.Recycling);
-            VirtualizingPanel.SetScrollUnit(dataGrid, ScrollUnit.Item);
-            VirtualizingPanel.SetCacheLengthUnit(dataGrid, VirtualizationCacheLengthUnit.Item);
-            VirtualizingPanel.SetCacheLength(dataGrid, new VirtualizationCacheLength(0));
+            VirtualizingPanel.SetScrollUnit(dataGrid, ScrollUnit.Pixel);
+            VirtualizingPanel.SetCacheLengthUnit(dataGrid, VirtualizationCacheLengthUnit.Page);
+            VirtualizingPanel.SetCacheLength(dataGrid, new VirtualizationCacheLength(1));
             dataGrid.EnableRowVirtualization = true;
             dataGrid.EnableColumnVirtualization = true;
             dataGrid.ColumnWidth = new DataGridLength(120);
             ScrollViewer.SetIsDeferredScrollingEnabled(dataGrid, false);
             ScrollViewer.SetCanContentScroll(dataGrid, true);
-
-            // Tracing scroll performance
-            var scrollStopwatch = new System.Diagnostics.Stopwatch();
-            int rowsLoadedCount = 0;
-            int rowsUnloadedCount = 0;
-
-            dataGrid.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler((s, e) =>
-            {
-                if (AppLogger.EnablePerformanceLogging && e.VerticalChange != 0)
-                {
-                    scrollStopwatch.Restart();
-                    AppLogger.Info($"[Scroll] Start scrolling. Offset: {e.VerticalOffset:F1}, Change: {e.VerticalChange:F1}");
-                }
-            }));
-
-            dataGrid.LoadingRow += (s, e) =>
-            {
-                if (AppLogger.EnablePerformanceLogging)
-                {
-                    rowsLoadedCount++;
-                }
-            };
-
-            dataGrid.UnloadingRow += (s, e) =>
-            {
-                if (AppLogger.EnablePerformanceLogging)
-                {
-                    rowsUnloadedCount++;
-                }
-            };
-
-            dataGrid.LayoutUpdated += (s, e) =>
-            {
-                if (AppLogger.EnablePerformanceLogging && scrollStopwatch.IsRunning)
-                {
-                    scrollStopwatch.Stop();
-                    double elapsedMs = scrollStopwatch.Elapsed.TotalMilliseconds;
-                    int activeRowContainers = GetVisualDescendantsCount<DataGridRow>(dataGrid);
-                    int activeCellContainers = GetVisualDescendantsCount<DataGridCell>(dataGrid);
-                    int renderTier = RenderCapability.Tier >> 16;
-                    AppLogger.Info($"[Render] LayoutUpdated. Time: {elapsedMs:F2} ms. Rows Loaded: {rowsLoadedCount}, Rows Recycled: {rowsUnloadedCount}, Alive Rows: {activeRowContainers}/{dataGrid.Items.Count}, Alive Cells: {activeCellContainers}, Columns: {dataGrid.Columns.Count}, RenderTier: {renderTier}");
-                    
-                    if (elapsedMs > 16.6)
-                    {
-                        AppLogger.Info($"[WARN-LAG] Slow frame detected: {elapsedMs:F2} ms (> 16.6ms frame budget)!");
-                    }
-
-                    // Reset counts for the next scroll layout cycle
-                    rowsLoadedCount = 0;
-                    rowsUnloadedCount = 0;
-                }
-            };
 
             // Context Menu (Copy & Copy with Headers)
             var contextMenu = new ContextMenu { Background = dataGrid.Background, BorderBrush = (System.Windows.Media.SolidColorBrush)new System.Windows.Media.BrushConverter().ConvertFromString("#2D2D30")! };
@@ -521,22 +480,6 @@ namespace SSMS
             return dataGrid;
         }
 
-        private static int GetVisualDescendantsCount<T>(DependencyObject parent) where T : DependencyObject
-        {
-            int count = 0;
-            int childrenCount = VisualTreeHelper.GetChildrenCount(parent);
-            for (int i = 0; i < childrenCount; i++)
-            {
-                var child = VisualTreeHelper.GetChild(parent, i);
-                if (child is T)
-                {
-                    count++;
-                }
-                count += GetVisualDescendantsCount<T>(child);
-            }
-            return count;
-        }
-
         private void CopyGridToClipboard(DataGrid grid, bool includeHeaders)
         {
             grid.ClipboardCopyMode = includeHeaders ? DataGridClipboardCopyMode.IncludeHeader : DataGridClipboardCopyMode.ExcludeHeader;
@@ -550,6 +493,21 @@ namespace SSMS
 
         private void DataGrid_AutoGeneratingColumn(object? sender, DataGridAutoGeneratingColumnEventArgs e)
         {
+            string headerText = e.Column.Header?.ToString() ?? string.Empty;
+            e.Column.CanUserSort = false;
+            e.Column.Header = new TextBox
+            {
+                Text = headerText,
+                IsReadOnly = true,
+                IsReadOnlyCaretVisible = false,
+                BorderThickness = new Thickness(0),
+                Background = Brushes.Transparent,
+                Foreground = Brushes.White,
+                Padding = new Thickness(0),
+                Cursor = Cursors.IBeam,
+                ToolTip = "Select the header text and press Ctrl+C to copy"
+            };
+
             if (e.PropertyType == typeof(bool) || e.PropertyType == typeof(bool?))
             {
                 var textCol = new DataGridTextColumn
@@ -557,7 +515,7 @@ namespace SSMS
                     Header = e.Column.Header,
                     Binding = new Binding(e.PropertyName)
                     {
-                        Converter = new SqlCellTextConverter(),
+                        Converter = CellTextConverter,
                         Mode = BindingMode.OneWay
                     }
                 };
@@ -570,22 +528,26 @@ namespace SSMS
                 
                 var textBinding = new Binding(bindingPath)
                 {
-                    Converter = new SqlCellTextConverter(),
+                    Converter = CellTextConverter,
                     Mode = BindingMode.OneWay
                 };
                 textColumn.Binding = textBinding;
 
                 var textBlockStyle = new Style(typeof(TextBlock));
+                textBlockStyle.Setters.Add(new Setter(TextBlock.TextWrappingProperty, TextWrapping.NoWrap));
+                textBlockStyle.Setters.Add(new Setter(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis));
+                textBlockStyle.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(5, 0, 5, 0)));
+                textBlockStyle.Setters.Add(new Setter(UIElement.ClipToBoundsProperty, true));
                 
                 textBlockStyle.Setters.Add(new Setter(TextBlock.FontStyleProperty, new Binding(bindingPath)
                 {
-                    Converter = new SqlCellFontStyleConverter(),
+                    Converter = CellFontStyleConverter,
                     Mode = BindingMode.OneWay
                 }));
 
                 textBlockStyle.Setters.Add(new Setter(TextBlock.ForegroundProperty, new Binding(bindingPath)
                 {
-                    Converter = new SqlCellForegroundConverter(),
+                    Converter = CellForegroundConverter,
                     Mode = BindingMode.OneWay
                 }));
 
@@ -609,6 +571,10 @@ namespace SSMS
             if (value is DateTime dt)
             {
                 return dt.ToString("yyyy-MM-dd HH:mm:ss.fff");
+            }
+            if (value is string text)
+            {
+                return text.Trim();
             }
             return value.ToString() ?? "";
         }

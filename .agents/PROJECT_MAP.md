@@ -48,6 +48,7 @@ Lokasi utama: `MainWindow.xaml.cs`.
 
 - Root server dibuat di `AddServerToExplorerAsync`.
 - Lazy loading tree ada di `TreeItem_Expanded`.
+- Expand node menahan `RequestBringIntoView` agar posisi scroll Object Explorer tidak meloncat ke node yang dibuka.
 - Panel Object Explorer bisa di-hide/show lewat tombol toolbar `BtnToggleObjectExplorer` atau shortcut `F8`.
 - Toggle panel memakai `ObjectExplorerColumn`, `ObjectExplorerSplitterColumn`, `ObjectExplorerPanel`, dan `ObjectExplorerSplitter` di `MainWindow.xaml`, dengan logic di `ToggleObjectExplorer()` pada `MainWindow.xaml.cs`.
 - Node type disimpan di `TreeViewItem.Tag` sebagai `ObjectExplorerNode`.
@@ -95,6 +96,8 @@ Hal penting:
 - `TabQueryControls_SelectionChanged` sync status server/database dan combo database.
 - `BtnExecute_Click` memanggil `ExecuteQuery()` pada tab aktif.
 - `Window_KeyDown` menangani shortcut seperti `F5`, `F8`, `Ctrl+N`, `Ctrl+S`, `Ctrl+O`, `Ctrl+K`, `Ctrl+Shift+K`.
+- Urutan default toolbar mengikuti alur koneksi, pemilihan database, eksekusi, editing, lalu file/query; item tetap dapat di-drag untuk reorder.
+- `MainWindow` meneruskan pesan native `WM_MOUSEHWHEEL` dari gesture dua jari touchpad ke `ScrollViewer` horizontal di bawah pointer.
 - `RunEditorCommand(...)` menjalankan fungsi JavaScript di Monaco.
 - `SaveActiveTabQuery()` dan `OpenSqlFile()` untuk file `.sql`.
 - `QueryTabControl.CacheAndRefreshAutocompleteAsync()` mengambil metadata tabel/kolom dan memanggil `updateMetadata(...)` di editor.
@@ -129,6 +132,10 @@ Pola yang dipakai:
 - Metadata memakai query ke `sys.*`.
 - Parameter object name memakai parameter SQL seperti `@TableFullName`.
 - Result set dengan nama kolom duplikat (misalnya `SELECT Units, *`) diberi suffix tampilan `(2)`, `(3)`, dan seterusnya karena `DataTable` memerlukan nama unik.
+- Result grid memakai pixel scrolling, recycling virtualization, cache satu halaman, serta tinggi row/header tetap agar layout tidak mengukur ulang ukuran cell saat scroll; telemetry per-frame/visual-tree saat scroll tidak dipasang agar UI tetap ringan.
+- Result grid menampilkan nomor baris melalui row header, menonaktifkan sort saat header diklik, dan memakai header text selectable agar nama kolom dapat disalin.
+- Padding string dari tipe SQL `CHAR/NCHAR` di-trim hanya saat ditampilkan; nilai asli pada `DataTable` tetap dipertahankan.
+- Text cell result di-clip ke batas kolom, memakai ellipsis dan padding horizontal, serta garis vertikal lebih kontras supaya nilai panjang tidak terlihat menyatu antar-kolom.
 
 ## UI dan Style
 

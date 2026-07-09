@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
@@ -41,14 +42,41 @@ namespace SSMS
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
 
         private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+        private const int WM_MOUSEHWHEEL = 0x020E;
+        private HwndSource? _windowSource;
 
         public MainWindow(string connectionString)
         {
             InitializeComponent();
             _initialConnectionString = connectionString;
+            ApplyDefaultToolbarOrder();
 
             // Connect TreeView expanded event handler
             TreeObjectExplorer.AddHandler(TreeViewItem.ExpandedEvent, new RoutedEventHandler(TreeItem_Expanded));
+        }
+
+        private void ApplyDefaultToolbarOrder()
+        {
+            UIElement[] orderedItems =
+            {
+                ToolbarConnect,
+                ToolbarDisconnect,
+                ToolbarObjectExplorer,
+                ToolbarDatabase,
+                ToolbarExecute,
+                ToolbarComment,
+                ToolbarUncomment,
+                ToolbarSave,
+                ToolbarOpen,
+                ToolbarNewQuery,
+                ToolbarInsertScript
+            };
+
+            ToolbarPanel.Children.Clear();
+            foreach (UIElement item in orderedItems)
+            {
+                ToolbarPanel.Children.Add(item);
+            }
         }
 
         protected override void OnSourceInitialized(EventArgs e)
@@ -57,6 +85,8 @@ namespace SSMS
             try
             {
                 IntPtr hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+                _windowSource = HwndSource.FromHwnd(hwnd);
+                _windowSource?.AddHook(WindowMessageHook);
                 int darkMode = 1; // 1 = Enable
                 DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
             }
@@ -64,6 +94,52 @@ namespace SSMS
             {
                 // Ignore DWM failures
             }
+        }
+
+        protected override void OnClosed(EventArgs e)
+        {
+            _windowSource?.RemoveHook(WindowMessageHook);
+            _windowSource = null;
+            base.OnClosed(e);
+        }
+
+        private IntPtr WindowMessageHook(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            if (message != WM_MOUSEHWHEEL || Mouse.DirectlyOver is not DependencyObject element)
+            {
+                return IntPtr.Zero;
+            }
+
+            var scrollViewer = FindHorizontalScrollViewer(element);
+            if (scrollViewer == null)
+            {
+                return IntPtr.Zero;
+            }
+
+            int delta = unchecked((short)((wParam.ToInt64() >> 16) & 0xFFFF));
+            double pixelsPerNotch = Math.Max(16, SystemParameters.WheelScrollLines * 16);
+            double targetOffset = scrollViewer.HorizontalOffset + (delta / 120.0 * pixelsPerNotch);
+            scrollViewer.ScrollToHorizontalOffset(Math.Clamp(targetOffset, 0, scrollViewer.ScrollableWidth));
+            handled = true;
+            return IntPtr.Zero;
+        }
+
+        private static ScrollViewer? FindHorizontalScrollViewer(DependencyObject element)
+        {
+            DependencyObject? current = element;
+            while (current != null)
+            {
+                if (current is ScrollViewer viewer && viewer.ScrollableWidth > 0)
+                {
+                    return viewer;
+                }
+
+                current = current is Visual
+                    ? VisualTreeHelper.GetParent(current)
+                    : LogicalTreeHelper.GetParent(current);
+            }
+
+            return null;
         }
 
         private async void Window_Loaded(object sender, RoutedEventArgs e)
@@ -321,6 +397,14 @@ namespace SSMS
         #endregion
 
         #region TreeView (Object Explorer) Loading
+
+        private void TreeObjectExplorer_RequestBringIntoView(object sender, RequestBringIntoViewEventArgs e)
+        {
+            if (e.TargetObject is TreeViewItem item && item.IsExpanded)
+            {
+                e.Handled = true;
+            }
+        }
 
         private async Task AddServerToExplorerAsync(string connectionString)
         {

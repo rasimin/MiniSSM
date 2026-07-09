@@ -610,7 +610,9 @@
                     <ScrollViewer.Resources>
                         <Style TargetType="{x:Type ScrollBar}" BasedOn="{StaticResource StandardScrollBar}"/>
                     </ScrollViewer.Resources>
-                    <TreeView x:Name="TreeObjectExplorer" BorderThickness="0"/>
+                    <TreeView x:Name="TreeObjectExplorer"
+                              BorderThickness="0"
+                              RequestBringIntoView="TreeObjectExplorer_RequestBringIntoView"/>
                 </ScrollViewer>
             </Grid>
 
