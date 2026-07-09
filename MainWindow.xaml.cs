@@ -799,6 +799,15 @@ namespace SSMS
             ExecuteActiveTabQuery();
         }
 
+        private void BtnSettings_Click(object sender, RoutedEventArgs e)
+        {
+            var settingsWindow = new SettingsWindow
+            {
+                Owner = this
+            };
+            settingsWindow.ShowDialog();
+        }
+
         private void ExecuteActiveTabQuery()
         {
             if (TabQueryControls.SelectedItem is TabItem tabItem && tabItem.Content is QueryTabControl activeTab)

@@ -28,6 +28,8 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 | `DatabaseHelper.cs` | Semua akses SQL Server: metadata database/object, eksekusi query, generate script. |
 | `ObjectExplorerNode.cs` | Model data `Tag` untuk node TreeView Object Explorer. |
 | `AppLogger.cs` | Logger file sederhana untuk error global dan event penting seperti create/close tab. Log tersimpan di `logs\minissms-YYYYMMDD.log` dalam output app. |
+| `AppSettings.cs` | Model serta load/save parameter aplikasi dari `appsettings.json`. |
+| `SettingsWindow.xaml`, `SettingsWindow.xaml.cs` | Dialog Settings dari ikon gear di kanan toolbar; saat ini mengatur query command timeout. |
 | `sql_editor.html` | Monaco SQL editor, command JavaScript, autocomplete, bridge message ke WPF. |
 | `Assets/MiniSSMS.ico`, `Assets/MiniSSMS.png` | Icon aplikasi untuk executable dan window WPF. |
 
@@ -96,6 +98,7 @@ Hal penting:
 - Logging global dipasang di `App.xaml.cs` untuk UI exception, domain exception, dan unobserved task exception. `MainWindow.xaml.cs` juga log create/close query tab.
 - `TabQueryControls_SelectionChanged` sync status server/database dan combo database.
 - `BtnExecute_Click` memanggil `ExecuteQuery()` pada tab aktif.
+- Ikon gear di pojok kanan toolbar membuka `SettingsWindow`; query timeout disimpan sebagai `Query.CommandTimeoutSeconds` di `appsettings.json` dan berlaku mulai eksekusi berikutnya (`0` berarti tanpa batas).
 - `Window_KeyDown` menangani shortcut seperti `F5`, `F8`, `Ctrl+N`, `Ctrl+S`, `Ctrl+O`, `Ctrl+K`, `Ctrl+Shift+K`.
 - Urutan default toolbar mengikuti alur koneksi, pemilihan database, eksekusi, editing, lalu file/query; item tetap dapat di-drag untuk reorder.
 - `MainWindow` meneruskan pesan native `WM_MOUSEHWHEEL` dari gesture dua jari touchpad ke `ScrollViewer` horizontal di bawah pointer.

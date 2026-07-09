@@ -218,6 +218,7 @@ namespace SSMS
 
                     using (var command = new SqlCommand(sqlQuery, connection))
                     {
+                        command.CommandTimeout = AppSettings.Current.Query.CommandTimeoutSeconds;
                         using (var reader = await command.ExecuteReaderAsync())
                         {
                             do
