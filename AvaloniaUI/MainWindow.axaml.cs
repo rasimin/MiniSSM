@@ -508,6 +508,9 @@ public partial class MainWindow : Window
         DatabaseBox.SelectedItem = query.DatabaseName;
         _changingDatabase = false;
 
+        // Auto-focus the editor in the active tab
+        query.FocusEditor();
+
         // Sync status bar
         if (query.LastStatus is { } status)
         {

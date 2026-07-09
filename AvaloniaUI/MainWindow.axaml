@@ -111,7 +111,7 @@
           <Border Background="#252526" Padding="10,7">
             <Grid ColumnDefinitions="*,Auto,Auto,Auto">
               <TextBlock Text="OBJECT EXPLORER" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
-              <Button Grid.Column="1" Content="＋" Padding="6,2" Margin="0,0,4,0" Click="AddConnection_OnClick" ToolTip.Tip="Connect to another SQL Server"/>
+              <Button Grid.Column="1" Content="+" Padding="6,2" Margin="0,0,4,0" Click="AddConnection_OnClick" ToolTip.Tip="Connect to another SQL Server"/>
               <Button Grid.Column="2" Content="↻" Padding="7,2" Margin="0,0,4,0" Click="RefreshExplorer_OnClick" ToolTip.Tip="Refresh"/>
               <Button Grid.Column="3" Content="◀" Padding="7,2" Click="HideExplorer_OnClick" ToolTip.Tip="Hide Object Explorer"/>
             </Grid>
@@ -171,12 +171,13 @@
       </Border>
       <GridSplitter x:Name="ExplorerSplitter" Grid.Column="2" Background="#3A3A3A" ResizeDirection="Columns"/>
       <Grid Grid.Column="3" RowDefinitions="Auto,*">
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Background="#2D2D2D">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Background="#2D2D2D" Height="26">
           <!-- Plus button for new query tab -->
-          <Button Grid.Column="0" Content="＋" Width="26" Height="26" 
+          <Button Grid.Column="0" Content="+" Width="26" Height="26" 
                   Background="Transparent" BorderThickness="0" Padding="0" 
                   VerticalAlignment="Center" HorizontalAlignment="Center"
-                  FontSize="16" Foreground="#969696"
+                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                  FontSize="20" FontWeight="SemiBold" Foreground="White"
                   Click="NewQuery_OnClick" ToolTip.Tip="New Query (Ctrl+N)">
             <Button.Styles>
               <Style Selector="Button:pointerover">

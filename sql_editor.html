@@ -494,6 +494,31 @@
                 editor.trigger('keyboard', 'editor.action.triggerSuggest', {});
             });
 
+            // Keyboard shortcuts to forward to C#
+            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyN, function() {
+                hostPostMessage({ action: 'newQuery' });
+            });
+            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyO, function() {
+                hostPostMessage({ action: 'open' });
+            });
+            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function() {
+                hostPostMessage({ action: 'save' });
+            });
+            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyS, function() {
+                hostPostMessage({ action: 'saveAs' });
+            });
+            editor.addCommand(monaco.KeyCode.F8, function() {
+                hostPostMessage({ action: 'toggleExplorer' });
+            });
+
+            // Local editor shortcuts for comment/uncomment
+            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, function() {
+                commentSelection();
+            });
+            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyK, function() {
+                uncommentSelection();
+            });
+
             hostPostMessage({ action: 'editorReady' });
         });
 

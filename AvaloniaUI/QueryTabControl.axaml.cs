@@ -71,6 +71,7 @@ public partial class QueryTabControl : UserControl
         ";
         
         await EditorWebView.InvokeScript(checkScript);
+        EditorWebView.Focus();
         await RefreshMetadataAsync();
     }
 
@@ -80,7 +81,8 @@ public partial class QueryTabControl : UserControl
         {
             using var doc = JsonDocument.Parse(e.Body ?? "{}");
             if (!doc.RootElement.TryGetProperty("action", out var action)) return;
-            switch (action.GetString())
+            var actionStr = action.GetString();
+            switch (actionStr)
             {
                 case "textChanged":
                     _initialSql = doc.RootElement.GetProperty("text").GetString() ?? "";
@@ -99,6 +101,21 @@ public partial class QueryTabControl : UserControl
                 case "loadDatabaseMetadata":
                     _ = PushCrossDatabaseMetadataAsync(
                         doc.RootElement.GetProperty("databaseName").GetString() ?? "");
+                    break;
+                case "newQuery":
+                case "open":
+                case "save":
+                case "saveAs":
+                case "toggleExplorer":
+                    var mainWindow = this.FindAncestorOfType<MainWindow>();
+                    if (mainWindow != null)
+                    {
+                        if (actionStr == "newQuery") mainWindow.NewQueryCommand.Execute(null);
+                        else if (actionStr == "open") mainWindow.OpenCommand.Execute(null);
+                        else if (actionStr == "save") mainWindow.SaveCommand.Execute(null);
+                        else if (actionStr == "saveAs") mainWindow.SaveAsCommand.Execute(null);
+                        else if (actionStr == "toggleExplorer") mainWindow.ToggleExplorerCommand.Execute(null);
+                    }
                     break;
             }
         }
@@ -368,6 +385,15 @@ public partial class QueryTabControl : UserControl
         if (!details.TryGetValue(objectName, out var map))
             details[objectName] = map = new(StringComparer.OrdinalIgnoreCase);
         map[column] = info;
+    }
+
+    public void FocusEditor()
+    {
+        if (_editorReady)
+        {
+            EditorWebView.Focus();
+            _ = EditorWebView.InvokeScript("focusEditor();");
+        }
     }
 
     private sealed record ColumnInfo(
