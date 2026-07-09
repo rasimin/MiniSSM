@@ -9,7 +9,10 @@
         Background="#181818"
         Foreground="#D4D4D4"
         FontFamily="Segoe UI, Arial"
+        AllowDrop="True"
         Loaded="Window_Loaded"
+        PreviewDragOver="Window_PreviewDragOver"
+        Drop="Window_Drop"
         KeyDown="Window_KeyDown">
 
     <Window.Resources>
@@ -530,6 +533,16 @@
                         </StackPanel>
                     </Border>
                     
+                    <Border Name="ToolbarSaveAs" Background="Transparent" Padding="2,0" Margin="0,0,4,0"
+                            PreviewMouseLeftButtonDown="ToolbarItem_PreviewMouseLeftButtonDown"
+                            PreviewMouseMove="ToolbarItem_PreviewMouseMove"
+                            PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="&#x22EE;" Foreground="#555555" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
+                            <Button Style="{StaticResource ToolbarButton}" Content="&#x1F4BE;+" Click="BtnSaveAsQuery_Click" ToolTip="Save Query As (Ctrl+Shift+S)"/>
+                        </StackPanel>
+                    </Border>
+
                     <Border Name="ToolbarOpen" Background="Transparent" Padding="2,0" Margin="0,0,4,0"
                             PreviewMouseLeftButtonDown="ToolbarItem_PreviewMouseLeftButtonDown"
                             PreviewMouseMove="ToolbarItem_PreviewMouseMove"

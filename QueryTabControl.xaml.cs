@@ -19,6 +19,7 @@ namespace SSMS
         public string ConnectionString { get; set; }
         public string DatabaseName { get; set; }
         public string InitialSql { get; set; } = string.Empty;
+        public string? FilePath { get; set; }
         public bool AutoExecute { get; set; } = false;
         public bool IsWebViewInitialized { get; private set; } = false;
         public int TotalResultRows { get; private set; } = 0;

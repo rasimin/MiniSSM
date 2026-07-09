@@ -67,6 +67,7 @@ namespace SSMS
                 ToolbarComment,
                 ToolbarUncomment,
                 ToolbarSave,
+                ToolbarSaveAs,
                 ToolbarOpen,
                 ToolbarNewQuery,
                 ToolbarInsertScript
@@ -182,7 +183,7 @@ namespace SSMS
 
         #region Tab Management
 
-        public void CreateNewQueryTab(string connectionString, string databaseName, string? initialSql = null, string? customTabTitle = null, bool autoExecute = false)
+        public void CreateNewQueryTab(string connectionString, string databaseName, string? initialSql = null, string? customTabTitle = null, bool autoExecute = false, string? filePath = null)
         {
             _queryTabCounter++;
 
@@ -192,6 +193,7 @@ namespace SSMS
             AppLogger.Info($"Creating query tab: {tabTitle}");
 
             var queryTabControl = new QueryTabControl(connectionString, databaseName);
+            queryTabControl.FilePath = filePath;
             if (!string.IsNullOrEmpty(initialSql))
             {
                 queryTabControl.InitialSql = initialSql;
@@ -872,6 +874,13 @@ namespace SSMS
                 BtnNewQuery_Click(this, new RoutedEventArgs());
                 e.Handled = true;
             }
+            else if (e.Key == Key.S &&
+                     (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control &&
+                     (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+            {
+                SaveActiveTabQuery(saveAs: true);
+                e.Handled = true;
+            }
             else if (e.Key == Key.S && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
             {
                 SaveActiveTabQuery();
@@ -978,6 +987,11 @@ namespace SSMS
             SaveActiveTabQuery();
         }
 
+        private void BtnSaveAsQuery_Click(object sender, RoutedEventArgs e)
+        {
+            SaveActiveTabQuery(saveAs: true);
+        }
+
         private void BtnOpenQuery_Click(object sender, RoutedEventArgs e)
         {
             OpenSqlFile();
@@ -1014,7 +1028,8 @@ namespace SSMS
             {
                 Filter = "SQL Files (*.sql)|*.sql|All Files (*.*)|*.*",
                 DefaultExt = ".sql",
-                Title = "Open SQL Query"
+                Title = "Open SQL Query",
+                Multiselect = true
             };
 
             if (openFileDialog.ShowDialog() != true)
@@ -1022,64 +1037,109 @@ namespace SSMS
                 return;
             }
 
-            try
+            OpenSqlFiles(openFileDialog.FileNames);
+        }
+
+        private void Window_PreviewDragOver(object sender, DragEventArgs e)
+        {
+            bool containsSqlFiles = e.Data.GetDataPresent(DataFormats.FileDrop) &&
+                e.Data.GetData(DataFormats.FileDrop) is string[] paths &&
+                paths.Any(path => string.Equals(Path.GetExtension(path), ".sql", StringComparison.OrdinalIgnoreCase));
+
+            e.Effects = containsSqlFiles ? DragDropEffects.Copy : DragDropEffects.None;
+            e.Handled = true;
+        }
+
+        private void Window_Drop(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetData(DataFormats.FileDrop) is not string[] paths)
             {
-                string sql = File.ReadAllText(openFileDialog.FileName);
-                string connectionString = _initialConnectionString;
-                string databaseName = "master";
-
-                if (TabQueryControls.SelectedItem is TabItem activeTabItem && activeTabItem.Content is QueryTabControl activeTab)
-                {
-                    connectionString = activeTab.ConnectionString;
-                    databaseName = activeTab.DatabaseName;
-                }
-                else
-                {
-                    var builder = new SqlConnectionStringBuilder(_initialConnectionString);
-                    if (!string.IsNullOrEmpty(builder.InitialCatalog))
-                    {
-                        databaseName = builder.InitialCatalog;
-                    }
-                }
-
-                CreateNewQueryTab(connectionString, databaseName, sql, Path.GetFileName(openFileDialog.FileName));
+                return;
             }
-            catch (Exception ex)
+
+            string[] sqlFiles = paths
+                .Where(path => string.Equals(Path.GetExtension(path), ".sql", StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+            if (sqlFiles.Length > 0)
             {
-                MessageBox.Show($"Failed to open SQL file: {ex.Message}", "Open Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                OpenSqlFiles(sqlFiles);
+                e.Handled = true;
             }
         }
 
-        private async void SaveActiveTabQuery()
+        private void OpenSqlFiles(IEnumerable<string> filePaths)
+        {
+            string connectionString = _initialConnectionString;
+            string databaseName = "master";
+
+            if (TabQueryControls.SelectedItem is TabItem activeTabItem && activeTabItem.Content is QueryTabControl activeTab)
+            {
+                connectionString = activeTab.ConnectionString;
+                databaseName = activeTab.DatabaseName;
+            }
+            else
+            {
+                var builder = new SqlConnectionStringBuilder(_initialConnectionString);
+                if (!string.IsNullOrEmpty(builder.InitialCatalog))
+                {
+                    databaseName = builder.InitialCatalog;
+                }
+            }
+
+            foreach (string filePath in filePaths)
+            {
+                try
+                {
+                    string fullPath = Path.GetFullPath(filePath);
+                    string sql = File.ReadAllText(fullPath);
+                    CreateNewQueryTab(connectionString, databaseName, sql, Path.GetFileName(fullPath), filePath: fullPath);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Failed to open SQL file '{Path.GetFileName(filePath)}': {ex.Message}", "Open Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+        }
+
+        private async void SaveActiveTabQuery(bool saveAs = false)
         {
             if (TabQueryControls.SelectedItem is TabItem tabItem && tabItem.Content is QueryTabControl activeTab)
             {
-                var saveFileDialog = new Microsoft.Win32.SaveFileDialog
+                string? targetPath = saveAs ? null : activeTab.FilePath;
+                if (string.IsNullOrEmpty(targetPath))
                 {
-                    Filter = "SQL Files (*.sql)|*.sql|All Files (*.*)|*.*",
-                    DefaultExt = ".sql",
-                    Title = "Save SQL Query"
-                };
+                    var saveFileDialog = new Microsoft.Win32.SaveFileDialog
+                    {
+                        Filter = "SQL Files (*.sql)|*.sql|All Files (*.*)|*.*",
+                        DefaultExt = ".sql",
+                        Title = saveAs ? "Save SQL Query As" : "Save SQL Query",
+                        FileName = activeTab.FilePath == null ? string.Empty : Path.GetFileName(activeTab.FilePath)
+                    };
 
-                if (saveFileDialog.ShowDialog() == true)
+                    if (saveFileDialog.ShowDialog() != true)
+                    {
+                        return;
+                    }
+
+                    targetPath = saveFileDialog.FileName;
+                }
+
+                try
                 {
-                    try
-                    {
-                        string resultJson = await activeTab.SqlEditorWebView.ExecuteScriptAsync("getQueryText()");
-                        string sqlQuery = JsonSerializer.Deserialize<string>(resultJson) ?? "";
+                    string resultJson = await activeTab.SqlEditorWebView.ExecuteScriptAsync("getQueryText()");
+                    string sqlQuery = JsonSerializer.Deserialize<string>(resultJson) ?? "";
+                    File.WriteAllText(targetPath, sqlQuery);
+                    activeTab.FilePath = targetPath;
 
-                        File.WriteAllText(saveFileDialog.FileName, sqlQuery);
-
-                        string fileName = Path.GetFileName(saveFileDialog.FileName);
-                        if (tabItem.Header is StackPanel headerPanel && headerPanel.Children[0] is TextBlock textBlock)
-                        {
-                            textBlock.Text = fileName;
-                        }
-                    }
-                    catch (Exception ex)
+                    if (tabItem.Header is StackPanel headerPanel && headerPanel.Children[0] is TextBlock textBlock)
                     {
-                        MessageBox.Show($"Failed to save query file: {ex.Message}", "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                        textBlock.Text = Path.GetFileName(targetPath);
                     }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Failed to save query file: {ex.Message}", "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
         }

@@ -99,7 +99,7 @@ Hal penting:
 - Urutan default toolbar mengikuti alur koneksi, pemilihan database, eksekusi, editing, lalu file/query; item tetap dapat di-drag untuk reorder.
 - `MainWindow` meneruskan pesan native `WM_MOUSEHWHEEL` dari gesture dua jari touchpad ke `ScrollViewer` horizontal di bawah pointer.
 - `RunEditorCommand(...)` menjalankan fungsi JavaScript di Monaco.
-- `SaveActiveTabQuery()` dan `OpenSqlFile()` untuk file `.sql`.
+- `SaveActiveTabQuery()` menyimpan ke path tab aktif, sedangkan Save As selalu meminta path baru; `OpenSqlFile()` dan drag-drop file `.sql` membuka setiap file sebagai tab baru. External drop WebView2 dimatikan agar drop di area Monaco tetap ditangani window.
 - `QueryTabControl.CacheAndRefreshAutocompleteAsync()` mengambil metadata tabel/kolom dan memanggil `updateMetadata(...)` di editor.
 - Monaco mengirim pesan `editorReady` dan memasang binding eksplisit `Ctrl+Space`; metadata dikirim ulang setelah editor siap agar suggestion tidak kosong akibat race saat navigasi.
 
