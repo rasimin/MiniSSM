@@ -272,7 +272,7 @@ public partial class MainWindow : Window
         };
         
         query.ObjectDefinitionRequested += async (_, e) =>
-            await OpenObjectDefinitionAsync(database, e.ObjectType, e.ObjectName, connStr);
+            await OpenObjectDefinitionAsync(query.DatabaseName, e.ObjectType, e.ObjectName, connStr);
 
         // Build tab header panel with close button
         var headerPanel = new StackPanel { Orientation = Orientation.Horizontal, Tag = "QueryTabDragHandle" };

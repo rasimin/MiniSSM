@@ -312,21 +312,24 @@
                     });
 
                     // 2. Columns of tables present in the current query (Smart Autocomplete like Redgate)
-                    var queryTables = getTablesInQuery(model.getValue());
-                    queryTables.forEach(qt => {
-                        var cols = findColumns(qt);
-                        if (cols) {
-                            cols.forEach(col => {
-                                suggestions.push({
-                                    label: col,
-                                    kind: monaco.languages.CompletionItemKind.Field,
-                                    insertText: col,
-                                    detail: "Column (" + qt + ")",
-                                    range: range
+                    if (!sourceContext) {
+                        var cursorOffset = model.getOffsetAt(position);
+                        var queryTables = getTablesInQuery(fullSql, cursorOffset);
+                        queryTables.forEach(qt => {
+                            var cols = findColumns(qt);
+                            if (cols) {
+                                cols.forEach(col => {
+                                    suggestions.push({
+                                        label: col,
+                                        kind: monaco.languages.CompletionItemKind.Field,
+                                        insertText: col,
+                                        detail: "Column (" + qt + ")",
+                                        range: range
+                                    });
                                 });
-                            });
-                        }
-                    });
+                            }
+                        });
+                    }
 
                     // 3. Standard SQL Keywords
                     var keywords = [
@@ -523,11 +526,17 @@
         });
 
         // Extract tables used in the query (FROM TableName / JOIN TableName)
-        function getTablesInQuery(sqlText) {
+        function getTablesInQuery(sqlText, cursorOffset) {
             var tablesFound = [];
             var regex = /(?:FROM|JOIN|APPLY)\s+([#a-zA-Z0-9_\.\[\]]+)/gi;
             var match;
             while ((match = regex.exec(sqlText)) !== null) {
+                // Check if match overlaps with cursorOffset to avoid matching the table currently being typed
+                var matchStart = match.index;
+                var matchEnd = match.index + match[0].length;
+                if (cursorOffset !== undefined && cursorOffset >= matchStart && cursorOffset <= matchEnd) {
+                    continue;
+                }
                 var tableName = match[1].replace(/[\[\]]/g, ''); // Strip square brackets
                 if (tablesFound.indexOf(tableName) === -1) {
                     tablesFound.push(tableName);
