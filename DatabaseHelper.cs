@@ -204,6 +204,7 @@ namespace SSMS
             string connectionString,
             string databaseName,
             string sqlQuery,
+            IProgress<string>? messageProgress = null,
             CancellationToken cancellationToken = default)
         {
             var result = new QueryResult();
@@ -220,6 +221,7 @@ namespace SSMS
                     connection.InfoMessage += (sender, e) =>
                     {
                         messages.AppendLine(e.Message);
+                        messageProgress?.Report(e.Message);
                     };
 
                     using (var command = new SqlCommand(sqlQuery, connection))
@@ -285,7 +287,9 @@ namespace SSMS
                                     int rowsAffected = reader.RecordsAffected;
                                     if (rowsAffected >= 0)
                                     {
-                                        messages.AppendLine($"({rowsAffected} row(s) affected)");
+                                        string affectedMessage = $"({rowsAffected} row(s) affected)";
+                                        messages.AppendLine(affectedMessage);
+                                        messageProgress?.Report(affectedMessage);
                                     }
                                 }
                             } while (await reader.NextResultAsync(cancellationToken));

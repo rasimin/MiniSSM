@@ -93,8 +93,39 @@
 
         <!-- Results & Messages Grid Container -->
         <Grid x:Name="ResultsPane" Grid.Row="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Non-blocking execution status keeps Results and Messages accessible. -->
+            <Border x:Name="LoadingOverlay"
+                    Grid.Row="0"
+                    Background="#252526"
+                    BorderBrush="#3F3F46"
+                    BorderThickness="0,0,0,1"
+                    Padding="10,6"
+                    Visibility="Collapsed">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <ProgressBar Grid.Column="0" IsIndeterminate="True" Width="90" Height="3"
+                                 Margin="0,0,12,0" VerticalAlignment="Center"
+                                 Foreground="#007ACC" Background="#3A3A3A" BorderThickness="0"/>
+                    <TextBlock x:Name="LoadingMessageText" Grid.Column="1" Text="Executing query..."
+                               Foreground="#CCCCCC" FontSize="12.5" VerticalAlignment="Center"/>
+                    <Button x:Name="CancelQueryButton" Grid.Column="2" Content="Cancel query"
+                            Style="{StaticResource SchemaActionButton}"
+                            Margin="12,0,0,0" Padding="12,4"
+                            Click="CancelQueryButton_Click"/>
+                </Grid>
+            </Border>
+
             <!-- Results & Messages TabControl -->
-            <TabControl x:Name="TabResults" Background="#1E1E1E" BorderThickness="0">
+            <TabControl x:Name="TabResults" Grid.Row="1" Background="#1E1E1E" BorderThickness="0">
                 <TabItem Header="Results">
                     <Grid x:Name="ResultsGridContainer" Background="#1E1E1E"/>
                 </TabItem>
@@ -104,17 +135,6 @@
                 </TabItem>
             </TabControl>
 
-            <!-- Loading overlay spinner -->
-            <Grid x:Name="LoadingOverlay" Background="#B01E1E1E" Visibility="Collapsed">
-                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                    <ProgressBar IsIndeterminate="True" Width="180" Height="4" Foreground="#007ACC" Background="#2D2D30" BorderThickness="0"/>
-                    <TextBlock x:Name="LoadingMessageText" Text="Executing query..." Foreground="#CCCCCC"
-                               FontSize="12.5" Margin="0,12,0,0" HorizontalAlignment="Center"/>
-                    <Button x:Name="CancelQueryButton" Content="Cancel query"
-                            Style="{StaticResource SchemaActionButton}"
-                            Margin="0,14,0,0" Click="CancelQueryButton_Click"/>
-                </StackPanel>
-            </Grid>
         </Grid>
     </Grid>
 </UserControl>

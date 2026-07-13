@@ -544,6 +544,9 @@ namespace SSMS
             CancelQueryButton.Content = "Cancel query";
             CancelQueryButton.IsEnabled = true;
             LoadingOverlay.Visibility = Visibility.Visible;
+            TabResults.SelectedIndex = 1;
+
+            var messageProgress = new Progress<string>(AppendLiveQueryMessage);
 
             var mainWindow = Window.GetWindow(this) as MainWindow;
             mainWindow?.UpdateStatusText("Executing query...");
@@ -554,6 +557,7 @@ namespace SSMS
                     ConnectionString,
                     DatabaseName,
                     sqlQuery,
+                    messageProgress,
                     cancellationSource.Token);
 
                 // Populate Results Pane
@@ -561,7 +565,7 @@ namespace SSMS
                 {
                     TotalResultRows = 0;
                     TotalResultColumns = 0;
-                    TxtMessages.Text = result.Message;
+                    AppendLiveQueryMessage(result.Message);
                     TabResults.SelectedIndex = 1;
                     mainWindow?.UpdateStatusText("Query cancelled.");
                     mainWindow?.UpdateStatusTime($"Cancelled: {result.ExecutionTime.TotalMilliseconds:F2} ms");
@@ -605,7 +609,7 @@ namespace SSMS
                 {
                     TotalResultRows = 0;
                     TotalResultColumns = 0;
-                    TxtMessages.Text = result.Message;
+                    AppendLiveQueryMessage(result.Message);
                     TabResults.SelectedIndex = 1; // Select Messages Textbox Tab
                     mainWindow?.UpdateStatusTime($"Error: {result.ExecutionTime.TotalMilliseconds:F2} ms");
                     mainWindow?.UpdateStatusRowsAndColumns(0, 0);
@@ -616,7 +620,7 @@ namespace SSMS
                 TotalResultRows = 0;
                 TotalResultColumns = 0;
                 AppLogger.Error(ex, "ExecuteQuery failed");
-                TxtMessages.Text = $"Unexpected query execution error: {ex.Message}";
+                AppendLiveQueryMessage($"Unexpected query execution error: {ex.Message}");
                 TabResults.SelectedIndex = 1;
                 mainWindow?.UpdateStatusTime("Error");
                 mainWindow?.UpdateStatusRowsAndColumns(0, 0);
@@ -633,6 +637,23 @@ namespace SSMS
                 CancelQueryButton.IsEnabled = true;
                 LoadingOverlay.Visibility = Visibility.Collapsed;
             }
+        }
+
+        private void AppendLiveQueryMessage(string message)
+        {
+            if (string.IsNullOrEmpty(message))
+            {
+                return;
+            }
+
+            if (TxtMessages.Text.Length > 0 && !TxtMessages.Text.EndsWith(Environment.NewLine, StringComparison.Ordinal))
+            {
+                TxtMessages.AppendText(Environment.NewLine);
+            }
+
+            TxtMessages.AppendText(message.TrimEnd('\r', '\n'));
+            TxtMessages.AppendText(Environment.NewLine);
+            TxtMessages.ScrollToEnd();
         }
 
         private void CancelQueryButton_Click(object sender, RoutedEventArgs e)
