@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<SyntaxDefinition name="MiniSSMS SQL"
+                  extensions=".sql"
+                  xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+  <Color name="Comment" foreground="#6A9955" fontStyle="italic" />
+  <Color name="Keyword" foreground="#569CD6" fontWeight="bold" />
+  <Color name="DataType" foreground="#4EC9B0" />
+  <Color name="Function" foreground="#DCDCAA" />
+  <Color name="String" foreground="#CE9178" />
+  <Color name="Number" foreground="#B5CEA8" />
+  <Color name="Variable" foreground="#9CDCFE" />
+  <Color name="Identifier" foreground="#C8C8C8" />
+
+  <RuleSet ignoreCase="true">
+    <Span color="Comment" begin="--" />
+    <Span color="Comment" multiline="true" begin="/\*" end="\*/" />
+    <Span color="String" begin="N?'" end="'" />
+
+    <Keywords color="Keyword">
+      <Word>ADD</Word><Word>ALL</Word><Word>ALTER</Word><Word>AND</Word>
+      <Word>ANY</Word><Word>AS</Word><Word>ASC</Word><Word>AUTHORIZATION</Word>
+      <Word>BACKUP</Word><Word>BEGIN</Word><Word>BETWEEN</Word><Word>BREAK</Word>
+      <Word>BROWSE</Word><Word>BULK</Word><Word>BY</Word><Word>CASCADE</Word>
+      <Word>CASE</Word><Word>CHECK</Word><Word>CHECKPOINT</Word><Word>CLOSE</Word>
+      <Word>CLUSTERED</Word><Word>COALESCE</Word><Word>COLLATE</Word><Word>COLUMN</Word>
+      <Word>COMMIT</Word><Word>COMPUTE</Word><Word>CONSTRAINT</Word><Word>CONTAINS</Word>
+      <Word>CONTINUE</Word><Word>CREATE</Word><Word>CROSS</Word><Word>CURRENT</Word>
+      <Word>CURRENT_DATE</Word><Word>CURRENT_TIMESTAMP</Word><Word>DATABASE</Word>
+      <Word>DBCC</Word><Word>DEALLOCATE</Word><Word>DECLARE</Word><Word>DEFAULT</Word>
+      <Word>DELETE</Word><Word>DENY</Word><Word>DESC</Word><Word>DISABLE</Word>
+      <Word>DISTINCT</Word><Word>DROP</Word><Word>ELSE</Word><Word>ENABLE</Word>
+      <Word>END</Word><Word>ESCAPE</Word><Word>EXCEPT</Word><Word>EXEC</Word>
+      <Word>EXECUTE</Word><Word>EXISTS</Word><Word>FOREIGN</Word><Word>FROM</Word>
+      <Word>FULL</Word><Word>FUNCTION</Word><Word>GO</Word><Word>GRANT</Word>
+      <Word>GROUP</Word><Word>HAVING</Word><Word>IDENTITY</Word><Word>IF</Word>
+      <Word>IN</Word><Word>INCLUDE</Word><Word>INDEX</Word><Word>INNER</Word>
+      <Word>INSERT</Word><Word>INTERSECT</Word><Word>INTO</Word><Word>IS</Word>
+      <Word>JOIN</Word><Word>KEY</Word><Word>LEFT</Word><Word>LIKE</Word>
+      <Word>MERGE</Word><Word>NOCHECK</Word><Word>NONCLUSTERED</Word><Word>NOT</Word>
+      <Word>NULL</Word><Word>OF</Word><Word>OFF</Word><Word>ON</Word>
+      <Word>OPEN</Word><Word>OPTION</Word><Word>OR</Word><Word>ORDER</Word>
+      <Word>OUTER</Word><Word>PRIMARY</Word><Word>PROCEDURE</Word><Word>REFERENCES</Word>
+      <Word>REPLICATION</Word><Word>RETURN</Word><Word>RIGHT</Word><Word>ROLLBACK</Word>
+      <Word>ROWGUIDCOL</Word><Word>SELECT</Word><Word>SET</Word><Word>TABLE</Word>
+      <Word>THEN</Word><Word>TOP</Word><Word>TRAN</Word><Word>TRANSACTION</Word>
+      <Word>TRIGGER</Word><Word>TRUNCATE</Word><Word>UNION</Word><Word>UNIQUE</Word>
+      <Word>UPDATE</Word><Word>USE</Word><Word>VALUES</Word><Word>VIEW</Word>
+      <Word>WHEN</Word><Word>WHERE</Word><Word>WHILE</Word><Word>WITH</Word>
+    </Keywords>
+
+    <Keywords color="DataType">
+      <Word>BIGINT</Word><Word>BINARY</Word><Word>BIT</Word><Word>CHAR</Word>
+      <Word>DATE</Word><Word>DATETIME</Word><Word>DATETIME2</Word><Word>DATETIMEOFFSET</Word>
+      <Word>DECIMAL</Word><Word>FLOAT</Word><Word>GEOGRAPHY</Word><Word>GEOMETRY</Word>
+      <Word>HIERARCHYID</Word><Word>IMAGE</Word><Word>INT</Word><Word>MONEY</Word>
+      <Word>NCHAR</Word><Word>NTEXT</Word><Word>NUMERIC</Word><Word>NVARCHAR</Word>
+      <Word>REAL</Word><Word>ROWVERSION</Word><Word>SMALLDATETIME</Word><Word>SMALLINT</Word>
+      <Word>SMALLMONEY</Word><Word>SQL_VARIANT</Word><Word>SYSNAME</Word><Word>TEXT</Word>
+      <Word>TIME</Word><Word>TIMESTAMP</Word><Word>TINYINT</Word><Word>UNIQUEIDENTIFIER</Word>
+      <Word>VARBINARY</Word><Word>VARCHAR</Word><Word>XML</Word>
+    </Keywords>
+
+    <Keywords color="Function">
+      <Word>AVG</Word><Word>CAST</Word><Word>CONCAT</Word><Word>CONVERT</Word>
+      <Word>COUNT</Word><Word>DATEADD</Word><Word>DATEDIFF</Word><Word>GETDATE</Word>
+      <Word>ISNULL</Word><Word>MAX</Word><Word>MIN</Word><Word>NEWID</Word>
+      <Word>NULLIF</Word><Word>OBJECT_ID</Word><Word>SCHEMA_NAME</Word>
+      <Word>SCOPE_IDENTITY</Word><Word>SUM</Word>
+    </Keywords>
+
+    <Rule color="Variable">@@?[A-Za-z_][A-Za-z0-9_]*</Rule>
+    <Rule color="Number">\b(?:0x[0-9A-F]+|\d+(?:\.\d+)?)\b</Rule>
+    <Rule color="Identifier">\[[^\]\r\n]+\]</Rule>
+  </RuleSet>
+</SyntaxDefinition>

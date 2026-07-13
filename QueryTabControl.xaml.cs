@@ -2,14 +2,19 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
+using System.Xml;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Forms.Integration;
+using ICSharpCode.AvalonEdit.Highlighting;
+using ICSharpCode.AvalonEdit.Highlighting.Xshd;
 using Microsoft.Web.WebView2.Core;
 using Drawing = System.Drawing;
 using WinForms = System.Windows.Forms;
@@ -46,7 +51,11 @@ namespace SSMS
         private const double EditorMinHeight = 60;
         private const double ResultsMinHeight = 90;
         private static readonly Drawing.Font ResultNullFont = new("Segoe UI", 9F, Drawing.FontStyle.Italic);
+        private static readonly Lazy<IHighlightingDefinition?> SqlHighlighting = new(LoadSqlHighlighting);
         private static CoreWebView2Environment? _sharedEnvironment;
+        private double? _pendingEditorHeight;
+        private bool _editorResizeScheduled;
+        private CancellationTokenSource? _queryCancellationSource;
 
         private static async Task<CoreWebView2Environment> GetSharedEnvironmentAsync()
         {
@@ -69,14 +78,39 @@ namespace SSMS
 
         private void EditorResultsSplitter_DragDelta(object sender, DragDeltaEventArgs e)
         {
-            ResizeEditorResults(e.VerticalChange);
+            double currentHeight = _pendingEditorHeight ??
+                (EditorRow.ActualHeight > 0
+                    ? EditorRow.ActualHeight
+                    : QueryLayoutGrid.RowDefinitions[0].ActualHeight);
+            _pendingEditorHeight = currentHeight + e.VerticalChange;
+
+            if (!_editorResizeScheduled)
+            {
+                _editorResizeScheduled = true;
+                Dispatcher.BeginInvoke(
+                    System.Windows.Threading.DispatcherPriority.Render,
+                    new Action(ApplyPendingEditorResize));
+            }
+
             e.Handled = true;
         }
 
-        private void ResizeEditorResults(double verticalDelta)
+        private void EditorResultsSplitter_DragCompleted(object sender, DragCompletedEventArgs e)
         {
-            double currentEditorHeight = EditorRow.ActualHeight > 0 ? EditorRow.ActualHeight : QueryLayoutGrid.RowDefinitions[0].ActualHeight;
-            ResizeEditorResultsTo(currentEditorHeight + verticalDelta);
+            ApplyPendingEditorResize();
+            e.Handled = true;
+        }
+
+        private void ApplyPendingEditorResize()
+        {
+            _editorResizeScheduled = false;
+            if (_pendingEditorHeight is not double editorHeight)
+            {
+                return;
+            }
+
+            _pendingEditorHeight = null;
+            ResizeEditorResultsTo(editorHeight);
         }
 
         private void ResizeEditorResultsTo(double desiredEditorHeight)
@@ -220,20 +254,266 @@ namespace SSMS
                 {
                     string? objectName = objectNameElement.GetString();
                     string? objectType = objectTypeElement.GetString();
-                    if (!string.IsNullOrWhiteSpace(objectName) && !string.IsNullOrWhiteSpace(objectType) &&
-                        Window.GetWindow(this) is MainWindow mainWindow)
+                    if (!string.IsNullOrWhiteSpace(objectName) && !string.IsNullOrWhiteSpace(objectType))
                     {
-                        _ = mainWindow.OpenObjectDefinitionFromEditorAsync(
-                            ConnectionString, DatabaseName, objectType, objectName);
+                        _ = ShowObjectDefinitionTabAsync(objectName, objectType);
                     }
                 }
             }
             catch { }
         }
 
+        private async Task ShowObjectDefinitionTabAsync(string objectName, string objectType)
+        {
+            var schemaTab = CreateSchemaTab(objectName, objectType);
+            schemaTab.Content = new Grid
+            {
+                Background = (SolidColorBrush)new BrushConverter().ConvertFromString("#1E1E1E")!,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = $"Loading definition for {objectName}...",
+                        Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("#A0A0A0")!,
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        VerticalAlignment = VerticalAlignment.Center
+                    }
+                }
+            };
+
+            TabResults.Items.Add(schemaTab);
+            TabResults.SelectedItem = schemaTab;
+
+            string script;
+            try
+            {
+                script = objectType.Equals("Table", StringComparison.OrdinalIgnoreCase)
+                    ? await DatabaseHelper.GenerateTableCreateScriptAsync(ConnectionString, DatabaseName, objectName)
+                    : await DatabaseHelper.GetObjectDefinitionAsync(ConnectionString, DatabaseName, objectName);
+
+                if (string.IsNullOrWhiteSpace(script))
+                {
+                    script = $"-- Definition for {objectName} is unavailable or encrypted.";
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error(ex, $"Failed to load schema definition for '{objectName}'.");
+                script = $"-- Failed to load definition for {objectName}.{Environment.NewLine}-- {ex.Message}";
+            }
+
+            schemaTab.Content = CreateSchemaTabContent(schemaTab, objectName, objectType, script);
+        }
+
+        private TabItem CreateSchemaTab(string objectName, string objectType)
+        {
+            var tab = new TabItem
+            {
+                Tag = new SchemaTabInfo(objectName, objectType),
+                ToolTip = $"{objectType}: {objectName}"
+            };
+
+            var header = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            header.Children.Add(new TextBlock
+            {
+                Text = $"Schema: {objectName}",
+                MaxWidth = 220,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+
+            var closeButton = new Button
+            {
+                Content = "x",
+                ToolTip = "Close schema tab"
+            };
+            closeButton.SetResourceReference(StyleProperty, "SchemaTabCloseButton");
+            closeButton.Click += (_, e) =>
+            {
+                e.Handled = true;
+                CloseSchemaTab(tab);
+            };
+            header.Children.Add(closeButton);
+            tab.Header = header;
+            return tab;
+        }
+
+        private FrameworkElement CreateSchemaTabContent(
+            TabItem schemaTab,
+            string objectName,
+            string objectType,
+            string script)
+        {
+            var layout = new Grid
+            {
+                Background = (SolidColorBrush)new BrushConverter().ConvertFromString("#1E1E1E")!
+            };
+            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+            var toolbar = new Grid
+            {
+                Background = (SolidColorBrush)new BrushConverter().ConvertFromString("#252526")!,
+                Height = 38
+            };
+            toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            toolbar.Children.Add(new TextBlock
+            {
+                Text = $"{objectType}  {objectName}",
+                Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("#C8C8C8")!,
+                Margin = new Thickness(12, 0, 12, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis
+            });
+
+            var actions = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(actions, 1);
+
+            var openButton = CreateSchemaActionButton("Open in New Query");
+            openButton.Click += (_, _) =>
+            {
+                if (Window.GetWindow(this) is MainWindow mainWindow)
+                {
+                    mainWindow.CreateNewQueryTab(
+                        ConnectionString,
+                        DatabaseName,
+                        script,
+                        $"{objectName}_CREATE.sql");
+                }
+            };
+
+            var copyButton = CreateSchemaActionButton("Copy");
+            copyButton.Click += (_, _) => CopySchemaToClipboard(script, objectName);
+
+            var closeAllButton = CreateSchemaActionButton("Close All Schemas");
+            closeAllButton.Click += (_, _) => CloseAllSchemaTabs();
+
+            actions.Children.Add(openButton);
+            actions.Children.Add(copyButton);
+            actions.Children.Add(closeAllButton);
+            toolbar.Children.Add(actions);
+            layout.Children.Add(toolbar);
+
+            var viewer = new ICSharpCode.AvalonEdit.TextEditor
+            {
+                Text = script,
+                IsReadOnly = true,
+                ShowLineNumbers = true,
+                SyntaxHighlighting = SqlHighlighting.Value,
+                WordWrap = false,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Background = (SolidColorBrush)new BrushConverter().ConvertFromString("#1E1E1E")!,
+                Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("#D4D4D4")!,
+                LineNumbersForeground = (SolidColorBrush)new BrushConverter().ConvertFromString("#858585")!,
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(12, 10, 12, 10),
+                FontFamily = new FontFamily("Consolas"),
+                FontSize = 13
+            };
+            viewer.Options.EnableHyperlinks = false;
+            viewer.Options.EnableEmailHyperlinks = false;
+            viewer.Options.HighlightCurrentLine = true;
+            viewer.Options.IndentationSize = 4;
+            viewer.TextArea.SelectionBrush =
+                (SolidColorBrush)new BrushConverter().ConvertFromString("#264F78")!;
+            viewer.TextArea.TextView.CurrentLineBackground =
+                (SolidColorBrush)new BrushConverter().ConvertFromString("#242424")!;
+            Grid.SetRow(viewer, 1);
+            layout.Children.Add(viewer);
+            return layout;
+        }
+
+        private static IHighlightingDefinition? LoadSqlHighlighting()
+        {
+            try
+            {
+                var resource = Application.GetResourceStream(new Uri("SqlDark.xshd", UriKind.Relative));
+                if (resource == null)
+                {
+                    return HighlightingManager.Instance.GetDefinition("SQL");
+                }
+
+                using var reader = XmlReader.Create(resource.Stream);
+                return HighlightingLoader.Load(reader, HighlightingManager.Instance);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error(ex, "Failed to load SQL syntax highlighting.");
+                return HighlightingManager.Instance.GetDefinition("SQL");
+            }
+        }
+
+        private Button CreateSchemaActionButton(string text)
+        {
+            var button = new Button { Content = text };
+            button.SetResourceReference(StyleProperty, "SchemaActionButton");
+            return button;
+        }
+
+        private void CopySchemaToClipboard(string script, string objectName)
+        {
+            try
+            {
+                Clipboard.SetText(script);
+                if (Window.GetWindow(this) is MainWindow mainWindow)
+                {
+                    mainWindow.UpdateStatusText($"Definition copied: {objectName}");
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error(ex, $"Failed to copy schema definition for '{objectName}'.");
+                MessageBox.Show(
+                    $"Failed to copy definition: {ex.Message}",
+                    "Copy Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+        }
+
+        private void CloseSchemaTab(TabItem tab)
+        {
+            if (tab.Tag is not SchemaTabInfo)
+            {
+                return;
+            }
+
+            TabResults.Items.Remove(tab);
+            if (TabResults.SelectedItem == null)
+            {
+                TabResults.SelectedIndex = 0;
+            }
+        }
+
+        private void CloseAllSchemaTabs()
+        {
+            var schemaTabs = TabResults.Items
+                .OfType<TabItem>()
+                .Where(tab => tab.Tag is SchemaTabInfo)
+                .ToList();
+
+            foreach (TabItem tab in schemaTabs)
+            {
+                TabResults.Items.Remove(tab);
+            }
+            TabResults.SelectedIndex = 0;
+        }
+
         public async void ExecuteQuery()
         {
-            if (!IsWebViewInitialized) return;
+            if (!IsWebViewInitialized || _queryCancellationSource != null) return;
 
             string sqlQuery = "";
             try
@@ -258,6 +538,11 @@ namespace SSMS
             ResultsGridContainer.Children.Clear();
             ResultsGridContainer.RowDefinitions.Clear();
             TxtMessages.Text = "";
+            var cancellationSource = new CancellationTokenSource();
+            _queryCancellationSource = cancellationSource;
+            LoadingMessageText.Text = "Executing query...";
+            CancelQueryButton.Content = "Cancel query";
+            CancelQueryButton.IsEnabled = true;
             LoadingOverlay.Visibility = Visibility.Visible;
 
             var mainWindow = Window.GetWindow(this) as MainWindow;
@@ -265,10 +550,24 @@ namespace SSMS
 
             try
             {
-                var result = await Task.Run(() => DatabaseHelper.ExecuteQueryAsync(ConnectionString, DatabaseName, sqlQuery));
+                var result = await DatabaseHelper.ExecuteQueryAsync(
+                    ConnectionString,
+                    DatabaseName,
+                    sqlQuery,
+                    cancellationSource.Token);
 
                 // Populate Results Pane
-                if (result.IsSuccess)
+                if (result.IsCancelled)
+                {
+                    TotalResultRows = 0;
+                    TotalResultColumns = 0;
+                    TxtMessages.Text = result.Message;
+                    TabResults.SelectedIndex = 1;
+                    mainWindow?.UpdateStatusText("Query cancelled.");
+                    mainWindow?.UpdateStatusTime($"Cancelled: {result.ExecutionTime.TotalMilliseconds:F2} ms");
+                    mainWindow?.UpdateStatusRowsAndColumns(0, 0);
+                }
+                else if (result.IsSuccess)
                 {
                     TxtMessages.Text = result.Message;
                     if (result.DataTables != null && result.DataTables.Count > 0)
@@ -324,8 +623,34 @@ namespace SSMS
             }
             finally
             {
+                if (ReferenceEquals(_queryCancellationSource, cancellationSource))
+                {
+                    _queryCancellationSource = null;
+                }
+                cancellationSource.Dispose();
+                LoadingMessageText.Text = "Executing query...";
+                CancelQueryButton.Content = "Cancel query";
+                CancelQueryButton.IsEnabled = true;
                 LoadingOverlay.Visibility = Visibility.Collapsed;
             }
+        }
+
+        private void CancelQueryButton_Click(object sender, RoutedEventArgs e)
+        {
+            var cancellationSource = _queryCancellationSource;
+            if (cancellationSource == null || cancellationSource.IsCancellationRequested)
+            {
+                return;
+            }
+
+            LoadingMessageText.Text = "Cancelling query...";
+            CancelQueryButton.Content = "Cancelling...";
+            CancelQueryButton.IsEnabled = false;
+            if (Window.GetWindow(this) is MainWindow mainWindow)
+            {
+                mainWindow.UpdateStatusText("Cancelling query...");
+            }
+            cancellationSource.Cancel();
         }
 
         public async Task CacheAndRefreshAutocompleteAsync()
@@ -764,6 +1089,7 @@ namespace SSMS
             container.Children.Add(scrollCorner);
 
             bool synchronizingScrollBars = false;
+            bool scrollBarUpdateScheduled = false;
 
             void UpdateScrollBars()
             {
@@ -800,6 +1126,23 @@ namespace SSMS
                 {
                     synchronizingScrollBars = false;
                 }
+            }
+
+            void ScheduleScrollBarUpdate()
+            {
+                if (scrollBarUpdateScheduled)
+                {
+                    return;
+                }
+
+                scrollBarUpdateScheduled = true;
+                Dispatcher.BeginInvoke(
+                    System.Windows.Threading.DispatcherPriority.Render,
+                    new Action(() =>
+                    {
+                        scrollBarUpdateScheduled = false;
+                        UpdateScrollBars();
+                    }));
             }
 
             verticalScrollBar.ValueChanged += (_, _) =>
@@ -859,11 +1202,11 @@ namespace SSMS
             };
 
             dataGrid.Scroll += (_, _) => UpdateScrollBars();
-            dataGrid.Resize += (_, _) => UpdateScrollBars();
-            dataGrid.ColumnWidthChanged += (_, _) => UpdateScrollBars();
-            dataGrid.DataBindingComplete += (_, _) => UpdateScrollBars();
-            container.Loaded += (_, _) => Dispatcher.BeginInvoke(new Action(UpdateScrollBars));
-            container.SizeChanged += (_, _) => Dispatcher.BeginInvoke(new Action(UpdateScrollBars));
+            dataGrid.Resize += (_, _) => ScheduleScrollBarUpdate();
+            dataGrid.ColumnWidthChanged += (_, _) => ScheduleScrollBarUpdate();
+            dataGrid.DataBindingComplete += (_, _) => ScheduleScrollBarUpdate();
+            container.Loaded += (_, _) => ScheduleScrollBarUpdate();
+            container.SizeChanged += (_, _) => ScheduleScrollBarUpdate();
 
             return container;
         }
@@ -984,4 +1327,6 @@ namespace SSMS
             base.WndProc(ref m);
         }
     }
+
+    internal sealed record SchemaTabInfo(string ObjectName, string ObjectType);
 }
