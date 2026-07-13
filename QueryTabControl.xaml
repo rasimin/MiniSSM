@@ -67,8 +67,20 @@
         </Grid.RowDefinitions>
 
         <!-- Monaco Editor in WebView2 -->
-        <Border Grid.Row="0" BorderBrush="#2D2D30" BorderThickness="0,0,0,1">
-            <wv2:WebView2 x:Name="SqlEditorWebView" Margin="0" AllowExternalDrop="False"/>
+        <Border Grid.Row="0" Background="#1E1E1E" BorderBrush="#2D2D30" BorderThickness="0,0,0,1">
+            <Grid Background="#1E1E1E">
+                <StackPanel x:Name="EditorLoadingPanel"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+                    <ProgressBar Width="110" Height="3" IsIndeterminate="True"
+                                 Foreground="#007ACC" Background="#303030" BorderThickness="0"/>
+                    <TextBlock Text="Opening editor..." Foreground="#858585" FontSize="11"
+                               Margin="0,10,0,0" HorizontalAlignment="Center"/>
+                </StackPanel>
+                <wv2:WebView2 x:Name="SqlEditorWebView"
+                              Margin="0"
+                              AllowExternalDrop="False"/>
+            </Grid>
         </Border>
 
         <!-- Horizontal Grid Splitter -->

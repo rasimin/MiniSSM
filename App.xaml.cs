@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 
 namespace SSMS
@@ -10,7 +11,7 @@ namespace SSMS
     /// </summary>
     public partial class App : Application
     {
-        protected override void OnStartup(StartupEventArgs e)
+        protected override async void OnStartup(StartupEventArgs e)
         {
             // Disable UI Automation globally for ItemsControls to prevent major DataGrid scroll lag
             AppContext.SetSwitch("Switch.System.Windows.Controls.ItemsControlDoesNotSupportAutomation", true);
@@ -24,17 +25,45 @@ namespace SSMS
             // Prevent WPF from shutting down when the connection dialog closes
             Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
+            var startupWindow = new StartupWindow
+            {
+                Topmost = true
+            };
             var connWindow = new ConnectionWindow();
+            connWindow.ConnectionAccepted += (_, _) =>
+            {
+                startupWindow.SetStatus("Loading workspace...");
+                startupWindow.Show();
+                startupWindow.UpdateLayout();
+                Dispatcher.Invoke(DispatcherPriority.Render, new Action(() => { }));
+            };
+
             if (connWindow.ShowDialog() == true)
             {
                 var mainWindow = new MainWindow(connWindow.ConnectionString);
                 Current.MainWindow = mainWindow;
-                Current.ShutdownMode = ShutdownMode.OnLastWindowClose;
                 mainWindow.Show();
+                await mainWindow.StartupCompletion;
+
+                Current.ShutdownMode = ShutdownMode.OnLastWindowClose;
+                mainWindow.Activate();
+
+                var fadeOut = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(180))
+                {
+                    FillBehavior = FillBehavior.Stop
+                };
+                fadeOut.Completed += (_, _) =>
+                {
+                    startupWindow.Topmost = false;
+                    startupWindow.Close();
+                    mainWindow.Activate();
+                };
+                startupWindow.BeginAnimation(Window.OpacityProperty, fadeOut);
             }
             else
             {
                 AppLogger.Info("Connection dialog cancelled. Application shutting down.");
+                startupWindow.Close();
                 Current.Shutdown();
             }
         }

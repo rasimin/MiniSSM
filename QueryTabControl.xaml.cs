@@ -52,24 +52,24 @@ namespace SSMS
         private const double ResultsMinHeight = 90;
         private static readonly Drawing.Font ResultNullFont = new("Segoe UI", 9F, Drawing.FontStyle.Italic);
         private static readonly Lazy<IHighlightingDefinition?> SqlHighlighting = new(LoadSqlHighlighting);
-        private static CoreWebView2Environment? _sharedEnvironment;
+        private static readonly Lazy<Task<CoreWebView2Environment>> SharedEnvironment =
+            new(CreateSharedEnvironmentAsync, LazyThreadSafetyMode.ExecutionAndPublication);
         private double? _pendingEditorHeight;
         private bool _editorResizeScheduled;
+        private bool _webViewInitializationStarted;
+        private bool _editorReadyHandled;
         private CancellationTokenSource? _queryCancellationSource;
 
-        private static async Task<CoreWebView2Environment> GetSharedEnvironmentAsync()
+        private static Task<CoreWebView2Environment> CreateSharedEnvironmentAsync()
         {
-            if (_sharedEnvironment == null)
-            {
-                string userDataFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebView2_UserData");
-                _sharedEnvironment = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
-            }
-            return _sharedEnvironment;
+            string userDataFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebView2_UserData");
+            return CoreWebView2Environment.CreateAsync(null, userDataFolder);
         }
 
         public QueryTabControl(string connectionString, string databaseName)
         {
             InitializeComponent();
+            SqlEditorWebView.DefaultBackgroundColor = Drawing.Color.FromArgb(255, 30, 30, 30);
             ConnectionString = connectionString;
             DatabaseName = databaseName;
 
@@ -131,7 +131,8 @@ namespace SSMS
 
         private async void QueryTabControl_Loaded(object sender, RoutedEventArgs e)
         {
-            if (IsWebViewInitialized) return;
+            if (_webViewInitializationStarted) return;
+            _webViewInitializationStarted = true;
             await InitializeWebViewAsync();
         }
 
@@ -139,7 +140,7 @@ namespace SSMS
         {
             try
             {
-                var env = await GetSharedEnvironmentAsync();
+                var env = await SharedEnvironment.Value;
                 await SqlEditorWebView.EnsureCoreWebView2Async(env);
 
                 string htmlPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sql_editor.html");
@@ -148,37 +149,8 @@ namespace SSMS
                     File.WriteAllText(htmlPath, GetDefaultHtmlContent());
                 }
 
-                SqlEditorWebView.Source = new Uri(htmlPath);
                 SqlEditorWebView.WebMessageReceived += SqlEditorWebView_WebMessageReceived;
-                
-                SqlEditorWebView.NavigationCompleted += async (sender, args) =>
-                {
-                    await SqlEditorWebView.ExecuteScriptAsync(@"
-                        var checkEditor = setInterval(function() {
-                            if (typeof focusEditor === 'function' && typeof monaco !== 'undefined') {
-                                clearInterval(checkEditor);
-                                " + (string.IsNullOrEmpty(InitialSql) ? "" : "setQueryText(" + JsonSerializer.Serialize(InitialSql) + ");") + @"
-                                focusEditor();
-                                " + (AutoExecute ? "window.chrome.webview.postMessage({ action: 'execute' });" : "") + @"
-                            }
-                        }, 50);
-                    ");
-
-                    // Also focus the WebView2 control in WPF
-                    _ = Dispatcher.BeginInvoke(new Action(() =>
-                    {
-                        SqlEditorWebView.Focus();
-                    }), System.Windows.Threading.DispatcherPriority.Input);
-
-                    // The first metadata push can happen before Monaco finishes loading.
-                    // Push it again after navigation so autocomplete has the table list.
-                    await CacheAndRefreshAutocompleteAsync();
-                };
-                
-                IsWebViewInitialized = true;
-
-                // Cache metadata & update autocompletion for this database
-                await CacheAndRefreshAutocompleteAsync();
+                SqlEditorWebView.Source = new Uri(htmlPath);
             }
             catch (Exception ex)
             {
@@ -237,7 +209,7 @@ namespace SSMS
                 }
                 else if (action.GetString() == "editorReady")
                 {
-                    _ = CacheAndRefreshAutocompleteAsync();
+                    _ = CompleteEditorInitializationAsync();
                 }
                 else if (action.GetString() == "loadDatabaseMetadata" &&
                          doc.RootElement.TryGetProperty("databaseName", out var databaseElement))
@@ -261,6 +233,44 @@ namespace SSMS
                 }
             }
             catch { }
+        }
+
+        private async Task CompleteEditorInitializationAsync()
+        {
+            if (_editorReadyHandled)
+            {
+                return;
+            }
+
+            _editorReadyHandled = true;
+            IsWebViewInitialized = true;
+            EditorLoadingPanel.Visibility = Visibility.Collapsed;
+
+            try
+            {
+                if (!string.IsNullOrEmpty(InitialSql))
+                {
+                    await SqlEditorWebView.ExecuteScriptAsync(
+                        $"setQueryText({JsonSerializer.Serialize(InitialSql)});");
+                }
+
+                SqlEditorWebView.Focus();
+                await SqlEditorWebView.ExecuteScriptAsync("focusEditor();");
+
+                if (AutoExecute)
+                {
+                    ExecuteQuery();
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error(ex, "Failed to complete Monaco editor initialization");
+            }
+
+            // Autocomplete metadata is useful, but it must not delay the visible editor.
+            await System.Windows.Threading.Dispatcher.Yield(
+                System.Windows.Threading.DispatcherPriority.Background);
+            await CacheAndRefreshAutocompleteAsync();
         }
 
         private async Task ShowObjectDefinitionTabAsync(string objectName, string objectType)

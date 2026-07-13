@@ -19,7 +19,11 @@ namespace SSMS
     public partial class MainWindow : Window
     {
         private readonly string _initialConnectionString;
+        private readonly TaskCompletionSource<bool> _startupCompletion =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _queryTabCounter = 0;
+
+        public Task StartupCompletion => _startupCompletion.Task;
 
         // Cache databases list per server connection string to make tab switching instant
         private readonly Dictionary<string, List<string>> _serverDatabasesCache = new(StringComparer.OrdinalIgnoreCase);
@@ -194,6 +198,11 @@ namespace SSMS
             {
                 MessageBox.Show($"Error initializing application: {ex.Message}", "Initialization Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+            finally
+            {
+                await Dispatcher.Yield(DispatcherPriority.Render);
+                _startupCompletion.TrySetResult(true);
+            }
         }
 
         #region Status Bar Updates
@@ -224,7 +233,7 @@ namespace SSMS
 
             var builder = new SqlConnectionStringBuilder(connectionString);
             string serverName = builder.DataSource;
-            string tabTitle = customTabTitle ?? $"SQLQuery{_queryTabCounter}.sql ({serverName}.{databaseName})";
+            string tabTitle = customTabTitle ?? $"SQLQuery{_queryTabCounter}.sql";
             AppLogger.Info($"Creating query tab: {tabTitle}");
 
             var queryTabControl = new QueryTabControl(connectionString, databaseName);
@@ -242,6 +251,7 @@ namespace SSMS
 
             // Build tab header panel with close button
             var headerPanel = new StackPanel { Orientation = Orientation.Horizontal, Tag = QueryTabDragHandleTag };
+            headerPanel.ToolTip = $"Server: {serverName}{Environment.NewLine}Database: {databaseName}";
             var headerText = new TextBlock 
             { 
                 Text = tabTitle, 
@@ -808,13 +818,13 @@ namespace SSMS
                 activeTab.DatabaseName = selectedDb;
                 TxtStatusDatabase.Text = selectedDb;
 
-                // Dynamically update the header tab title
+                // Keep the compact title and expose connection context on hover.
                 var builder = new SqlConnectionStringBuilder(activeTab.ConnectionString);
                 string serverName = builder.DataSource;
                 
-                if (tabItem.Header is StackPanel headerPanel && headerPanel.Children[0] is TextBlock textBlock)
+                if (tabItem.Header is StackPanel headerPanel)
                 {
-                    textBlock.Text = $"SQLQuery{GetTabNumber(tabItem)}.sql ({serverName}.{selectedDb})";
+                    headerPanel.ToolTip = $"Server: {serverName}{Environment.NewLine}Database: {selectedDb}";
                 }
 
                 // Cache metadata & update autocompletion suggestions

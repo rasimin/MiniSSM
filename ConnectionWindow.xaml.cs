@@ -10,6 +10,7 @@ namespace SSMS
     public partial class ConnectionWindow : Window
     {
         public string ConnectionString { get; private set; } = string.Empty;
+        public event EventHandler? ConnectionAccepted;
 
         [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
@@ -207,6 +208,7 @@ namespace SSMS
                 catch { }
 
                 ConnectionString = connString;
+                ConnectionAccepted?.Invoke(this, EventArgs.Empty);
                 DialogResult = true;
                 Close();
             }
