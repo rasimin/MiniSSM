@@ -36,11 +36,7 @@
         </primitives:Thumb>
 
         <!-- Results & Messages Grid Container -->
-        <Grid x:Name="ResultsPane"
-              Grid.Row="2"
-              PreviewMouseLeftButtonDown="ResultsPane_PreviewMouseLeftButtonDown"
-              PreviewMouseMove="ResultsPane_PreviewMouseMove"
-              PreviewMouseLeftButtonUp="ResultsPane_PreviewMouseLeftButtonUp">
+        <Grid x:Name="ResultsPane" Grid.Row="2">
             <!-- Results & Messages TabControl -->
             <TabControl x:Name="TabResults" Background="#1E1E1E" BorderThickness="0">
                 <TabItem Header="Results">

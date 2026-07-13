@@ -476,6 +476,10 @@
                 window.chrome.webview.postMessage({ action: 'execute' });
             });
 
+            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyN, function() {
+                window.chrome.webview.postMessage({ action: 'newQuery' });
+            });
+
             // WebView2 can consume Ctrl+Space before Monaco's default keybinding runs.
             // Register it explicitly so manual autocomplete always opens.
             editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Space, function() {

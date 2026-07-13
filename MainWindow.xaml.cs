@@ -49,19 +49,20 @@ namespace SSMS
         {
             InitializeComponent();
             _initialConnectionString = connectionString;
-            ApplyDefaultToolbarOrder();
+            ApplyToolbarOrder();
 
             // Connect TreeView expanded event handler
             TreeObjectExplorer.AddHandler(TreeViewItem.ExpandedEvent, new RoutedEventHandler(TreeItem_Expanded));
         }
 
-        private void ApplyDefaultToolbarOrder()
+        private void ApplyToolbarOrder()
         {
-            UIElement[] orderedItems =
+            Border[] defaultItems =
             {
                 ToolbarConnect,
                 ToolbarDisconnect,
                 ToolbarObjectExplorer,
+                ToolbarNewQuery,
                 ToolbarDatabase,
                 ToolbarExecute,
                 ToolbarComment,
@@ -69,14 +70,48 @@ namespace SSMS
                 ToolbarSave,
                 ToolbarSaveAs,
                 ToolbarOpen,
-                ToolbarNewQuery,
                 ToolbarInsertScript
             };
 
+            var itemsByName = defaultItems.ToDictionary(item => item.Name, StringComparer.Ordinal);
+            var orderedItems = new List<Border>();
+            foreach (string itemName in AppSettings.Current.Ui.ToolbarOrder)
+            {
+                if (itemsByName.Remove(itemName, out Border? item))
+                {
+                    orderedItems.Add(item);
+                }
+            }
+
+            foreach (Border item in defaultItems)
+            {
+                if (itemsByName.Remove(item.Name))
+                {
+                    orderedItems.Add(item);
+                }
+            }
+
             ToolbarPanel.Children.Clear();
-            foreach (UIElement item in orderedItems)
+            foreach (Border item in orderedItems)
             {
                 ToolbarPanel.Children.Add(item);
+            }
+        }
+
+        private void SaveToolbarOrder()
+        {
+            try
+            {
+                AppSettings.Current.Ui.ToolbarOrder = ToolbarPanel.Children
+                    .OfType<FrameworkElement>()
+                    .Select(item => item.Name)
+                    .Where(name => !string.IsNullOrWhiteSpace(name))
+                    .ToList();
+                AppSettings.Save(AppSettings.Current);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error(ex, "Failed to save toolbar order.");
             }
         }
 
@@ -914,6 +949,17 @@ namespace SSMS
 
         private void BtnNewQuery_Click(object sender, RoutedEventArgs e)
         {
+            CreateNewQueryFromCurrentContext();
+        }
+
+        public void CreateNewQueryFromCurrentContext()
+        {
+            if (TryGetSelectedObjectExplorerContext(out string connectionString, out string databaseName))
+            {
+                CreateNewQueryTab(connectionString, databaseName);
+                return;
+            }
+
             if (TabQueryControls.SelectedItem is TabItem activeTabItem && activeTabItem.Content is QueryTabControl activeTab)
             {
                 CreateNewQueryTab(activeTab.ConnectionString, activeTab.DatabaseName);
@@ -922,6 +968,27 @@ namespace SSMS
             {
                 CreateNewQueryTab(_initialConnectionString, "master");
             }
+        }
+
+        private bool TryGetSelectedObjectExplorerContext(
+            out string connectionString,
+            out string databaseName)
+        {
+            connectionString = string.Empty;
+            databaseName = string.Empty;
+
+            if (TreeObjectExplorer.SelectedItem is not TreeViewItem selectedItem ||
+                selectedItem.Tag is not ObjectExplorerNode node ||
+                string.IsNullOrWhiteSpace(node.ConnectionString))
+            {
+                return false;
+            }
+
+            connectionString = node.ConnectionString;
+            databaseName = node.NodeType is "Server" or "DatabasesFolder"
+                ? "master"
+                : string.IsNullOrWhiteSpace(node.DatabaseName) ? "master" : node.DatabaseName;
+            return true;
         }
 
         private void BtnInsertScript_Click(object sender, RoutedEventArgs e)
@@ -1321,6 +1388,7 @@ namespace SSMS
                 Panel.SetZIndex(_draggedToolbarItem, 0);
                 _draggedToolbarItem.ReleaseMouseCapture();
                 _draggedToolbarItem = null;
+                SaveToolbarOrder();
             }
         }
 

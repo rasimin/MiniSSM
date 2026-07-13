@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 
@@ -15,6 +16,7 @@ namespace SSMS
 
         public bool EnablePerformanceLogging { get; set; }
         public QuerySettings Query { get; set; } = new();
+        public UiSettings Ui { get; set; } = new();
 
         public static AppSettings Current { get; private set; } = Load();
 
@@ -34,6 +36,7 @@ namespace SSMS
                         if (settings != null)
                         {
                             settings.Query ??= new QuerySettings();
+                            settings.Ui ??= new UiSettings();
                             return settings;
                         }
                     }
@@ -52,6 +55,7 @@ namespace SSMS
             lock (SyncRoot)
             {
                 settings.Query ??= new QuerySettings();
+                settings.Ui ??= new UiSettings();
                 string json = JsonSerializer.Serialize(settings, JsonOptions);
                 File.WriteAllText(SettingsFilePath, json);
                 Current = settings;
@@ -62,5 +66,10 @@ namespace SSMS
     public sealed class QuerySettings
     {
         public int CommandTimeoutSeconds { get; set; } = 120;
+    }
+
+    public sealed class UiSettings
+    {
+        public List<string> ToolbarOrder { get; set; } = new();
     }
 }

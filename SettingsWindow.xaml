@@ -3,36 +3,79 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Settings"
         Icon="Assets/MiniSSMS.ico"
-        Width="520"
-        Height="310"
-        MinWidth="480"
-        MinHeight="280"
+        Width="560"
+        Height="370"
+        MinWidth="520"
+        MinHeight="350"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize"
+        ShowInTaskbar="False"
         Background="#181818"
         Foreground="#D4D4D4"
-        FontFamily="Segoe UI, Arial">
+        FontFamily="Segoe UI, Arial"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True">
     <Window.Resources>
+        <SolidColorBrush x:Key="PanelBrush" Color="#1E1E1E"/>
+        <SolidColorBrush x:Key="BorderBrush" Color="#343434"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#25B8A6"/>
+
         <Style TargetType="TextBox">
             <Setter Property="Background" Value="#252526"/>
             <Setter Property="Foreground" Value="#F1F1F1"/>
-            <Setter Property="BorderBrush" Value="#3E3E42"/>
+            <Setter Property="BorderBrush" Value="#48484C"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="MinHeight" Value="34"/>
             <Setter Property="CaretBrush" Value="White"/>
+            <Setter Property="SelectionBrush" Value="#0E639C"/>
+            <Style.Triggers>
+                <Trigger Property="IsKeyboardFocused" Value="True">
+                    <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                </Trigger>
+            </Style.Triggers>
         </Style>
+
         <Style TargetType="Button">
             <Setter Property="Background" Value="#2D2D30"/>
             <Setter Property="Foreground" Value="#F1F1F1"/>
-            <Setter Property="BorderBrush" Value="#3E3E42"/>
+            <Setter Property="BorderBrush" Value="#48484C"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="16,6"/>
-            <Setter Property="Margin" Value="8,0,0,0"/>
-            <Setter Property="MinWidth" Value="80"/>
+            <Setter Property="Padding" Value="18,7"/>
+            <Setter Property="MinWidth" Value="84"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="3"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#3A3A3D"/>
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#5A5A5E"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#464649"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="#0E639C"/>
+            <Setter Property="BorderBrush" Value="#1689CC"/>
         </Style>
     </Window.Resources>
 
-    <Grid Margin="22">
+    <Grid Margin="24,22,24,20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
@@ -40,39 +83,45 @@
         </Grid.RowDefinitions>
 
         <StackPanel>
-            <TextBlock Text="Settings" FontSize="20" FontWeight="SemiBold" Foreground="White"/>
-            <TextBlock Text="Application parameters are stored in appsettings.json."
-                       Margin="0,5,0,18" Foreground="#999999"/>
+            <TextBlock Text="Settings" FontSize="22" FontWeight="SemiBold" Foreground="#F5F5F5"/>
+            <TextBlock Text="Configure query execution behavior."
+                       Margin="0,5,0,20" Foreground="#A0A0A0" FontSize="12.5"/>
         </StackPanel>
 
-        <Border Grid.Row="1" Background="#1E1E1E" BorderBrush="#2D2D30"
-                BorderThickness="1" CornerRadius="4" Padding="16">
+        <Border Grid.Row="1" Background="{StaticResource PanelBrush}"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="1" CornerRadius="4" Padding="18">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <TextBlock Text="Query Execution" FontSize="14" FontWeight="SemiBold" Foreground="#4EC9B0"/>
-                <Grid Grid.Row="1" Margin="0,14,0,0">
+                <TextBlock Text="Query execution" FontSize="14" FontWeight="SemiBold"
+                           Foreground="{StaticResource AccentBrush}"/>
+                <Grid Grid.Row="1" Margin="0,18,0,0" VerticalAlignment="Top">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="120"/>
+                        <ColumnDefinition Width="128"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="Command timeout (seconds)" VerticalAlignment="Center"/>
+
+                    <StackPanel Margin="0,0,22,0">
+                        <TextBlock Text="Command timeout" Foreground="#F0F0F0" FontSize="13"/>
+                        <TextBlock Text="Maximum query duration in seconds. Use 0 for no timeout."
+                                   Margin="0,5,0,0" Foreground="#999999" FontSize="12"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
                     <TextBox x:Name="TxtCommandTimeout" Grid.Column="1"
+                             VerticalAlignment="Top"
                              HorizontalContentAlignment="Right"
                              PreviewTextInput="TxtCommandTimeout_PreviewTextInput"/>
                 </Grid>
-                <TextBlock Grid.Row="2" Margin="0,9,0,0" Foreground="#999999"
-                           Text="Use 0 for no timeout. The value applies to the next query execution."/>
             </Grid>
         </Border>
 
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
-            <Button Content="Cancel" IsCancel="True"/>
-            <Button Content="Save" IsDefault="True" Background="#0E639C"
-                    BorderBrush="#1177BB" Click="BtnSave_Click"/>
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+            <Button Content="Cancel" IsCancel="True" Margin="0,0,10,0"/>
+            <Button Content="Save" IsDefault="True" Style="{StaticResource PrimaryButton}"
+                    Click="BtnSave_Click"/>
         </StackPanel>
     </Grid>
 </Window>

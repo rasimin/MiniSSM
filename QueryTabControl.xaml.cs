@@ -9,8 +9,10 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Data;
+using System.Windows.Forms.Integration;
 using Microsoft.Web.WebView2.Core;
+using Drawing = System.Drawing;
+using WinForms = System.Windows.Forms;
 
 namespace SSMS
 {
@@ -43,12 +45,7 @@ namespace SSMS
         private List<string>? _databaseCache;
         private const double EditorMinHeight = 60;
         private const double ResultsMinHeight = 90;
-        private const double ResultsResizeGripHeight = 12;
-        private bool _isResultsPaneResizeActive;
-        private static readonly SqlCellTextConverter CellTextConverter = new();
-        private static readonly SqlCellFontStyleConverter CellFontStyleConverter = new();
-        private static readonly SqlCellForegroundConverter CellForegroundConverter = new();
-
+        private static readonly Drawing.Font ResultNullFont = new("Segoe UI", 9F, Drawing.FontStyle.Italic);
         private static CoreWebView2Environment? _sharedEnvironment;
 
         private static async Task<CoreWebView2Environment> GetSharedEnvironmentAsync()
@@ -74,41 +71,6 @@ namespace SSMS
         {
             ResizeEditorResults(e.VerticalChange);
             e.Handled = true;
-        }
-
-        private void ResultsPane_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-        {
-            if (e.GetPosition(ResultsPane).Y > ResultsResizeGripHeight)
-            {
-                return;
-            }
-
-            _isResultsPaneResizeActive = true;
-            ResultsPane.CaptureMouse();
-            e.Handled = true;
-        }
-
-        private void ResultsPane_PreviewMouseMove(object sender, MouseEventArgs e)
-        {
-            if (_isResultsPaneResizeActive && e.LeftButton == MouseButtonState.Pressed)
-            {
-                double desiredEditorHeight = e.GetPosition(QueryLayoutGrid).Y - EditorResultsSplitter.ActualHeight / 2;
-                ResizeEditorResultsTo(desiredEditorHeight);
-                e.Handled = true;
-                return;
-            }
-
-            ResultsPane.Cursor = e.GetPosition(ResultsPane).Y <= ResultsResizeGripHeight ? Cursors.SizeNS : Cursors.Arrow;
-        }
-
-        private void ResultsPane_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
-        {
-            if (_isResultsPaneResizeActive)
-            {
-                _isResultsPaneResizeActive = false;
-                ResultsPane.ReleaseMouseCapture();
-                e.Handled = true;
-            }
         }
 
         private void ResizeEditorResults(double verticalDelta)
@@ -233,6 +195,11 @@ namespace SSMS
                 if (action.GetString() == "execute")
                 {
                     ExecuteQuery();
+                }
+                else if (action.GetString() == "newQuery" &&
+                         Window.GetWindow(this) is MainWindow newQueryWindow)
+                {
+                    newQueryWindow.CreateNewQueryFromCurrentContext();
                 }
                 else if (action.GetString() == "editorReady")
                 {
@@ -634,213 +601,387 @@ namespace SSMS
             }
         }
 
-        private DataGrid CreateResultDataGrid(DataTable dataTable)
+        private FrameworkElement CreateResultDataGrid(DataTable dataTable)
         {
-             var dataGrid = new DataGrid
+            var dataGrid = new BufferedDataGridView
             {
-                AutoGenerateColumns = true,
-                IsReadOnly = true,
-                BorderThickness = new Thickness(0),
+                AutoGenerateColumns = false,
+                ReadOnly = true,
+                AllowUserToAddRows = false,
+                AllowUserToDeleteRows = false,
+                AllowUserToOrderColumns = false,
+                AllowUserToResizeRows = false,
+                AutoSizeColumnsMode = WinForms.DataGridViewAutoSizeColumnsMode.None,
+                AutoSizeRowsMode = WinForms.DataGridViewAutoSizeRowsMode.None,
+                BackgroundColor = Drawing.Color.FromArgb(30, 30, 30),
+                BorderStyle = WinForms.BorderStyle.None,
+                CellBorderStyle = WinForms.DataGridViewCellBorderStyle.Single,
+                ColumnHeadersBorderStyle = WinForms.DataGridViewHeaderBorderStyle.Single,
+                ColumnHeadersHeight = 28,
+                ColumnHeadersHeightSizeMode = WinForms.DataGridViewColumnHeadersHeightSizeMode.DisableResizing,
+                Dock = WinForms.DockStyle.Fill,
+                EnableHeadersVisualStyles = false,
+                GridColor = Drawing.Color.FromArgb(72, 72, 76),
+                MultiSelect = true,
+                RowHeadersBorderStyle = WinForms.DataGridViewHeaderBorderStyle.Single,
+                RowHeadersWidth = 46,
+                RowHeadersWidthSizeMode = WinForms.DataGridViewRowHeadersWidthSizeMode.DisableResizing,
+                ScrollBars = WinForms.ScrollBars.None,
+                SelectionMode = WinForms.DataGridViewSelectionMode.CellSelect,
+                ShowCellErrors = false,
+                ShowEditingIcon = false,
+                ShowRowErrors = false
+            };
+
+            dataGrid.Font = new Drawing.Font("Segoe UI", 9F, Drawing.FontStyle.Regular, Drawing.GraphicsUnit.Point);
+            dataGrid.DefaultCellStyle = new WinForms.DataGridViewCellStyle
+            {
+                BackColor = Drawing.Color.FromArgb(30, 30, 30),
+                ForeColor = Drawing.Color.FromArgb(204, 204, 204),
+                SelectionBackColor = Drawing.Color.FromArgb(30, 58, 95),
+                SelectionForeColor = Drawing.Color.White,
+                Padding = new WinForms.Padding(5, 0, 5, 0),
+                NullValue = "NULL"
+            };
+            dataGrid.AlternatingRowsDefaultCellStyle = new WinForms.DataGridViewCellStyle
+            {
+                BackColor = Drawing.Color.FromArgb(37, 37, 38),
+                ForeColor = Drawing.Color.FromArgb(204, 204, 204),
+                SelectionBackColor = Drawing.Color.FromArgb(30, 58, 95),
+                SelectionForeColor = Drawing.Color.White
+            };
+            dataGrid.ColumnHeadersDefaultCellStyle = new WinForms.DataGridViewCellStyle
+            {
+                BackColor = Drawing.Color.FromArgb(37, 37, 38),
+                ForeColor = Drawing.Color.FromArgb(241, 241, 241),
+                SelectionBackColor = Drawing.Color.FromArgb(37, 37, 38),
+                SelectionForeColor = Drawing.Color.White,
+                Font = new Drawing.Font("Segoe UI", 9F, Drawing.FontStyle.Bold),
+                Padding = new WinForms.Padding(5, 0, 5, 0)
+            };
+            dataGrid.RowHeadersDefaultCellStyle = new WinForms.DataGridViewCellStyle
+            {
+                BackColor = Drawing.Color.FromArgb(37, 37, 38),
+                ForeColor = Drawing.Color.FromArgb(136, 136, 136),
+                SelectionBackColor = Drawing.Color.FromArgb(45, 45, 48),
+                SelectionForeColor = Drawing.Color.White,
+                Alignment = WinForms.DataGridViewContentAlignment.MiddleRight
+            };
+            dataGrid.RowTemplate.Height = 24;
+
+            foreach (DataColumn column in dataTable.Columns)
+            {
+                dataGrid.Columns.Add(new WinForms.DataGridViewTextBoxColumn
+                {
+                    DataPropertyName = column.ColumnName,
+                    HeaderText = column.ColumnName,
+                    Name = column.ColumnName,
+                    SortMode = WinForms.DataGridViewColumnSortMode.NotSortable,
+                    ValueType = column.DataType,
+                    Width = 120
+                });
+            }
+
+            dataGrid.CellFormatting += (_, e) => FormatResultCell(e);
+            dataGrid.CellPainting += (_, e) => PaintRowNumber(dataGrid, e);
+            dataGrid.RowHeaderMouseClick += (_, e) =>
+            {
+                if (e.RowIndex < 0)
+                {
+                    return;
+                }
+
+                dataGrid.ClearSelection();
+                if (dataGrid.Rows[e.RowIndex].Cells.Count > 0)
+                {
+                    dataGrid.CurrentCell = dataGrid.Rows[e.RowIndex].Cells[0];
+                }
+
+                foreach (WinForms.DataGridViewCell cell in dataGrid.Rows[e.RowIndex].Cells)
+                {
+                    cell.Selected = true;
+                }
+                dataGrid.Rows[e.RowIndex].Selected = true;
+            };
+
+            var contextMenu = new WinForms.ContextMenuStrip
+            {
+                BackColor = Drawing.Color.FromArgb(30, 30, 30),
+                ForeColor = Drawing.Color.FromArgb(204, 204, 204),
+                ShowImageMargin = false
+            };
+            contextMenu.Items.Add("Copy", null, (_, _) => CopyGridToClipboard(dataGrid, false));
+            contextMenu.Items.Add("Copy with Headers", null, (_, _) => CopyGridToClipboard(dataGrid, true));
+            dataGrid.ContextMenuStrip = contextMenu;
+            dataGrid.DataSource = dataTable;
+
+            var host = new WindowsFormsHost
+            {
                 Background = (SolidColorBrush)new BrushConverter().ConvertFromString("#1E1E1E")!,
-                RowBackground = (SolidColorBrush)new BrushConverter().ConvertFromString("#1E1E1E")!,
-                AlternatingRowBackground = (SolidColorBrush)new BrushConverter().ConvertFromString("#252526")!,
-                GridLinesVisibility = DataGridGridLinesVisibility.All,
-                HorizontalGridLinesBrush = (SolidColorBrush)new BrushConverter().ConvertFromString("#2D2D30")!,
-                VerticalGridLinesBrush = (SolidColorBrush)new BrushConverter().ConvertFromString("#48484C")!,
-                HeadersVisibility = DataGridHeadersVisibility.All,
-                RowHeaderWidth = 46,
-                RowHeight = 24,
-                ColumnHeaderHeight = 28,
-                FontSize = 12,
-                CanUserSortColumns = false,
-                SelectionUnit = DataGridSelectionUnit.Cell,
-                SelectionMode = DataGridSelectionMode.Extended,
-                ItemsSource = dataTable.DefaultView,
-                SnapsToDevicePixels = true,
-                UseLayoutRounding = true
+                Child = dataGrid
             };
 
-            dataGrid.AutoGeneratingColumn += DataGrid_AutoGeneratingColumn;
-            dataGrid.LoadingRow += (_, e) =>
+            var verticalScrollBar = new System.Windows.Controls.Primitives.ScrollBar
             {
-                e.Row.Header = (e.Row.GetIndex() + 1).ToString();
+                Orientation = System.Windows.Controls.Orientation.Vertical,
+                Minimum = 0,
+                SmallChange = 1,
+                Width = 8
+            };
+            var horizontalScrollBar = new System.Windows.Controls.Primitives.ScrollBar
+            {
+                Orientation = System.Windows.Controls.Orientation.Horizontal,
+                Minimum = 0,
+                SmallChange = 24,
+                Height = 8
             };
 
-            // Set high-performance text rendering parameters (disable sub-pixel text measurement layout shifts during scroll)
-            TextOptions.SetTextFormattingMode(dataGrid, TextFormattingMode.Display);
-            TextOptions.SetTextRenderingMode(dataGrid, TextRenderingMode.ClearType);
-            RenderOptions.SetClearTypeHint(dataGrid, ClearTypeHint.Enabled);
+            var container = new Grid
+            {
+                Background = (SolidColorBrush)new BrushConverter().ConvertFromString("#1E1E1E")!
+            };
+            container.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            container.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
+            container.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            container.RowDefinitions.Add(new RowDefinition { Height = new GridLength(8) });
 
-            ScrollViewer.SetHorizontalScrollBarVisibility(dataGrid, ScrollBarVisibility.Auto);
-            ScrollViewer.SetVerticalScrollBarVisibility(dataGrid, ScrollBarVisibility.Auto);
+            Grid.SetColumn(host, 0);
+            Grid.SetRow(host, 0);
+            Grid.SetColumn(verticalScrollBar, 1);
+            Grid.SetRow(verticalScrollBar, 0);
+            Grid.SetColumn(horizontalScrollBar, 0);
+            Grid.SetRow(horizontalScrollBar, 1);
 
-            // Set virtualization properties
-            VirtualizingPanel.SetIsVirtualizing(dataGrid, true);
-            VirtualizingPanel.SetVirtualizationMode(dataGrid, VirtualizationMode.Recycling);
-            VirtualizingPanel.SetScrollUnit(dataGrid, ScrollUnit.Pixel);
-            VirtualizingPanel.SetCacheLengthUnit(dataGrid, VirtualizationCacheLengthUnit.Page);
-            VirtualizingPanel.SetCacheLength(dataGrid, new VirtualizationCacheLength(1));
-            dataGrid.EnableRowVirtualization = true;
-            dataGrid.EnableColumnVirtualization = true;
-            dataGrid.ColumnWidth = new DataGridLength(120);
-            ScrollViewer.SetIsDeferredScrollingEnabled(dataGrid, false);
-            ScrollViewer.SetCanContentScroll(dataGrid, true);
+            container.Children.Add(host);
+            container.Children.Add(verticalScrollBar);
+            container.Children.Add(horizontalScrollBar);
+            var scrollCorner = new Border
+            {
+                Background = (SolidColorBrush)new BrushConverter().ConvertFromString("#1E1E1E")!
+            };
+            Grid.SetColumn(scrollCorner, 1);
+            Grid.SetRow(scrollCorner, 1);
+            container.Children.Add(scrollCorner);
 
-            // Context Menu (Copy & Copy with Headers)
-            var contextMenu = new ContextMenu { Background = dataGrid.Background, BorderBrush = (System.Windows.Media.SolidColorBrush)new System.Windows.Media.BrushConverter().ConvertFromString("#2D2D30")! };
-            
-            var copyMenu = new MenuItem { Header = "Copy", Foreground = (System.Windows.Media.SolidColorBrush)new System.Windows.Media.BrushConverter().ConvertFromString("#CCCCCC")! };
-            copyMenu.Click += (s, e) => CopyGridToClipboard(dataGrid, false);
-            
-            var copyHeadersMenu = new MenuItem { Header = "Copy with Headers", Foreground = copyMenu.Foreground };
-            copyHeadersMenu.Click += (s, e) => CopyGridToClipboard(dataGrid, true);
+            bool synchronizingScrollBars = false;
 
-            contextMenu.Items.Add(copyMenu);
-            contextMenu.Items.Add(copyHeadersMenu);
-            dataGrid.ContextMenu = contextMenu;
+            void UpdateScrollBars()
+            {
+                if (synchronizingScrollBars || !dataGrid.IsHandleCreated || dataGrid.RowCount == 0)
+                {
+                    return;
+                }
 
-            return dataGrid;
+                synchronizingScrollBars = true;
+                try
+                {
+                    int displayedRows = Math.Max(1, dataGrid.DisplayedRowCount(false));
+                    int maximumFirstRow = Math.Max(0, dataGrid.RowCount - displayedRows);
+                    int firstRow = Math.Max(0, dataGrid.FirstDisplayedScrollingRowIndex);
+                    verticalScrollBar.Maximum = maximumFirstRow;
+                    verticalScrollBar.ViewportSize = displayedRows;
+                    verticalScrollBar.LargeChange = displayedRows;
+                    verticalScrollBar.Value = Math.Min(maximumFirstRow, firstRow);
+                    verticalScrollBar.IsEnabled = maximumFirstRow > 0;
+
+                    int totalColumnWidth = dataGrid.Columns.GetColumnsWidth(
+                        WinForms.DataGridViewElementStates.Visible);
+                    int viewportWidth = Math.Max(0, dataGrid.DisplayRectangle.Width);
+                    int maximumHorizontalOffset = Math.Max(0, totalColumnWidth - viewportWidth);
+                    horizontalScrollBar.Maximum = maximumHorizontalOffset;
+                    horizontalScrollBar.ViewportSize = viewportWidth;
+                    horizontalScrollBar.LargeChange = Math.Max(24, viewportWidth);
+                    horizontalScrollBar.Value = Math.Min(
+                        maximumHorizontalOffset,
+                        Math.Max(0, dataGrid.HorizontalScrollingOffset));
+                    horizontalScrollBar.IsEnabled = maximumHorizontalOffset > 0;
+                }
+                finally
+                {
+                    synchronizingScrollBars = false;
+                }
+            }
+
+            verticalScrollBar.ValueChanged += (_, _) =>
+            {
+                if (synchronizingScrollBars || !dataGrid.IsHandleCreated || dataGrid.RowCount == 0)
+                {
+                    return;
+                }
+
+                int rowIndex = Math.Clamp((int)Math.Round(verticalScrollBar.Value), 0, dataGrid.RowCount - 1);
+                if (dataGrid.FirstDisplayedScrollingRowIndex != rowIndex)
+                {
+                    dataGrid.FirstDisplayedScrollingRowIndex = rowIndex;
+                }
+            };
+            horizontalScrollBar.ValueChanged += (_, _) =>
+            {
+                if (synchronizingScrollBars || !dataGrid.IsHandleCreated)
+                {
+                    return;
+                }
+
+                dataGrid.HorizontalScrollingOffset = Math.Max(0, (int)Math.Round(horizontalScrollBar.Value));
+            };
+
+            dataGrid.VerticalWheelScrolled += (_, delta) =>
+            {
+                if ((WinForms.Control.ModifierKeys & WinForms.Keys.Shift) == WinForms.Keys.Shift)
+                {
+                    double horizontalTarget = horizontalScrollBar.Value - (delta / 120.0 * 48);
+                    horizontalScrollBar.Value = Math.Clamp(
+                        horizontalTarget,
+                        horizontalScrollBar.Minimum,
+                        horizontalScrollBar.Maximum);
+                    return;
+                }
+
+                int wheelLines = WinForms.SystemInformation.MouseWheelScrollLines;
+                if (wheelLines <= 0)
+                {
+                    wheelLines = 3;
+                }
+
+                double verticalTarget = verticalScrollBar.Value - (delta / 120.0 * wheelLines);
+                verticalScrollBar.Value = Math.Clamp(
+                    verticalTarget,
+                    verticalScrollBar.Minimum,
+                    verticalScrollBar.Maximum);
+            };
+            dataGrid.HorizontalWheelScrolled += (_, delta) =>
+            {
+                double target = horizontalScrollBar.Value + (delta / 120.0 * 48);
+                horizontalScrollBar.Value = Math.Clamp(
+                    target,
+                    horizontalScrollBar.Minimum,
+                    horizontalScrollBar.Maximum);
+            };
+
+            dataGrid.Scroll += (_, _) => UpdateScrollBars();
+            dataGrid.Resize += (_, _) => UpdateScrollBars();
+            dataGrid.ColumnWidthChanged += (_, _) => UpdateScrollBars();
+            dataGrid.DataBindingComplete += (_, _) => UpdateScrollBars();
+            container.Loaded += (_, _) => Dispatcher.BeginInvoke(new Action(UpdateScrollBars));
+            container.SizeChanged += (_, _) => Dispatcher.BeginInvoke(new Action(UpdateScrollBars));
+
+            return container;
         }
 
-        private void CopyGridToClipboard(DataGrid grid, bool includeHeaders)
+        private static void FormatResultCell(WinForms.DataGridViewCellFormattingEventArgs e)
         {
-            grid.ClipboardCopyMode = includeHeaders ? DataGridClipboardCopyMode.IncludeHeader : DataGridClipboardCopyMode.ExcludeHeader;
-            ApplicationCommands.Copy.Execute(null, grid);
+            bool isNull = e.Value == null || e.Value == DBNull.Value;
+            if (isNull)
+            {
+                e.Value = "NULL";
+                e.CellStyle.ForeColor = Drawing.Color.FromArgb(102, 102, 102);
+                e.CellStyle.Font = ResultNullFont;
+                e.FormattingApplied = true;
+                return;
+            }
+
+            if (e.Value is bool boolean)
+            {
+                e.Value = boolean ? "1" : "0";
+                e.FormattingApplied = true;
+            }
+            else if (e.Value is DateTime dateTime)
+            {
+                e.Value = dateTime.ToString("yyyy-MM-dd HH:mm:ss.fff");
+                e.FormattingApplied = true;
+            }
+            else if (e.Value is string text)
+            {
+                e.Value = text.Trim();
+                e.FormattingApplied = true;
+            }
+        }
+
+        private static void PaintRowNumber(
+            WinForms.DataGridView grid,
+            WinForms.DataGridViewCellPaintingEventArgs e)
+        {
+            if (e.ColumnIndex != -1 || e.RowIndex < 0 || e.Graphics == null)
+            {
+                return;
+            }
+
+            bool selected = grid.Rows[e.RowIndex].Selected;
+            e.PaintBackground(e.CellBounds, selected);
+            e.Paint(e.CellBounds, WinForms.DataGridViewPaintParts.Border);
+
+            var textBounds = new Drawing.Rectangle(
+                e.CellBounds.X + 2,
+                e.CellBounds.Y,
+                Math.Max(0, e.CellBounds.Width - 7),
+                e.CellBounds.Height);
+            Drawing.Color textColor = selected
+                ? Drawing.Color.White
+                : Drawing.Color.FromArgb(136, 136, 136);
+
+            WinForms.TextRenderer.DrawText(
+                e.Graphics,
+                (e.RowIndex + 1).ToString(),
+                grid.Font,
+                textBounds,
+                textColor,
+                WinForms.TextFormatFlags.Right | WinForms.TextFormatFlags.VerticalCenter |
+                WinForms.TextFormatFlags.NoPadding);
+            e.Handled = true;
+        }
+
+        private static void CopyGridToClipboard(WinForms.DataGridView grid, bool includeHeaders)
+        {
+            var originalMode = grid.ClipboardCopyMode;
+            grid.ClipboardCopyMode = includeHeaders
+                ? WinForms.DataGridViewClipboardCopyMode.EnableAlwaysIncludeHeaderText
+                : WinForms.DataGridViewClipboardCopyMode.EnableWithoutHeaderText;
+
+            var clipboardContent = grid.GetClipboardContent();
+            if (clipboardContent != null)
+            {
+                WinForms.Clipboard.SetDataObject(clipboardContent, true);
+            }
+
+            grid.ClipboardCopyMode = originalMode;
         }
 
         private string GetDefaultHtmlContent()
         {
-            return @"<!DOCTYPE html><html><head><style>html,body,#container{width:100%;height:100%;margin:0;padding:0;overflow:hidden;background-color:#1e1e1e;}</style></head><body><div id='container'></div><script src='https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js'></script><script>require.config({paths:{vs:'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.39.0/min/vs'}});var editor;var tables=[];var columns=[];require(['vs/editor/editor.main'],function(){monaco.languages.registerCompletionItemProvider('sql',{provideCompletionItems:function(model,position){var word=model.getWordUntilPosition(position);var range={startLineNumber:position.lineNumber,endLineNumber:position.lineNumber,startColumn:word.startColumn,endColumn:word.endColumn};var suggestions=[];var keywords=['SELECT','FROM','WHERE','INSERT','INTO','UPDATE','SET','DELETE','CREATE','TABLE','JOIN','INNER','LEFT','ON','GROUP','BY','ORDER','AND','OR','AS'];keywords.forEach(kw=>{suggestions.push({label:kw,kind:monaco.languages.CompletionItemKind.Keyword,insertText:kw,range:range});});tables.forEach(t=>{suggestions.push({label:t,kind:monaco.languages.CompletionItemKind.Class,insertText:t,detail:'Table',range:range});});columns.forEach(c=>{suggestions.push({label:c,kind:monaco.languages.CompletionItemKind.Field,insertText:c,detail:'Column',range:range});});return{suggestions:suggestions};}});editor=monaco.editor.create(document.getElementById('container'),{value:'-- Write SQL Query\nSELECT * FROM sys.databases;',language:'sql',theme:'vs-dark',automaticLayout:true,fontSize:14,scrollbar:{verticalScrollbarSize:5,horizontalScrollbarSize:5,useShadows:false}});editor.addCommand(monaco.KeyCode.F5,function(){window.chrome.webview.postMessage({action:'execute'});});});function getQueryText(){if(editor){var selection=editor.getSelection();var selectedText=editor.getModel().getValueInRange(selection);if(selectedText&&selectedText.trim().length>0){return selectedText;}return editor.getValue();}return'';}function setQueryText(text){if(editor)editor.setValue(text);}function updateMetadata(t,c){tables=t||[];columns=c||[];}</script></body></html>";
+            return @"<!DOCTYPE html><html><head><style>html,body,#container{width:100%;height:100%;margin:0;padding:0;overflow:hidden;background-color:#1e1e1e;}</style></head><body><div id='container'></div><script src='https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js'></script><script>require.config({paths:{vs:'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.39.0/min/vs'}});var editor;var tables=[];var columns=[];require(['vs/editor/editor.main'],function(){monaco.languages.registerCompletionItemProvider('sql',{provideCompletionItems:function(model,position){var word=model.getWordUntilPosition(position);var range={startLineNumber:position.lineNumber,endLineNumber:position.lineNumber,startColumn:word.startColumn,endColumn:word.endColumn};var suggestions=[];var keywords=['SELECT','FROM','WHERE','INSERT','INTO','UPDATE','SET','DELETE','CREATE','TABLE','JOIN','INNER','LEFT','ON','GROUP','BY','ORDER','AND','OR','AS'];keywords.forEach(kw=>{suggestions.push({label:kw,kind:monaco.languages.CompletionItemKind.Keyword,insertText:kw,range:range});});tables.forEach(t=>{suggestions.push({label:t,kind:monaco.languages.CompletionItemKind.Class,insertText:t,detail:'Table',range:range});});columns.forEach(c=>{suggestions.push({label:c,kind:monaco.languages.CompletionItemKind.Field,insertText:c,detail:'Column',range:range});});return{suggestions:suggestions};}});editor=monaco.editor.create(document.getElementById('container'),{value:'-- Write SQL Query\nSELECT * FROM sys.databases;',language:'sql',theme:'vs-dark',automaticLayout:true,fontSize:14,scrollbar:{verticalScrollbarSize:5,horizontalScrollbarSize:5,useShadows:false}});editor.addCommand(monaco.KeyCode.F5,function(){window.chrome.webview.postMessage({action:'execute'});});editor.addCommand(monaco.KeyMod.CtrlCmd|monaco.KeyCode.KeyN,function(){window.chrome.webview.postMessage({action:'newQuery'});});});function getQueryText(){if(editor){var selection=editor.getSelection();var selectedText=editor.getModel().getValueInRange(selection);if(selectedText&&selectedText.trim().length>0){return selectedText;}return editor.getValue();}return'';}function setQueryText(text){if(editor)editor.setValue(text);}function updateMetadata(t,c){tables=t||[];columns=c||[];}</script></body></html>";
         }
 
-        private void DataGrid_AutoGeneratingColumn(object? sender, DataGridAutoGeneratingColumnEventArgs e)
-        {
-            string headerText = e.Column.Header?.ToString() ?? string.Empty;
-            e.Column.CanUserSort = false;
-            e.Column.Header = new TextBox
-            {
-                Text = headerText,
-                IsReadOnly = true,
-                IsReadOnlyCaretVisible = false,
-                BorderThickness = new Thickness(0),
-                Background = Brushes.Transparent,
-                Foreground = Brushes.White,
-                Padding = new Thickness(0),
-                Cursor = Cursors.IBeam,
-                ToolTip = "Select the header text and press Ctrl+C to copy"
-            };
-
-            if (e.PropertyType == typeof(bool) || e.PropertyType == typeof(bool?))
-            {
-                var textCol = new DataGridTextColumn
-                {
-                    Header = e.Column.Header,
-                    Binding = new Binding(e.PropertyName)
-                    {
-                        Converter = CellTextConverter,
-                        Mode = BindingMode.OneWay
-                    }
-                };
-                e.Column = textCol;
-            }
-
-            if (e.Column is DataGridTextColumn textColumn)
-            {
-                string bindingPath = e.PropertyName;
-                
-                var textBinding = new Binding(bindingPath)
-                {
-                    Converter = CellTextConverter,
-                    Mode = BindingMode.OneWay
-                };
-                textColumn.Binding = textBinding;
-
-                var textBlockStyle = new Style(typeof(TextBlock));
-                textBlockStyle.Setters.Add(new Setter(TextBlock.TextWrappingProperty, TextWrapping.NoWrap));
-                textBlockStyle.Setters.Add(new Setter(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis));
-                textBlockStyle.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(5, 0, 5, 0)));
-                textBlockStyle.Setters.Add(new Setter(UIElement.ClipToBoundsProperty, true));
-                
-                textBlockStyle.Setters.Add(new Setter(TextBlock.FontStyleProperty, new Binding(bindingPath)
-                {
-                    Converter = CellFontStyleConverter,
-                    Mode = BindingMode.OneWay
-                }));
-
-                textBlockStyle.Setters.Add(new Setter(TextBlock.ForegroundProperty, new Binding(bindingPath)
-                {
-                    Converter = CellForegroundConverter,
-                    Mode = BindingMode.OneWay
-                }));
-
-                textColumn.ElementStyle = textBlockStyle;
-            }
-        }
     }
 
-    public class SqlCellTextConverter : IValueConverter
+    internal sealed class BufferedDataGridView : WinForms.DataGridView
     {
-        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        private const int WmMouseHorizontalWheel = 0x020E;
+
+        public event EventHandler<int>? VerticalWheelScrolled;
+        public event EventHandler<int>? HorizontalWheelScrolled;
+
+        public BufferedDataGridView()
         {
-            if (value == null || value == DBNull.Value)
-            {
-                return "NULL";
-            }
-            if (value is bool b)
-            {
-                return b ? "1" : "0";
-            }
-            if (value is DateTime dt)
-            {
-                return dt.ToString("yyyy-MM-dd HH:mm:ss.fff");
-            }
-            if (value is string text)
-            {
-                return text.Trim();
-            }
-            return value.ToString() ?? "";
+            DoubleBuffered = true;
+            SetStyle(WinForms.ControlStyles.OptimizedDoubleBuffer, true);
         }
 
-        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        protected override void OnMouseWheel(WinForms.MouseEventArgs e)
         {
-            throw new NotImplementedException();
+            VerticalWheelScrolled?.Invoke(this, e.Delta);
         }
-    }
 
-    public class SqlCellForegroundConverter : IValueConverter
-    {
-        private static readonly SolidColorBrush NullBrush = (SolidColorBrush)new BrushConverter().ConvertFromString("#666666")!;
-        private static readonly SolidColorBrush NormalBrush = (SolidColorBrush)new BrushConverter().ConvertFromString("#CCCCCC")!;
-
-        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        protected override void WndProc(ref WinForms.Message m)
         {
-            if (value == null || value == DBNull.Value)
+            if (m.Msg == WmMouseHorizontalWheel)
             {
-                return NullBrush;
+                int delta = unchecked((short)((m.WParam.ToInt64() >> 16) & 0xFFFF));
+                HorizontalWheelScrolled?.Invoke(this, delta);
+                m.Result = IntPtr.Zero;
+                return;
             }
-            return NormalBrush;
-        }
 
-        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
-        {
-            throw new NotImplementedException();
-        }
-    }
-
-    public class SqlCellFontStyleConverter : IValueConverter
-    {
-        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
-        {
-            if (value == null || value == DBNull.Value)
-            {
-                return FontStyles.Italic;
-            }
-            return FontStyles.Normal;
-        }
-
-        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
-        {
-            throw new NotImplementedException();
+            base.WndProc(ref m);
         }
     }
 }
