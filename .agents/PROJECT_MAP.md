@@ -17,6 +17,7 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 | File | Isi / tanggung jawab |
 | --- | --- |
 | `SSMS.csproj` | Target framework, package WebView2 dan SqlClient, aturan copy `sql_editor.html`. |
+| `Properties/PublishProfiles/FolderProfile.pubxml` | Publish profile Release ke folder lokal `D:\\Publish\\SSMS`. |
 | `App.xaml` | Style global WPF: scrollbar, DataGrid, DataGrid cell/header, ContextMenu, MenuItem. |
 | `App.xaml.cs` | Startup aplikasi. Biasanya membuka `ConnectionWindow`, lalu `MainWindow` jika koneksi sukses. |
 | `ConnectionWindow.xaml` | UI dialog koneksi SQL Server. |
@@ -181,6 +182,12 @@ Perintah dasar:
 ```powershell
 dotnet restore
 dotnet build
+```
+
+Publish Release ke folder yang dikonfigurasi pada profile:
+
+```powershell
+dotnet publish -p:PublishProfile=FolderProfile
 ```
 
 Jika aplikasi `SSMS.exe` sedang berjalan, build normal bisa gagal karena file output terkunci. Untuk cek kompilasi tanpa menimpa output aktif:
