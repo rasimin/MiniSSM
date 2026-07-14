@@ -125,6 +125,7 @@ Hal penting:
 - `QueryTabControl.CacheAndRefreshAutocompleteAsync()` mengirim payload metadata terpadu: tabel/view beserta kolom dan jenis object, stored procedure, scalar/table-valued function, parameter routine, daftar database, dan database aktif.
 - Provider Monaco memfilter suggestion berdasarkan konteks: table/view/table-valued function setelah `FROM`/`JOIN`/`APPLY`, scalar function di expression, SP setelah `EXEC`/`EXECUTE`, dan parameter setelah routine dipilih.
 - Autocomplete statis mencakup keyword, data type, serta built-in function T-SQL; function seperti `CAST`, `CONVERT`, dan `GETDATE` disisipkan sebagai snippet berparameter.
+- Pada expression context seperti `SELECT`, `WHERE`, `GROUP BY`, dan `ORDER BY`, kolom dari table/view yang terbaca pada `FROM`/`JOIN` mendapat ranking suggestion tertinggi, di atas function dan keyword.
 - Hover atau selection pada table/view/SP/function menampilkan aksi `View Schema / Definition in New Query`; definition diambil secara lazy hanya saat link diklik. Hover kolom menampilkan data type, nullable, identity, dan primary-key dari cache metadata.
 - Autocomplete mengenali bracketed identifier, CTE, temporary table, dan kolom lokal yang dapat diinferensikan. Metadata lintas database dimuat on-demand melalui pesan `loadDatabaseMetadata` saat pola `Database.Schema.` diketik.
 - Eksekusi DDL `CREATE`/`ALTER`/`DROP` untuk table, view, procedure, atau function menginvalidasi cache database aktif dan me-refresh autocomplete.

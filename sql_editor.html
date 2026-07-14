@@ -418,6 +418,7 @@
                             kind: monaco.languages.CompletionItemKind.Struct,
                             insertText: objectName,
                             detail: localObjects[objectName].type,
+                            sortText: (sourceContext ? "0_" : "1_") + objectName,
                             range: range
                         });
                     });
@@ -429,6 +430,7 @@
                         insertText: "SELECT TOP 50 * FROM $0",
                         insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
                         detail: "Snippet: SELECT TOP 50 * FROM",
+                        sortText: "8_ssf",
                         range: range
                     });
 
@@ -443,6 +445,7 @@
                                     kind: monaco.languages.CompletionItemKind.Field,
                                     insertText: col,
                                     detail: "Column (" + qt + ")",
+                                    sortText: "0_" + col,
                                     range: range
                                 });
                             });
@@ -456,6 +459,7 @@
                             kind: monaco.languages.CompletionItemKind.Keyword,
                             insertText: kw,
                             detail: "T-SQL Keyword",
+                            sortText: "3_" + kw,
                             range: range
                         });
                     });
@@ -466,6 +470,7 @@
                             kind: monaco.languages.CompletionItemKind.TypeParameter,
                             insertText: dataType,
                             detail: "T-SQL Data Type",
+                            sortText: "4_" + dataType,
                             range: range
                         });
                     });
@@ -479,7 +484,7 @@
                                 insertText: functionInfo.name + "(" + functionInfo.args + ")",
                                 insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
                                 detail: "Built-in T-SQL Function",
-                                sortText: "1_" + functionInfo.name,
+                                sortText: "2_" + functionInfo.name,
                                 range: range
                             });
                         });
@@ -492,6 +497,7 @@
                             kind: monaco.languages.CompletionItemKind.Module,
                             insertText: s,
                             detail: "Schema",
+                            sortText: (sourceContext ? "1_" : "5_") + s,
                             range: range
                         });
                     });
@@ -504,6 +510,7 @@
                                 kind: monaco.languages.CompletionItemKind.Class,
                                 insertText: t,
                                 detail: objectTypes[t] || "Table",
+                                sortText: "0_" + t,
                                 range: range
                             });
                         });
@@ -517,6 +524,7 @@
                                 kind: monaco.languages.CompletionItemKind.Function,
                                 insertText: functionName,
                                 detail: "Scalar Function",
+                                sortText: "2_" + functionName,
                                 range: range
                             });
                         });
@@ -529,6 +537,7 @@
                                 kind: monaco.languages.CompletionItemKind.Function,
                                 insertText: functionName,
                                 detail: "Table-valued Function",
+                                sortText: "1_" + functionName,
                                 range: range
                             });
                         });
@@ -540,6 +549,7 @@
                             kind: monaco.languages.CompletionItemKind.Module,
                             insertText: '[' + databaseName + ']',
                             detail: databaseName === activeDatabase ? "Active Database" : "Database",
+                            sortText: (sourceContext ? "2_" : "6_") + databaseName,
                             range: range
                         });
                     });
