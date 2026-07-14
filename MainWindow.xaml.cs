@@ -40,6 +40,7 @@ namespace SSMS
         private bool _isObjectExplorerVisible = true;
         private bool _allowWindowClose;
         private bool _isCloseConfirmationInProgress;
+        private QueryHistoryWindow? _queryHistoryWindow;
 
         private static readonly Duration ReorderAnimationDuration = new(TimeSpan.FromMilliseconds(320));
         private const string QueryTabDragHandleTag = "QueryTabDragHandle";
@@ -76,6 +77,7 @@ namespace SSMS
                 ToolbarSave,
                 ToolbarSaveAs,
                 ToolbarOpen,
+                ToolbarQueryHistory,
                 ToolbarInsertScript
             };
 
@@ -945,6 +947,70 @@ namespace SSMS
                 Owner = this
             };
             settingsWindow.ShowDialog();
+        }
+
+        private void BtnQueryHistory_Click(object sender, RoutedEventArgs e)
+        {
+            if (_queryHistoryWindow != null)
+            {
+                if (_queryHistoryWindow.WindowState == WindowState.Minimized)
+                {
+                    _queryHistoryWindow.WindowState = WindowState.Normal;
+                }
+                _queryHistoryWindow.Activate();
+                return;
+            }
+
+            _queryHistoryWindow = new QueryHistoryWindow { Owner = this };
+            _queryHistoryWindow.OpenInNewQueryRequested += (_, entry) => OpenHistoryEntryInNewQuery(entry);
+            _queryHistoryWindow.Closed += (_, _) => _queryHistoryWindow = null;
+            _queryHistoryWindow.Show();
+        }
+
+        private void OpenHistoryEntryInNewQuery(QueryHistoryEntry entry)
+        {
+            string? matchingConnectionString = TabQueryControls.Items
+                .OfType<TabItem>()
+                .Select(tab => tab.Content)
+                .OfType<QueryTabControl>()
+                .Select(tab => tab.ConnectionString)
+                .FirstOrDefault(connectionString =>
+                    string.Equals(
+                        new SqlConnectionStringBuilder(connectionString).DataSource,
+                        entry.ServerName,
+                        StringComparison.OrdinalIgnoreCase));
+
+            if (matchingConnectionString == null)
+            {
+                matchingConnectionString = TreeObjectExplorer.Items
+                    .OfType<TreeViewItem>()
+                    .Select(item => item.Tag)
+                    .OfType<ObjectExplorerNode>()
+                    .Where(node => node.NodeType == "Server")
+                    .Select(node => node.ConnectionString)
+                    .FirstOrDefault(connectionString =>
+                        string.Equals(
+                            new SqlConnectionStringBuilder(connectionString).DataSource,
+                            entry.ServerName,
+                            StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (matchingConnectionString == null)
+            {
+                MessageBox.Show(
+                    $"Connect to server '{entry.ServerName}' before opening this history entry.",
+                    "Server Not Connected",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            string databaseName = string.IsNullOrWhiteSpace(entry.EffectiveDatabaseName)
+                ? entry.StartedDatabaseName
+                : entry.EffectiveDatabaseName;
+            string tabTitle = $"History_{entry.ExecutedAtUtc.ToLocalTime():yyyyMMdd_HHmmss}.sql";
+            CreateNewQueryTab(matchingConnectionString, databaseName, entry.QueryText, tabTitle);
+            Activate();
         }
 
         private void ExecuteActiveTabQuery()

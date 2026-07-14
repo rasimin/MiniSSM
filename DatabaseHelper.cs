@@ -14,6 +14,7 @@ namespace SSMS
         public bool IsSuccess { get; set; }
         public bool IsCancelled { get; set; }
         public string EffectiveDatabaseName { get; set; } = string.Empty;
+        public int? RowsAffected { get; set; }
         public TimeSpan ExecutionTime { get; set; }
     }
 
@@ -294,6 +295,11 @@ namespace SSMS
                                     }
                                 }
                             } while (await reader.NextResultAsync(cancellationToken));
+
+                            if (reader.RecordsAffected >= 0)
+                            {
+                                result.RowsAffected = reader.RecordsAffected;
+                            }
                         }
                     }
 

@@ -627,6 +627,9 @@ namespace SSMS
 
             var mainWindow = Window.GetWindow(this) as MainWindow;
             mainWindow?.UpdateStatusText("Executing query...");
+            string startedDatabaseName = DatabaseName;
+            DateTimeOffset executionStartedAt = DateTimeOffset.UtcNow;
+            bool historyRecorded = false;
 
             try
             {
@@ -636,6 +639,9 @@ namespace SSMS
                     sqlQuery,
                     messageProgress,
                     cancellationSource.Token);
+
+                await RecordQueryHistoryAsync(sqlQuery, startedDatabaseName, executionStartedAt, result);
+                historyRecorded = true;
 
                 // Populate Results Pane
                 if (result.IsCancelled)
@@ -705,6 +711,14 @@ namespace SSMS
             }
             catch (Exception ex)
             {
+                if (!historyRecorded)
+                {
+                    await RecordUnexpectedQueryErrorAsync(
+                        sqlQuery,
+                        startedDatabaseName,
+                        executionStartedAt,
+                        ex);
+                }
                 TotalResultRows = 0;
                 TotalResultColumns = 0;
                 AppLogger.Error(ex, "ExecuteQuery failed");
@@ -725,6 +739,58 @@ namespace SSMS
                 CancelQueryButton.IsEnabled = true;
                 LoadingOverlay.Visibility = Visibility.Collapsed;
             }
+        }
+
+        private async Task RecordQueryHistoryAsync(
+            string sqlQuery,
+            string startedDatabaseName,
+            DateTimeOffset executionStartedAt,
+            QueryResult result)
+        {
+            var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(ConnectionString);
+            int resultRowCount = result.DataTables?.Sum(table => table.Rows.Count) ?? 0;
+            string status = result.IsCancelled ? "Cancelled" : result.IsSuccess ? "Success" : "Error";
+
+            await QueryHistoryService.TryAddAsync(new QueryHistoryEntry
+            {
+                ExecutedAtUtc = executionStartedAt,
+                ServerName = builder.DataSource,
+                StartedDatabaseName = startedDatabaseName,
+                EffectiveDatabaseName = string.IsNullOrWhiteSpace(result.EffectiveDatabaseName)
+                    ? startedDatabaseName
+                    : result.EffectiveDatabaseName,
+                QueryText = sqlQuery,
+                DurationMilliseconds = Math.Max(0, (long)Math.Round(result.ExecutionTime.TotalMilliseconds)),
+                ExecutionStatus = status,
+                ResultMessage = result.Message,
+                RowsAffected = result.RowsAffected,
+                ResultRowCount = resultRowCount,
+                ErrorMessage = status == "Error" ? result.Message : string.Empty
+            });
+        }
+
+        private async Task RecordUnexpectedQueryErrorAsync(
+            string sqlQuery,
+            string startedDatabaseName,
+            DateTimeOffset executionStartedAt,
+            Exception exception)
+        {
+            var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(ConnectionString);
+            await QueryHistoryService.TryAddAsync(new QueryHistoryEntry
+            {
+                ExecutedAtUtc = executionStartedAt,
+                ServerName = builder.DataSource,
+                StartedDatabaseName = startedDatabaseName,
+                EffectiveDatabaseName = startedDatabaseName,
+                QueryText = sqlQuery,
+                DurationMilliseconds = Math.Max(
+                    0,
+                    (long)Math.Round((DateTimeOffset.UtcNow - executionStartedAt).TotalMilliseconds)),
+                ExecutionStatus = "Error",
+                ResultMessage = $"Unexpected query execution error: {exception.Message}",
+                ResultRowCount = 0,
+                ErrorMessage = exception.Message
+            });
         }
 
         private void AppendLiveQueryMessage(string message)

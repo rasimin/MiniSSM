@@ -9,6 +9,7 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 - Framework: `.NET 9`, `net9.0-windows`, WPF.
 - Entry UI awal: `ConnectionWindow`, lalu `MainWindow`.
 - SQL client library: `Microsoft.Data.SqlClient`.
+- Query history lokal: `Microsoft.Data.Sqlite`, disimpan di `%LocalAppData%\MiniSSMS\Data\query-history.db`.
 - Editor SQL: Monaco Editor di dalam `Microsoft.Web.WebView2`.
 - File HTML editor: `sql_editor.html`, disalin ke output lewat `SSMS.csproj`.
 
@@ -32,6 +33,9 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 | `AppSettings.cs` | Model serta load/save parameter aplikasi dari `appsettings.json`. |
 | `SettingsWindow.xaml`, `SettingsWindow.xaml.cs` | Dialog Settings dari ikon gear di kanan toolbar; saat ini mengatur query command timeout. |
 | `UnsavedChangesWindow.xaml`, `UnsavedChangesWindow.xaml.cs` | Dialog dark-mode custom untuk konfirmasi Save, Don't Save, atau Cancel saat menutup query yang masih berubah. |
+| `QueryHistoryEntry.cs` | Model satu record history eksekusi beserta properti display untuk grid. |
+| `QueryHistoryService.cs` | Inisialisasi schema SQLite, insert history, retention maksimum 10.000 record, dan pembacaan maksimum 300 record terbaru. |
+| `QueryHistoryWindow.xaml`, `QueryHistoryWindow.xaml.cs` | Window dark-mode untuk melihat query execution history, filter rentang tanggal/database/isi SQL, detail query/message, Copy Query, refresh, double-click, dan Open in New Query. |
 | `sql_editor.html` | Monaco SQL editor, command JavaScript, autocomplete, bridge message ke WPF. |
 | `Assets/MiniSSMS.ico`, `Assets/MiniSSMS.png` | Icon aplikasi untuk executable dan window WPF. |
 
@@ -46,6 +50,7 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 6. `QueryTabControl` memuat `sql_editor.html` ke WebView2, lalu update autocomplete dari metadata database.
 7. Tombol Execute/F5 memanggil `QueryTabControl.ExecuteQuery()`.
 8. Query dieksekusi oleh `DatabaseHelper.ExecuteQueryAsync()`, lalu hasil ditampilkan di DataGrid atau Messages.
+9. Setiap query yang benar-benar dikirim ke SQL Server dicatat ke SQLite setelah selesai, termasuk server, database awal/akhir, waktu, durasi, status, message, rows affected, dan jumlah row hasil SELECT; kegagalan history tidak menggagalkan query utama.
 
 ## Object Explorer
 
@@ -108,6 +113,8 @@ Hal penting:
 - `BtnExecute_Click` memanggil `ExecuteQuery()` pada tab aktif.
 - Setelah query sukses, database aktual pada koneksi dibaca kembali; perintah `USE <database>` menyinkronkan database tab, status, autocomplete, dan combo toolbar. Jika eksekusi gagal, context database tab tidak diubah.
 - Ikon gear di pojok kanan toolbar membuka `SettingsWindow`; query timeout disimpan sebagai `Query.CommandTimeoutSeconds` di `appsettings.json` dan berlaku mulai eksekusi berikutnya (`0` berarti tanpa batas).
+- Ikon jam `ToolbarQueryHistory` membuka satu instance `QueryHistoryWindow`; Open in New Query mencari koneksi server yang masih aktif dan membuat tab dirty baru pada database dari record history.
+- Query History mengambil maksimum 300 record yang cocok langsung dari SQLite; rentang tanggal memakai hari lokal secara inklusif, sedangkan database dan isi SQL memakai pencarian substring literal.
 - `Window_KeyDown` menangani shortcut seperti `F5`, `F8`, `Ctrl+N`, `Ctrl+S`, `Ctrl+O`, `Ctrl+K`, `Ctrl+Shift+K`.
 - Urutan default toolbar mengikuti alur koneksi, pemilihan database, eksekusi, editing, lalu file/query; item tetap dapat di-drag untuk reorder.
 - `MainWindow` meneruskan pesan native `WM_MOUSEHWHEEL` dari gesture dua jari touchpad ke `ScrollViewer` horizontal di bawah pointer.
@@ -149,6 +156,7 @@ Pola yang dipakai:
 - Metadata memakai query ke `sys.*`.
 - Parameter object name memakai parameter SQL seperti `@TableFullName`.
 - Result set dengan nama kolom duplikat (misalnya `SELECT Units, *`) diberi suffix tampilan `(2)`, `(3)`, dan seterusnya karena `DataTable` memerlukan nama unik.
+- `QueryResult` membawa database efektif, rows affected, status/message, data table, dan durasi yang dipakai oleh pencatatan query history.
 - Result grid memakai pixel scrolling, recycling virtualization, cache satu halaman, serta tinggi row/header tetap agar layout tidak mengukur ulang ukuran cell saat scroll; telemetry per-frame/visual-tree saat scroll tidak dipasang agar UI tetap ringan.
 - Result grid menampilkan nomor baris melalui row header, menonaktifkan sort saat header diklik, dan memakai header text selectable agar nama kolom dapat disalin.
 - Row header result grid mendukung klik Shift dan drag ke atas/bawah untuk memilih rentang beberapa row, termasuk auto-scroll sederhana saat pointer melewati batas grid.
