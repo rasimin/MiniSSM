@@ -405,6 +405,10 @@ namespace SSMS
             }
 
             AppLogger.Info($"Closing query tab: {GetTabHeaderText(tabItem)}");
+            if (tabItem.Content is QueryTabControl queryTab)
+            {
+                queryTab.DisposeResources();
+            }
             TabQueryControls.Items.Remove(tabItem);
             if (TabQueryControls.Items.Count == 0)
             {

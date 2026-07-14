@@ -33,12 +33,16 @@
         var activeDatabase = '';
         var databaseMetadata = {};
         var pendingDatabaseMetadata = {};
+        var metadataLoaded = false;
 
         require(['vs/editor/editor.main'], function () {
             // Register custom completion item provider for sql
             monaco.languages.registerCompletionItemProvider('sql', {
                 triggerCharacters: ['.', ' '],
                 provideCompletionItems: function (model, position) {
+                    if (!metadataLoaded) {
+                        window.chrome.webview.postMessage({ action: 'requestMetadata' });
+                    }
                     var word = model.getWordUntilPosition(position);
                     var range = {
                         startLineNumber: position.lineNumber,
@@ -474,8 +478,7 @@
             editor.onDidChangeModelContent(function() {
                 if (!suppressChangeNotification) {
                     window.chrome.webview.postMessage({
-                        action: 'contentChanged',
-                        text: editor.getValue()
+                        action: 'contentChanged'
                     });
                 }
             });
@@ -837,6 +840,7 @@
             routineParameters = meta.routineParameters || {};
             databases = meta.databases || [];
             activeDatabase = meta.activeDatabase || '';
+            metadataLoaded = true;
             tables = Object.keys(tableColumns);
             
             // Extract unique schemas from keys (e.g. "dbo" from "dbo.customers")

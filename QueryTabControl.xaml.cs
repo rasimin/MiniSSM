@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Data;
 using System.IO;
 using System.Linq;
@@ -43,17 +44,10 @@ namespace SSMS
         public Task EditorReady => _editorReadyCompletion.Task;
         public event EventHandler? DirtyStateChanged;
 
-        private readonly Dictionary<string, Dictionary<string, List<string>>> _metadataCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly TaskCompletionSource<bool> _editorReadyCompletion =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         private string _savedSqlText = string.Empty;
-        private readonly Dictionary<string, List<string>> _storedProcedureCache = new(StringComparer.OrdinalIgnoreCase);
-        private readonly Dictionary<string, List<string>> _scalarFunctionCache = new(StringComparer.OrdinalIgnoreCase);
-        private readonly Dictionary<string, List<string>> _tableFunctionCache = new(StringComparer.OrdinalIgnoreCase);
-        private readonly Dictionary<string, Dictionary<string, string>> _objectTypeCache = new(StringComparer.OrdinalIgnoreCase);
-        private readonly Dictionary<string, Dictionary<string, Dictionary<string, SqlColumnAutocompleteInfo>>> _columnDetailCache = new(StringComparer.OrdinalIgnoreCase);
-        private readonly Dictionary<string, Dictionary<string, List<string>>> _routineParameterCache = new(StringComparer.OrdinalIgnoreCase);
-        private List<string>? _databaseCache;
+        private static readonly ConcurrentDictionary<string, Lazy<Task<AutocompleteMetadata>>> SharedMetadataCache = new(StringComparer.OrdinalIgnoreCase);
         private const double EditorMinHeight = 60;
         private const double ResultsMinHeight = 90;
         private static readonly Drawing.Font ResultNullFont = new("Segoe UI", 9F, Drawing.FontStyle.Italic);
@@ -64,7 +58,24 @@ namespace SSMS
         private bool _editorResizeScheduled;
         private bool _webViewInitializationStarted;
         private bool _editorReadyHandled;
+        private bool _isDisposed;
+        private bool _metadataRequested;
+        private CancellationTokenSource? _dirtyDebounceSource;
         private CancellationTokenSource? _queryCancellationSource;
+        private readonly List<WinForms.DataGridView> _resultGrids = new();
+        private readonly List<DataTable> _resultTables = new();
+
+        private sealed class AutocompleteMetadata
+        {
+            public Dictionary<string, List<string>> Columns { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+            public Dictionary<string, string> ObjectTypes { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+            public Dictionary<string, Dictionary<string, SqlColumnAutocompleteInfo>> ColumnDetails { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+            public List<string> StoredProcedures { get; init; } = new();
+            public List<string> ScalarFunctions { get; init; } = new();
+            public List<string> TableFunctions { get; init; } = new();
+            public Dictionary<string, List<string>> RoutineParameters { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+            public List<string> Databases { get; init; } = new();
+        }
 
         private static Task<CoreWebView2Environment> CreateSharedEnvironmentAsync()
         {
@@ -221,10 +232,11 @@ namespace SSMS
                 }
                 else if (action.GetString() == "contentChanged")
                 {
-                    string currentText = doc.RootElement.TryGetProperty("text", out var textElement)
-                        ? textElement.GetString() ?? string.Empty
-                        : string.Empty;
-                    SetDirty(!string.Equals(currentText, _savedSqlText, StringComparison.Ordinal));
+                    ScheduleDirtyCheck();
+                }
+                else if (action.GetString() == "requestMetadata")
+                {
+                    RequestAutocompleteMetadata();
                 }
                 else if (action.GetString() == "loadDatabaseMetadata" &&
                          doc.RootElement.TryGetProperty("databaseName", out var databaseElement))
@@ -289,10 +301,45 @@ namespace SSMS
                 _editorReadyCompletion.TrySetResult(true);
             }
 
-            // Autocomplete metadata is useful, but it must not delay the visible editor.
-            await System.Windows.Threading.Dispatcher.Yield(
-                System.Windows.Threading.DispatcherPriority.Background);
-            await CacheAndRefreshAutocompleteAsync();
+        }
+
+        private void ScheduleDirtyCheck()
+        {
+            _dirtyDebounceSource?.Cancel();
+            _dirtyDebounceSource?.Dispose();
+            var source = new CancellationTokenSource();
+            _dirtyDebounceSource = source;
+            _ = CheckDirtyAfterDelayAsync(source);
+        }
+
+        private async Task CheckDirtyAfterDelayAsync(CancellationTokenSource source)
+        {
+            try
+            {
+                await Task.Delay(250, source.Token);
+                if (_isDisposed || !IsWebViewInitialized) return;
+                string resultJson = await SqlEditorWebView.ExecuteScriptAsync("getQueryText()");
+                string currentText = JsonSerializer.Deserialize<string>(resultJson) ?? string.Empty;
+                SetDirty(!string.Equals(currentText, _savedSqlText, StringComparison.Ordinal));
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { AppLogger.Error(ex, "Failed to update dirty state"); }
+        }
+
+        public void DisposeResources()
+        {
+            if (_isDisposed) return;
+            _isDisposed = true;
+            _dirtyDebounceSource?.Cancel();
+            _dirtyDebounceSource?.Dispose();
+            _dirtyDebounceSource = null;
+            _queryCancellationSource?.Cancel();
+            DisposeDisplayedResults();
+            Loaded -= QueryTabControl_Loaded;
+            SqlEditorWebView.WebMessageReceived -= SqlEditorWebView_WebMessageReceived;
+            SqlEditorWebView.CoreWebView2?.Stop();
+            SqlEditorWebView.Dispose();
+            DirtyStateChanged = null;
         }
 
         public void MarkSaved(string sqlText)
@@ -612,8 +659,7 @@ namespace SSMS
             }
 
             // Clear UI previous records
-            ResultsGridContainer.Children.Clear();
-            ResultsGridContainer.RowDefinitions.Clear();
+            DisposeDisplayedResults();
             TxtMessages.Text = "";
             var cancellationSource = new CancellationTokenSource();
             _queryCancellationSource = cancellationSource;
@@ -830,17 +876,50 @@ namespace SSMS
 
         public async Task CacheAndRefreshAutocompleteAsync()
         {
-            if (!IsWebViewInitialized) return;
+            if (!IsWebViewInitialized || _isDisposed || !_metadataRequested) return;
 
             try
             {
-                if (!_metadataCache.ContainsKey(DatabaseName))
+                string cacheKey = $"{ConnectionString}\u001f{DatabaseName}";
+                var lazyMetadata = SharedMetadataCache.GetOrAdd(
+                    cacheKey,
+                    _ => new Lazy<Task<AutocompleteMetadata>>(
+                        () => LoadAutocompleteMetadataAsync(ConnectionString, DatabaseName),
+                        LazyThreadSafetyMode.ExecutionAndPublication));
+                var metadata = await lazyMetadata.Value;
+                if (_isDisposed) return;
+
+                var payload = new
                 {
-                    var dbConnString = DatabaseHelper.BuildConnectionString(ConnectionString, DatabaseName);
-                    using var connection = new Microsoft.Data.SqlClient.SqlConnection(dbConnString);
-                    await connection.OpenAsync();
-                    
-                    var query = @"
+                    columns = metadata.Columns,
+                    objectTypes = metadata.ObjectTypes,
+                    columnDetails = metadata.ColumnDetails,
+                    storedProcedures = metadata.StoredProcedures,
+                    scalarFunctions = metadata.ScalarFunctions,
+                    tableFunctions = metadata.TableFunctions,
+                    routineParameters = metadata.RoutineParameters,
+                    databases = metadata.Databases,
+                    activeDatabase = DatabaseName
+                };
+                string jsonPayload = JsonSerializer.Serialize(payload);
+                await SqlEditorWebView.ExecuteScriptAsync($"updateMetadata({jsonPayload});");
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error(ex, $"Failed to load autocomplete metadata for database '{DatabaseName}'");
+            }
+        }
+
+        private static async Task<AutocompleteMetadata> LoadAutocompleteMetadataAsync(string connectionString, string databaseName)
+        {
+            var tableColumns = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            var objectTypes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var columnDetails = new Dictionary<string, Dictionary<string, SqlColumnAutocompleteInfo>>(StringComparer.OrdinalIgnoreCase);
+            var dbConnString = DatabaseHelper.BuildConnectionString(connectionString, databaseName);
+            using (var connection = new Microsoft.Data.SqlClient.SqlConnection(dbConnString))
+            {
+                await connection.OpenAsync();
+                const string query = @"
                         SELECT s.name AS SchemaName,
                                o.name AS ObjectName,
                                c.name AS ColumnName,
@@ -871,10 +950,6 @@ namespace SSMS
                         JOIN sys.types ty ON c.user_type_id = ty.user_type_id
                         WHERE o.type IN ('U', 'V')
                         ORDER BY s.name, o.name, c.column_id;";
-
-                    var tableColumns = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-                    var objectTypes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                    var columnDetails = new Dictionary<string, Dictionary<string, SqlColumnAutocompleteInfo>>(StringComparer.OrdinalIgnoreCase);
 
                     using var command = new Microsoft.Data.SqlClient.SqlCommand(query, connection);
                     using var reader = await command.ExecuteReaderAsync();
@@ -927,35 +1002,15 @@ namespace SSMS
                             shortCols.Add(column);
                         }
                     }
-                    _metadataCache[DatabaseName] = tableColumns;
-                    _objectTypeCache[DatabaseName] = objectTypes;
-                    _columnDetailCache[DatabaseName] = columnDetails;
                 }
 
-                if (!_storedProcedureCache.ContainsKey(DatabaseName))
-                {
-                    _storedProcedureCache[DatabaseName] =
-                        await DatabaseHelper.GetStoredProceduresAsync(ConnectionString, DatabaseName);
-                }
-
-                if (!_scalarFunctionCache.ContainsKey(DatabaseName))
-                {
-                    _scalarFunctionCache[DatabaseName] =
-                        await DatabaseHelper.GetFunctionsAsync(ConnectionString, DatabaseName, tableValued: false);
-                }
-
-                if (!_tableFunctionCache.ContainsKey(DatabaseName))
-                {
-                    _tableFunctionCache[DatabaseName] =
-                        await DatabaseHelper.GetFunctionsAsync(ConnectionString, DatabaseName, tableValued: true);
-                }
-
-                if (!_routineParameterCache.ContainsKey(DatabaseName))
-                {
-                    var parameters = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-                    var dbConnString = DatabaseHelper.BuildConnectionString(ConnectionString, DatabaseName);
-                    using var parameterConnection = new Microsoft.Data.SqlClient.SqlConnection(dbConnString);
-                    await parameterConnection.OpenAsync();
+            var storedProcedures = await DatabaseHelper.GetStoredProceduresAsync(connectionString, databaseName);
+            var scalarFunctions = await DatabaseHelper.GetFunctionsAsync(connectionString, databaseName, tableValued: false);
+            var tableFunctions = await DatabaseHelper.GetFunctionsAsync(connectionString, databaseName, tableValued: true);
+            var parameters = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            using (var parameterConnection = new Microsoft.Data.SqlClient.SqlConnection(dbConnString))
+            {
+                await parameterConnection.OpenAsync();
                     const string parameterQuery = @"
                         SELECT s.name + '.' + o.name AS RoutineName, p.name AS ParameterName
                         FROM sys.objects o
@@ -977,45 +1032,32 @@ namespace SSMS
                         }
                         routineParameters.Add(parameterName);
                     }
-                    _routineParameterCache[DatabaseName] = parameters;
-                }
-
-                _databaseCache ??= await DatabaseHelper.GetDatabasesAsync(ConnectionString);
-
-                var meta = _metadataCache[DatabaseName];
-                var storedProcedures = _storedProcedureCache[DatabaseName];
-                var scalarFunctions = _scalarFunctionCache[DatabaseName];
-                var tableFunctions = _tableFunctionCache[DatabaseName];
-                var payload = new
-                {
-                    columns = meta,
-                    objectTypes = _objectTypeCache[DatabaseName],
-                    columnDetails = _columnDetailCache[DatabaseName],
-                    storedProcedures,
-                    scalarFunctions,
-                    tableFunctions,
-                    routineParameters = _routineParameterCache[DatabaseName],
-                    databases = _databaseCache,
-                    activeDatabase = DatabaseName
-                };
-                string jsonPayload = JsonSerializer.Serialize(payload);
-                await SqlEditorWebView.ExecuteScriptAsync($"updateMetadata({jsonPayload});");
             }
-            catch (Exception ex)
+
+            return new AutocompleteMetadata
             {
-                AppLogger.Error(ex, $"Failed to load autocomplete metadata for database '{DatabaseName}'");
-            }
+                Columns = tableColumns,
+                ObjectTypes = objectTypes,
+                ColumnDetails = columnDetails,
+                StoredProcedures = storedProcedures,
+                ScalarFunctions = scalarFunctions,
+                TableFunctions = tableFunctions,
+                RoutineParameters = parameters,
+                Databases = await DatabaseHelper.GetDatabasesAsync(connectionString)
+            };
         }
 
         private void InvalidateAutocompleteCache(string databaseName)
         {
-            _metadataCache.Remove(databaseName);
-            _objectTypeCache.Remove(databaseName);
-            _columnDetailCache.Remove(databaseName);
-            _storedProcedureCache.Remove(databaseName);
-            _scalarFunctionCache.Remove(databaseName);
-            _tableFunctionCache.Remove(databaseName);
-            _routineParameterCache.Remove(databaseName);
+            string cacheKey = $"{ConnectionString}\u001f{databaseName}";
+            SharedMetadataCache.TryRemove(cacheKey, out _);
+        }
+
+        private void RequestAutocompleteMetadata()
+        {
+            if (_metadataRequested || _isDisposed) return;
+            _metadataRequested = true;
+            _ = CacheAndRefreshAutocompleteAsync();
         }
 
         private async Task LoadCrossDatabaseMetadataAsync(string databaseName)
@@ -1067,8 +1109,7 @@ namespace SSMS
 
         private void DisplayQueryResults(List<DataTable> dataTables)
         {
-            ResultsGridContainer.Children.Clear();
-            ResultsGridContainer.RowDefinitions.Clear();
+            DisposeDisplayedResults();
 
             if (dataTables == null || dataTables.Count == 0)
             {
@@ -1077,6 +1118,7 @@ namespace SSMS
 
             for (int i = 0; i < dataTables.Count; i++)
             {
+                _resultTables.Add(dataTables[i]);
                 ResultsGridContainer.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
                 var grid = CreateResultDataGrid(dataTables[i]);
@@ -1278,6 +1320,7 @@ namespace SSMS
             contextMenu.Items.Add("Copy with Headers", null, (_, _) => CopyGridToClipboard(dataGrid, true));
             dataGrid.ContextMenuStrip = contextMenu;
             dataGrid.DataSource = dataTable;
+            _resultGrids.Add(dataGrid);
 
             var host = new WindowsFormsHost
             {
@@ -1477,6 +1520,31 @@ namespace SSMS
                 e.Value = text.Trim();
                 e.FormattingApplied = true;
             }
+        }
+
+        private void DisposeDisplayedResults()
+        {
+            ResultsGridContainer.Children.Clear();
+            ResultsGridContainer.RowDefinitions.Clear();
+            foreach (var grid in _resultGrids)
+            {
+                try
+                {
+                    grid.DataSource = null;
+                    grid.ContextMenuStrip?.Dispose();
+                    grid.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Error(ex, "Failed to dispose result grid");
+                }
+            }
+            _resultGrids.Clear();
+            foreach (var table in _resultTables)
+            {
+                table.Dispose();
+            }
+            _resultTables.Clear();
         }
 
         private static void PaintRowNumber(
