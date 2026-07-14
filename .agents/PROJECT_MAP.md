@@ -31,6 +31,7 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 | `AppLogger.cs` | Logger file sederhana untuk error global dan event penting seperti create/close tab. Log tersimpan di `logs\minissms-YYYYMMDD.log` dalam output app. |
 | `AppSettings.cs` | Model serta load/save parameter aplikasi dari `appsettings.json`. |
 | `SettingsWindow.xaml`, `SettingsWindow.xaml.cs` | Dialog Settings dari ikon gear di kanan toolbar; saat ini mengatur query command timeout. |
+| `UnsavedChangesWindow.xaml`, `UnsavedChangesWindow.xaml.cs` | Dialog dark-mode custom untuk konfirmasi Save, Don't Save, atau Cancel saat menutup query yang masih berubah. |
 | `sql_editor.html` | Monaco SQL editor, command JavaScript, autocomplete, bridge message ke WPF. |
 | `Assets/MiniSSMS.ico`, `Assets/MiniSSMS.png` | Icon aplikasi untuk executable dan window WPF. |
 
@@ -40,6 +41,7 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 2. `ConnectionWindow` membuat connection string dari input user.
 3. Setelah koneksi sukses, `MainWindow` dibuat dengan connection string awal.
 4. `MainWindow.Window_Loaded` memanggil `AddServerToExplorerAsync` dan membuat tab query pertama.
+   Startup overlay tetap menutup workspace sampai Monaco pada tab pertama siap, dan background WebView2 dipaksa dark untuk mencegah blink putih saat transisi dari dialog koneksi.
 5. Setiap tab query adalah instance `QueryTabControl`.
 6. `QueryTabControl` memuat `sql_editor.html` ke WebView2, lalu update autocomplete dari metadata database.
 7. Tombol Execute/F5 memanggil `QueryTabControl.ExecuteQuery()`.
@@ -65,11 +67,13 @@ Lokasi utama: `MainWindow.xaml.cs`.
   - `ColumnsFolder`, `IndexesFolder`, `TriggersFolder`
   - `Column`, `Index`, `Trigger`
 - Folder filter ada di `_folderFilters`, `CreateFolderContextMenu`, `OpenFilterDialog`, `GetFolderHeader`.
+- Folder Databases, Tables, Views, Stored Procedures, Scalar-valued Functions, dan Table-valued Functions menampilkan tombol filter saat header di-hover; filter Databases berlaku per koneksi server, sedangkan filter object berlaku per database.
 - Context menu object ada di `CreateObjectContextMenu`.
 - Semua node Object Explorer yang memiliki `ObjectExplorerNode` mendapat menu `Copy Name` secara otomatis saat diklik kanan; nama diambil dari `DetailName` atau identitas node/folder tanpa icon header.
 - Context menu folder object dibuat oleh `CreateFolderContextMenu`; Tables, Views, Stored Procedures, dan kedua jenis Functions menyediakan template `Create New`.
 - Saat lazy-load metadata berjalan, node menampilkan teks titik bergerak lewat `CreateAnimatedLoadingItem`.
 - Script object dibuat lewat `ScriptObjectToQueryTabAsync`.
+- Node trigger di bawah table memiliki context menu `CREATE`, `ALTER`, dan `DROP` melalui alur scripting object yang sama.
 
 Saat menambah node baru:
 
@@ -95,10 +99,14 @@ Hal penting:
 - Scrollbar standar project memakai ukuran 6px: `StandardScrollBar` di `App.xaml` dipakai eksplisit oleh template `ScrollViewer`, DataGrid, Object Explorer external `ScrollViewer`, header tab query, dan Monaco editor di `sql_editor.html`.
 - Scrollbar horizontal harus memakai command `PageLeft/PageRight`; scrollbar vertical memakai `PageUp/PageDown`.
 - Splitter editor/results memakai `EditorResultsSplitter` berbasis `Thumb` di `QueryTabControl.xaml`, plus resize fallback di 12px teratas `ResultsPane`; logic ada di `QueryTabControl.xaml.cs`.
+- Tab schema di area bawah Results memiliki context menu Close, Close All, dan Set Color yang hanya memengaruhi tab schema pada `TabResults`.
 - Drag tab query di `MainWindow.xaml.cs` hanya boleh mulai dari header panel bertag `QueryTabDragHandle`; saat drag tab hanya bergerak visual, reorder `Items` dilakukan sekali di mouse-up lewat `CommitTabDrag()` agar tidak patah-patah.
 - Logging global dipasang di `App.xaml.cs` untuk UI exception, domain exception, dan unobserved task exception. `MainWindow.xaml.cs` juga log create/close query tab.
 - `TabQueryControls_SelectionChanged` sync status server/database dan combo database.
+- Query tab melacak perubahan Monaco dengan indikator `*`; Save menghapus indikator, sedangkan close tab/close aplikasi memakai `UnsavedChangesWindow` dark-mode untuk konfirmasi Save/Don’t Save/Cancel pada tab yang masih dirty.
+- Nama default dialog Save mengikuti judul tab tanpa indikator `*`, dan penyimpanan selalu mengambil seluruh isi editor meskipun ada selection.
 - `BtnExecute_Click` memanggil `ExecuteQuery()` pada tab aktif.
+- Setelah query sukses, database aktual pada koneksi dibaca kembali; perintah `USE <database>` menyinkronkan database tab, status, autocomplete, dan combo toolbar. Jika eksekusi gagal, context database tab tidak diubah.
 - Ikon gear di pojok kanan toolbar membuka `SettingsWindow`; query timeout disimpan sebagai `Query.CommandTimeoutSeconds` di `appsettings.json` dan berlaku mulai eksekusi berikutnya (`0` berarti tanpa batas).
 - `Window_KeyDown` menangani shortcut seperti `F5`, `F8`, `Ctrl+N`, `Ctrl+S`, `Ctrl+O`, `Ctrl+K`, `Ctrl+Shift+K`.
 - Urutan default toolbar mengikuti alur koneksi, pemilihan database, eksekusi, editing, lalu file/query; item tetap dapat di-drag untuk reorder.
@@ -143,6 +151,7 @@ Pola yang dipakai:
 - Result set dengan nama kolom duplikat (misalnya `SELECT Units, *`) diberi suffix tampilan `(2)`, `(3)`, dan seterusnya karena `DataTable` memerlukan nama unik.
 - Result grid memakai pixel scrolling, recycling virtualization, cache satu halaman, serta tinggi row/header tetap agar layout tidak mengukur ulang ukuran cell saat scroll; telemetry per-frame/visual-tree saat scroll tidak dipasang agar UI tetap ringan.
 - Result grid menampilkan nomor baris melalui row header, menonaktifkan sort saat header diklik, dan memakai header text selectable agar nama kolom dapat disalin.
+- Row header result grid mendukung klik Shift dan drag ke atas/bawah untuk memilih rentang beberapa row, termasuk auto-scroll sederhana saat pointer melewati batas grid.
 - Padding string dari tipe SQL `CHAR/NCHAR` di-trim hanya saat ditampilkan; nilai asli pada `DataTable` tetap dipertahankan.
 - Text cell result di-clip ke batas kolom, memakai ellipsis dan padding horizontal, serta garis vertikal lebih kontras supaya nilai panjang tidak terlihat menyatu antar-kolom.
 
@@ -153,6 +162,7 @@ Pola yang dipakai:
 - Style connection dialog ada di `ConnectionWindow.xaml`.
 - Style result grid mengikuti style global `DataGrid` di `App.xaml`.
 - TreeView Object Explorer saat ini memakai header string langsung, termasuk icon emoji di `MainWindow.xaml.cs`.
+- Template header TreeView memakai `ContentPresenter` tanpa `HeaderTemplate` berbasis `TextBlock`, sehingga header string dan header control interaktif untuk filter sama-sama dirender dengan benar.
 
 Jika mengubah tampilan:
 

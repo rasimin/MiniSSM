@@ -38,6 +38,8 @@ namespace SSMS
         private double _draggedToolbarGrabOffsetX;
         private GridLength _lastObjectExplorerWidth = new(260);
         private bool _isObjectExplorerVisible = true;
+        private bool _allowWindowClose;
+        private bool _isCloseConfirmationInProgress;
 
         private static readonly Duration ReorderAnimationDuration = new(TimeSpan.FromMilliseconds(320));
         private const string QueryTabDragHandleTag = "QueryTabDragHandle";
@@ -143,6 +145,43 @@ namespace SSMS
             base.OnClosed(e);
         }
 
+        protected override async void OnClosing(System.ComponentModel.CancelEventArgs e)
+        {
+            if (_allowWindowClose)
+            {
+                base.OnClosing(e);
+                return;
+            }
+
+            e.Cancel = true;
+            base.OnClosing(e);
+            if (_isCloseConfirmationInProgress)
+            {
+                return;
+            }
+
+            _isCloseConfirmationInProgress = true;
+            try
+            {
+                foreach (TabItem tab in TabQueryControls.Items.OfType<TabItem>().ToList())
+                {
+                    if (!await ConfirmTabCanCloseAsync(tab))
+                    {
+                        return;
+                    }
+                }
+
+                _allowWindowClose = true;
+                _ = Dispatcher.BeginInvoke(
+                    new Action(Close),
+                    DispatcherPriority.Background);
+            }
+            finally
+            {
+                _isCloseConfirmationInProgress = false;
+            }
+        }
+
         private IntPtr WindowMessageHook(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
             if (message != WM_MOUSEHWHEEL || Mouse.DirectlyOver is not DependencyObject element)
@@ -192,7 +231,8 @@ namespace SSMS
                 // 2. Open the first query tab
                 var builder = new SqlConnectionStringBuilder(_initialConnectionString);
                 string initialDb = string.IsNullOrEmpty(builder.InitialCatalog) ? "master" : builder.InitialCatalog;
-                CreateNewQueryTab(_initialConnectionString, initialDb);
+                QueryTabControl firstTab = CreateNewQueryTab(_initialConnectionString, initialDb);
+                await firstTab.EditorReady;
             }
             catch (Exception ex)
             {
@@ -227,7 +267,7 @@ namespace SSMS
 
         #region Tab Management
 
-        public void CreateNewQueryTab(string connectionString, string databaseName, string? initialSql = null, string? customTabTitle = null, bool autoExecute = false, string? filePath = null)
+        public QueryTabControl CreateNewQueryTab(string connectionString, string databaseName, string? initialSql = null, string? customTabTitle = null, bool autoExecute = false, string? filePath = null)
         {
             _queryTabCounter++;
 
@@ -245,6 +285,7 @@ namespace SSMS
             queryTabControl.AutoExecute = autoExecute;
 
             var tabItem = new TabItem();
+            queryTabControl.DirtyStateChanged += (_, _) => UpdateTabDirtyIndicator(tabItem);
             tabItem.PreviewMouseLeftButtonDown += TabItem_PreviewMouseLeftButtonDown;
             tabItem.PreviewMouseMove += TabItem_PreviewMouseMove;
             tabItem.PreviewMouseLeftButtonUp += TabItem_PreviewMouseLeftButtonUp;
@@ -279,10 +320,10 @@ namespace SSMS
             closeBtn.MouseEnter += (s, e) => { closeBtn.Foreground = System.Windows.Media.Brushes.Red; };
             closeBtn.MouseLeave += (s, e) => { closeBtn.Foreground = System.Windows.Media.Brushes.Gray; };
 
-            closeBtn.Click += (s, e) =>
+            closeBtn.Click += async (s, e) =>
             {
-                CloseTab(tabItem);
                 e.Handled = true;
+                await CloseTabAsync(tabItem);
             };
 
             headerPanel.Children.Add(headerText);
@@ -298,15 +339,15 @@ namespace SSMS
             tabContextMenu.Items.Add(renameTabMenu);
 
             var closeTabMenu = new MenuItem { Header = "Close" };
-            closeTabMenu.Click += (s, e) => CloseTab(tabItem);
+            closeTabMenu.Click += async (s, e) => await CloseTabAsync(tabItem);
             tabContextMenu.Items.Add(closeTabMenu);
 
             var closeAllMenu = new MenuItem { Header = "Close All" };
-            closeAllMenu.Click += (s, e) => CloseAllTabs();
+            closeAllMenu.Click += async (s, e) => await CloseAllTabsAsync();
             tabContextMenu.Items.Add(closeAllMenu);
 
             var closeAllButThisMenu = new MenuItem { Header = "Close All But This" };
-            closeAllButThisMenu.Click += (s, e) => CloseAllTabsExcept(tabItem);
+            closeAllButThisMenu.Click += async (s, e) => await CloseAllTabsExceptAsync(tabItem);
             tabContextMenu.Items.Add(closeAllButThisMenu);
 
             var colorTabMenu = new MenuItem { Header = "Set Color" };
@@ -333,25 +374,32 @@ namespace SSMS
 
             TabQueryControls.Items.Insert(0, tabItem);
             TabQueryControls.SelectedItem = tabItem;
+            return queryTabControl;
         }
 
         private void RenameTab(TabItem tabItem)
         {
             if (tabItem.Header is StackPanel headerPanel && headerPanel.Children[0] is TextBlock headerText)
             {
-                string newName = ShowInputDialog("Rename Tab", "Enter new tab name:", headerText.Text);
+                string newName = ShowInputDialog("Rename Tab", "Enter new tab name:", GetCleanTabHeaderText(tabItem));
                 if (!string.IsNullOrEmpty(newName))
                 {
-                    headerText.Text = newName;
+                    headerText.Text = newName +
+                        (tabItem.Content is QueryTabControl queryTab && queryTab.IsDirty ? " *" : string.Empty);
                 }
             }
         }
 
-        private void CloseTab(TabItem tabItem)
+        private async Task<bool> CloseTabAsync(TabItem tabItem)
         {
             if (!TabQueryControls.Items.Contains(tabItem))
             {
-                return;
+                return true;
+            }
+
+            if (!await ConfirmTabCanCloseAsync(tabItem))
+            {
+                return false;
             }
 
             AppLogger.Info($"Closing query tab: {GetTabHeaderText(tabItem)}");
@@ -364,6 +412,7 @@ namespace SSMS
                 TxtStatusTime.Text = "";
                 UpdateStatusRowsAndColumns(0, 0);
             }
+            return true;
         }
 
         private string GetTabHeaderText(TabItem tabItem)
@@ -375,20 +424,47 @@ namespace SSMS
             return tabItem.Header?.ToString() ?? "(untitled)";
         }
 
-        private void CloseAllTabs()
+        private string GetCleanTabHeaderText(TabItem tabItem)
         {
-            TabQueryControls.Items.Clear();
-            CboDatabases.ItemsSource = null;
-            TxtStatusDatabase.Text = "";
-            TxtStatusServer.Text = "No Connection";
-            TxtStatusTime.Text = "";
+            string title = GetTabHeaderText(tabItem);
+            return title.EndsWith(" *", StringComparison.Ordinal) ? title[..^2] : title;
         }
 
-        private void CloseAllTabsExcept(TabItem tabItem)
+        private void UpdateTabDirtyIndicator(TabItem tabItem)
+        {
+            if (tabItem.Header is not StackPanel headerPanel ||
+                headerPanel.Children[0] is not TextBlock headerText ||
+                tabItem.Content is not QueryTabControl queryTab)
+            {
+                return;
+            }
+
+            string cleanTitle = headerText.Text.EndsWith(" *", StringComparison.Ordinal)
+                ? headerText.Text[..^2]
+                : headerText.Text;
+            headerText.Text = cleanTitle + (queryTab.IsDirty ? " *" : string.Empty);
+        }
+
+        private async Task<bool> CloseAllTabsAsync()
+        {
+            foreach (TabItem item in TabQueryControls.Items.OfType<TabItem>().ToList())
+            {
+                if (!await CloseTabAsync(item))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private async Task CloseAllTabsExceptAsync(TabItem tabItem)
         {
             foreach (var item in TabQueryControls.Items.OfType<TabItem>().Where(item => item != tabItem).ToList())
             {
-                TabQueryControls.Items.Remove(item);
+                if (!await CloseTabAsync(item))
+                {
+                    return;
+                }
             }
             TabQueryControls.SelectedItem = tabItem;
         }
@@ -408,27 +484,7 @@ namespace SSMS
                     TxtStatusServer.Text = $"Connected: {serverName}";
                     TxtStatusDatabase.Text = activeTab.DatabaseName;
 
-                    // Sync the Toolbar database selection list
-                    CboDatabases.SelectionChanged -= CboDatabases_SelectionChanged;
-                    try
-                    {
-                        if (!_serverDatabasesCache.TryGetValue(activeTab.ConnectionString, out var dbs))
-                        {
-                            dbs = await DatabaseHelper.GetDatabasesAsync(activeTab.ConnectionString);
-                            _serverDatabasesCache[activeTab.ConnectionString] = dbs;
-                        }
-                        CboDatabases.ItemsSource = dbs;
-                        CboDatabases.SelectedItem = activeTab.DatabaseName;
-                    }
-                    catch (Exception ex)
-                    {
-                        AppLogger.Error(ex, "Failed to load databases during tab selection");
-                        MessageBox.Show($"Failed to load databases for server: {ex.Message}", "Database Load Error", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    }
-                    finally
-                    {
-                        CboDatabases.SelectionChanged += CboDatabases_SelectionChanged;
-                    }
+                    await SyncDatabaseContextAsync(activeTab);
 
                     UpdateStatusRowsAndColumns(activeTab.TotalResultRows, activeTab.TotalResultColumns);
                     activeTab.FocusEditor();
@@ -438,6 +494,38 @@ namespace SSMS
             {
                 AppLogger.Error(ex, "Tab selection changed failed");
                 MessageBox.Show($"Failed to switch query tab. Log saved to: {AppLogger.LogDirectory}", "Tab Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        public async Task SyncDatabaseContextAsync(QueryTabControl queryTab)
+        {
+            if (TabQueryControls.Items.OfType<TabItem>().FirstOrDefault(tab => tab.Content == queryTab) is TabItem ownerTab &&
+                ownerTab.Header is StackPanel headerPanel)
+            {
+                var builder = new SqlConnectionStringBuilder(queryTab.ConnectionString);
+                headerPanel.ToolTip = $"Server: {builder.DataSource}{Environment.NewLine}Database: {queryTab.DatabaseName}";
+            }
+
+            if (TabQueryControls.SelectedItem is not TabItem selectedTab || selectedTab.Content != queryTab)
+            {
+                return;
+            }
+
+            TxtStatusDatabase.Text = queryTab.DatabaseName;
+            CboDatabases.SelectionChanged -= CboDatabases_SelectionChanged;
+            try
+            {
+                if (!_serverDatabasesCache.TryGetValue(queryTab.ConnectionString, out var databases))
+                {
+                    databases = await DatabaseHelper.GetDatabasesAsync(queryTab.ConnectionString);
+                    _serverDatabasesCache[queryTab.ConnectionString] = databases;
+                }
+                CboDatabases.ItemsSource = databases;
+                CboDatabases.SelectedItem = queryTab.DatabaseName;
+            }
+            finally
+            {
+                CboDatabases.SelectionChanged += CboDatabases_SelectionChanged;
             }
         }
 
@@ -527,9 +615,9 @@ namespace SSMS
                     {
                         var dbsFolder = new TreeViewItem
                         {
-                            Header = "📁 Databases",
                             Tag = new ObjectExplorerNode { NodeType = "DatabasesFolder", ConnectionString = connStr, DatabaseName = "master" }
                         };
+                        SetFilterableFolderHeader(dbsFolder, connStr, "DatabasesFolder", "Databases");
                         dbsFolder.Items.Add(new TreeViewItem { Header = "Loading..." });
                         item.Items.Add(dbsFolder);
 
@@ -538,11 +626,16 @@ namespace SSMS
                     }
                     else if (type == "DatabasesFolder")
                     {
+                        string filter = GetFolderFilter(connStr, "DatabasesFolder");
                         var dbs = await DatabaseHelper.GetDatabasesAsync(connStr);
                         _serverDatabasesCache[connStr] = dbs;
 
                         foreach (var db in dbs)
                         {
+                            if (!string.IsNullOrEmpty(filter) && !db.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                            {
+                                continue;
+                            }
                             var dbItem = new TreeViewItem
                             {
                                 Header = $"🛢️ {db}",
@@ -564,27 +657,27 @@ namespace SSMS
                     {
                         var tablesFolder = new TreeViewItem
                         {
-                            Header = GetFolderHeader(dbName, "TablesFolder", "Tables"),
                             Tag = new ObjectExplorerNode { NodeType = "TablesFolder", ConnectionString = connStr, DatabaseName = dbName }
                         };
+                        SetFilterableFolderHeader(tablesFolder, dbName, "TablesFolder", "Tables");
                         tablesFolder.Items.Add(new TreeViewItem { Header = "Loading..." });
                         tablesFolder.ContextMenu = CreateFolderContextMenu(tablesFolder, connStr, dbName, "TablesFolder", "Tables");
                         item.Items.Add(tablesFolder);
 
                         var viewsFolder = new TreeViewItem
                         {
-                            Header = GetFolderHeader(dbName, "ViewsFolder", "Views"),
                             Tag = new ObjectExplorerNode { NodeType = "ViewsFolder", ConnectionString = connStr, DatabaseName = dbName }
                         };
+                        SetFilterableFolderHeader(viewsFolder, dbName, "ViewsFolder", "Views");
                         viewsFolder.Items.Add(new TreeViewItem { Header = "Loading..." });
                         viewsFolder.ContextMenu = CreateFolderContextMenu(viewsFolder, connStr, dbName, "ViewsFolder", "Views");
                         item.Items.Add(viewsFolder);
 
                         var spsFolder = new TreeViewItem
                         {
-                            Header = GetFolderHeader(dbName, "SpsFolder", "Stored Procedures"),
                             Tag = new ObjectExplorerNode { NodeType = "SpsFolder", ConnectionString = connStr, DatabaseName = dbName }
                         };
+                        SetFilterableFolderHeader(spsFolder, dbName, "SpsFolder", "Stored Procedures");
                         spsFolder.Items.Add(new TreeViewItem { Header = "Loading..." });
                         spsFolder.ContextMenu = CreateFolderContextMenu(spsFolder, connStr, dbName, "SpsFolder", "Stored Procedures");
                         item.Items.Add(spsFolder);
@@ -661,18 +754,18 @@ namespace SSMS
                     {
                         var scalarFolder = new TreeViewItem
                         {
-                            Header = GetFolderHeader(dbName, "ScalarFunctionsFolder", "Scalar-valued Functions"),
                             Tag = new ObjectExplorerNode { NodeType = "ScalarFunctionsFolder", ConnectionString = connStr, DatabaseName = dbName }
                         };
+                        SetFilterableFolderHeader(scalarFolder, dbName, "ScalarFunctionsFolder", "Scalar-valued Functions");
                         scalarFolder.Items.Add(new TreeViewItem { Header = "Loading..." });
                         scalarFolder.ContextMenu = CreateFolderContextMenu(scalarFolder, connStr, dbName, "ScalarFunctionsFolder", "Scalar-valued Functions");
                         item.Items.Add(scalarFolder);
 
                         var tableFolder = new TreeViewItem
                         {
-                            Header = GetFolderHeader(dbName, "TableFunctionsFolder", "Table-valued Functions"),
                             Tag = new ObjectExplorerNode { NodeType = "TableFunctionsFolder", ConnectionString = connStr, DatabaseName = dbName }
                         };
+                        SetFilterableFolderHeader(tableFolder, dbName, "TableFunctionsFolder", "Table-valued Functions");
                         tableFolder.Items.Add(new TreeViewItem { Header = "Loading..." });
                         tableFolder.ContextMenu = CreateFolderContextMenu(tableFolder, connStr, dbName, "TableFunctionsFolder", "Table-valued Functions");
                         item.Items.Add(tableFolder);
@@ -766,6 +859,7 @@ namespace SSMS
                                 Header = $"⚡ {trigger.TriggerName}{disabledSuffix}",
                                 Tag = new ObjectExplorerNode { NodeType = "Trigger", ConnectionString = connStr, DatabaseName = dbName, DetailName = trigger.TriggerName }
                             };
+                            triggerItem.ContextMenu = CreateObjectContextMenu(connStr, dbName, "Trigger", trigger.TriggerName);
                             item.Items.Add(triggerItem);
                         }
                     }
@@ -1190,44 +1284,92 @@ namespace SSMS
 
         private async void SaveActiveTabQuery(bool saveAs = false)
         {
-            if (TabQueryControls.SelectedItem is TabItem tabItem && tabItem.Content is QueryTabControl activeTab)
+            if (TabQueryControls.SelectedItem is TabItem tabItem)
             {
-                string? targetPath = saveAs ? null : activeTab.FilePath;
-                if (string.IsNullOrEmpty(targetPath))
-                {
-                    var saveFileDialog = new Microsoft.Win32.SaveFileDialog
-                    {
-                        Filter = "SQL Files (*.sql)|*.sql|All Files (*.*)|*.*",
-                        DefaultExt = ".sql",
-                        Title = saveAs ? "Save SQL Query As" : "Save SQL Query",
-                        FileName = activeTab.FilePath == null ? string.Empty : Path.GetFileName(activeTab.FilePath)
-                    };
-
-                    if (saveFileDialog.ShowDialog() != true)
-                    {
-                        return;
-                    }
-
-                    targetPath = saveFileDialog.FileName;
-                }
-
-                try
-                {
-                    string resultJson = await activeTab.SqlEditorWebView.ExecuteScriptAsync("getQueryText()");
-                    string sqlQuery = JsonSerializer.Deserialize<string>(resultJson) ?? "";
-                    File.WriteAllText(targetPath, sqlQuery);
-                    activeTab.FilePath = targetPath;
-
-                    if (tabItem.Header is StackPanel headerPanel && headerPanel.Children[0] is TextBlock textBlock)
-                    {
-                        textBlock.Text = Path.GetFileName(targetPath);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Failed to save query file: {ex.Message}", "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                }
+                await SaveQueryTabAsync(tabItem, saveAs);
             }
+        }
+
+        private async Task<bool> SaveQueryTabAsync(TabItem tabItem, bool saveAs)
+        {
+            if (tabItem.Content is not QueryTabControl queryTab)
+            {
+                return true;
+            }
+
+            await queryTab.EditorReady;
+            string? targetPath = saveAs ? null : queryTab.FilePath;
+            if (string.IsNullOrEmpty(targetPath))
+            {
+                string defaultFileName = queryTab.FilePath == null
+                    ? GetCleanTabHeaderText(tabItem)
+                    : Path.GetFileName(queryTab.FilePath);
+                foreach (char invalidCharacter in Path.GetInvalidFileNameChars())
+                {
+                    defaultFileName = defaultFileName.Replace(invalidCharacter, '_');
+                }
+
+                var saveFileDialog = new Microsoft.Win32.SaveFileDialog
+                {
+                    Filter = "SQL Files (*.sql)|*.sql|All Files (*.*)|*.*",
+                    DefaultExt = ".sql",
+                    AddExtension = true,
+                    Title = saveAs ? "Save SQL Query As" : "Save SQL Query",
+                    FileName = defaultFileName
+                };
+
+                if (saveFileDialog.ShowDialog() != true)
+                {
+                    return false;
+                }
+
+                targetPath = saveFileDialog.FileName;
+            }
+
+            try
+            {
+                string resultJson = await queryTab.SqlEditorWebView.ExecuteScriptAsync("getAllQueryText()");
+                string sqlQuery = JsonSerializer.Deserialize<string>(resultJson) ?? "";
+                File.WriteAllText(targetPath, sqlQuery);
+                queryTab.FilePath = targetPath;
+
+                if (tabItem.Header is StackPanel headerPanel && headerPanel.Children[0] is TextBlock textBlock)
+                {
+                    textBlock.Text = Path.GetFileName(targetPath);
+                }
+                queryTab.MarkSaved(sqlQuery);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to save query file: {ex.Message}", "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return false;
+            }
+        }
+
+        private async Task<bool> ConfirmTabCanCloseAsync(TabItem tabItem)
+        {
+            if (tabItem.Content is not QueryTabControl queryTab || !queryTab.IsDirty)
+            {
+                return true;
+            }
+
+            var dialog = new UnsavedChangesWindow(GetCleanTabHeaderText(tabItem))
+            {
+                Owner = this
+            };
+            dialog.ShowDialog();
+
+            if (dialog.Choice == UnsavedChangesChoice.Cancel)
+            {
+                return false;
+            }
+            if (dialog.Choice == UnsavedChangesChoice.Save)
+            {
+                return await SaveQueryTabAsync(tabItem, saveAs: false);
+            }
+
+            return true;
         }
 
         private string ShowInputDialog(string title, string prompt, string defaultText)
@@ -1839,16 +1981,77 @@ namespace SSMS
             return null;
         }
 
-        private string GetFolderFilter(string dbName, string folderType)
+        private string GetFolderFilter(string filterScope, string folderType)
         {
-            string key = $"{dbName}_{folderType}";
+            string key = $"{filterScope}_{folderType}";
             return _folderFilters.TryGetValue(key, out var val) ? val : string.Empty;
         }
 
-        private string GetFolderHeader(string dbName, string folderType, string baseName)
+        private string GetFolderHeader(string filterScope, string folderType, string baseName)
         {
-            string filter = GetFolderFilter(dbName, folderType);
+            string filter = GetFolderFilter(filterScope, folderType);
             return string.IsNullOrEmpty(filter) ? $"📁 {baseName}" : $"📁 {baseName} (filtered: '{filter}')";
+        }
+
+        private void SetFilterableFolderHeader(
+            TreeViewItem folderItem,
+            string filterScope,
+            string folderType,
+            string baseName)
+        {
+            var header = new Grid
+            {
+                VerticalAlignment = VerticalAlignment.Center,
+                Background = Brushes.Transparent
+            };
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            header.Children.Add(new TextBlock
+            {
+                Text = GetFolderHeader(filterScope, folderType, baseName),
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis
+            });
+
+            var filterButton = new Button
+            {
+                Content = new TextBlock
+                {
+                    Text = "\uE71C",
+                    FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                    FontSize = 8
+                },
+                Width = 14,
+                Height = 14,
+                Margin = new Thickness(3, 0, 0, 0),
+                Padding = new Thickness(0),
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Foreground = Brushes.LightGray,
+                Cursor = Cursors.Hand,
+                ToolTip = $"Filter {baseName}",
+                Opacity = 0,
+                IsHitTestVisible = false
+            };
+            filterButton.Click += (_, e) =>
+            {
+                e.Handled = true;
+                OpenFilterDialog(folderItem, filterScope, folderType, baseName);
+            };
+            Grid.SetColumn(filterButton, 1);
+            header.Children.Add(filterButton);
+            header.MouseEnter += (_, _) =>
+            {
+                filterButton.Opacity = 1;
+                filterButton.IsHitTestVisible = true;
+            };
+            header.MouseLeave += (_, _) =>
+            {
+                filterButton.Opacity = 0;
+                filterButton.IsHitTestVisible = false;
+            };
+            folderItem.Header = header;
         }
 
         private ContextMenu CreateFolderContextMenu(TreeViewItem folderItem, string connStr, string dbName, string folderType, string baseName)
@@ -1868,11 +2071,11 @@ namespace SSMS
             menu.Items.Add(newQueryItem);
             
             var filterItem = new MenuItem { Header = "Filter..." };
-            filterItem.Click += (s, e) => OpenFilterDialog(folderItem, connStr, dbName, folderType, baseName);
+            filterItem.Click += (s, e) => OpenFilterDialog(folderItem, dbName, folderType, baseName);
             menu.Items.Add(filterItem);
 
             var clearFilterItem = new MenuItem { Header = "Clear Filter" };
-            clearFilterItem.Click += (s, e) => ClearFilter(folderItem, connStr, dbName, folderType, baseName);
+            clearFilterItem.Click += (s, e) => ClearFilter(folderItem, dbName, folderType, baseName);
             menu.Items.Add(clearFilterItem);
 
             return menu;
@@ -1910,10 +2113,10 @@ namespace SSMS
             }
         }
 
-        private void OpenFilterDialog(TreeViewItem folderItem, string connStr, string dbName, string folderType, string baseName)
+        private void OpenFilterDialog(TreeViewItem folderItem, string filterScope, string folderType, string baseName)
         {
-            string key = $"{dbName}_{folderType}";
-            string currentFilter = GetFolderFilter(dbName, folderType);
+            string key = $"{filterScope}_{folderType}";
+            string currentFilter = GetFolderFilter(filterScope, folderType);
             string filterText = ShowInputDialog("Filter Objects", "Enter filter query (wildcard/substring):", currentFilter);
 
             if (filterText != currentFilter)
@@ -1927,7 +2130,7 @@ namespace SSMS
                     _folderFilters[key] = filterText;
                 }
 
-                folderItem.Header = GetFolderHeader(dbName, folderType, baseName);
+                SetFilterableFolderHeader(folderItem, filterScope, folderType, baseName);
 
                 // Reload the folder
                 folderItem.IsExpanded = false;
@@ -1937,13 +2140,13 @@ namespace SSMS
             }
         }
 
-        private void ClearFilter(TreeViewItem folderItem, string connStr, string dbName, string folderType, string baseName)
+        private void ClearFilter(TreeViewItem folderItem, string filterScope, string folderType, string baseName)
         {
-            string key = $"{dbName}_{folderType}";
+            string key = $"{filterScope}_{folderType}";
             if (_folderFilters.ContainsKey(key))
             {
                 _folderFilters.Remove(key);
-                folderItem.Header = GetFolderHeader(dbName, folderType, baseName);
+                SetFilterableFolderHeader(folderItem, filterScope, folderType, baseName);
 
                 // Reload the folder
                 folderItem.IsExpanded = false;

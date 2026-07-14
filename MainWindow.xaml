@@ -195,14 +195,8 @@
             <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="Padding" Value="2,1,0,1"/>
             <Setter Property="Foreground" Value="#CCCCCC"/>
+            <Setter Property="FontSize" Value="12.5"/>
             <EventSetter Event="PreviewMouseRightButtonDown" Handler="OnTreeViewItemPreviewMouseRightButtonDown"/>
-            <Setter Property="HeaderTemplate">
-                <Setter.Value>
-                    <DataTemplate>
-                        <TextBlock Text="{Binding}" Margin="3,2" FontSize="12.5"/>
-                    </DataTemplate>
-                </Setter.Value>
-            </Setter>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TreeViewItem">
@@ -257,6 +251,7 @@
                                     <!-- Header Content -->
                                     <ContentPresenter Grid.Column="1"
                                                       ContentSource="Header"
+                                                      Margin="3,2"
                                                       HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                                       VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
                                 </Grid>

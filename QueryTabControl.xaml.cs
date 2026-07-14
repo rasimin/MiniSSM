@@ -37,10 +37,16 @@ namespace SSMS
         public string? FilePath { get; set; }
         public bool AutoExecute { get; set; } = false;
         public bool IsWebViewInitialized { get; private set; } = false;
+        public bool IsDirty { get; private set; }
         public int TotalResultRows { get; private set; } = 0;
         public int TotalResultColumns { get; private set; } = 0;
+        public Task EditorReady => _editorReadyCompletion.Task;
+        public event EventHandler? DirtyStateChanged;
 
         private readonly Dictionary<string, Dictionary<string, List<string>>> _metadataCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly TaskCompletionSource<bool> _editorReadyCompletion =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private string _savedSqlText = string.Empty;
         private readonly Dictionary<string, List<string>> _storedProcedureCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<string>> _scalarFunctionCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<string>> _tableFunctionCache = new(StringComparer.OrdinalIgnoreCase);
@@ -142,6 +148,7 @@ namespace SSMS
             {
                 var env = await SharedEnvironment.Value;
                 await SqlEditorWebView.EnsureCoreWebView2Async(env);
+                SqlEditorWebView.DefaultBackgroundColor = Drawing.Color.FromArgb(30, 30, 30);
 
                 string htmlPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sql_editor.html");
                 if (!File.Exists(htmlPath))
@@ -156,6 +163,7 @@ namespace SSMS
             {
                 AppLogger.Error(ex, "Failed to initialize Monaco SQL Editor");
                 TxtMessages.Text = $"Error initializing Monaco SQL Editor: {ex.Message}";
+                _editorReadyCompletion.TrySetResult(false);
             }
         }
 
@@ -211,6 +219,13 @@ namespace SSMS
                 {
                     _ = CompleteEditorInitializationAsync();
                 }
+                else if (action.GetString() == "contentChanged")
+                {
+                    string currentText = doc.RootElement.TryGetProperty("text", out var textElement)
+                        ? textElement.GetString() ?? string.Empty
+                        : string.Empty;
+                    SetDirty(!string.Equals(currentText, _savedSqlText, StringComparison.Ordinal));
+                }
                 else if (action.GetString() == "loadDatabaseMetadata" &&
                          doc.RootElement.TryGetProperty("databaseName", out var databaseElement))
                 {
@@ -254,6 +269,9 @@ namespace SSMS
                         $"setQueryText({JsonSerializer.Serialize(InitialSql)});");
                 }
 
+                _savedSqlText = FilePath == null ? string.Empty : InitialSql;
+                SetDirty(!string.Equals(InitialSql, _savedSqlText, StringComparison.Ordinal));
+
                 SqlEditorWebView.Focus();
                 await SqlEditorWebView.ExecuteScriptAsync("focusEditor();");
 
@@ -266,11 +284,32 @@ namespace SSMS
             {
                 AppLogger.Error(ex, "Failed to complete Monaco editor initialization");
             }
+            finally
+            {
+                _editorReadyCompletion.TrySetResult(true);
+            }
 
             // Autocomplete metadata is useful, but it must not delay the visible editor.
             await System.Windows.Threading.Dispatcher.Yield(
                 System.Windows.Threading.DispatcherPriority.Background);
             await CacheAndRefreshAutocompleteAsync();
+        }
+
+        public void MarkSaved(string sqlText)
+        {
+            _savedSqlText = sqlText;
+            SetDirty(false);
+        }
+
+        private void SetDirty(bool value)
+        {
+            if (IsDirty == value)
+            {
+                return;
+            }
+
+            IsDirty = value;
+            DirtyStateChanged?.Invoke(this, EventArgs.Empty);
         }
 
         private async Task ShowObjectDefinitionTabAsync(string objectName, string objectType)
@@ -349,6 +388,34 @@ namespace SSMS
             };
             header.Children.Add(closeButton);
             tab.Header = header;
+
+            var contextMenu = new ContextMenu();
+            var closeItem = new MenuItem { Header = "Close" };
+            closeItem.Click += (_, _) => CloseSchemaTab(tab);
+            contextMenu.Items.Add(closeItem);
+
+            var closeAllItem = new MenuItem { Header = "Close All" };
+            closeAllItem.Click += (_, _) => CloseAllSchemaTabs();
+            contextMenu.Items.Add(closeAllItem);
+
+            var colorMenu = new MenuItem { Header = "Set Color" };
+            foreach (var (name, color) in new[]
+            {
+                ("Red", "#6A1B1B"),
+                ("Green", "#1B5E20"),
+                ("Blue", "#0D47A1"),
+                ("Yellow", "#8D6E63"),
+                ("Orange", "#D84315"),
+                ("Default (Dark)", "#252526")
+            })
+            {
+                var colorItem = new MenuItem { Header = name };
+                colorItem.Click += (_, _) => tab.Background =
+                    (SolidColorBrush)new BrushConverter().ConvertFromString(color)!;
+                colorMenu.Items.Add(colorItem);
+            }
+            contextMenu.Items.Add(colorMenu);
+            tab.ContextMenu = contextMenu;
             return tab;
         }
 
@@ -583,6 +650,17 @@ namespace SSMS
                 }
                 else if (result.IsSuccess)
                 {
+                    if (!string.IsNullOrWhiteSpace(result.EffectiveDatabaseName) &&
+                        !string.Equals(DatabaseName, result.EffectiveDatabaseName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        DatabaseName = result.EffectiveDatabaseName;
+                        if (mainWindow != null)
+                        {
+                            await mainWindow.SyncDatabaseContextAsync(this);
+                        }
+                        await CacheAndRefreshAutocompleteAsync();
+                    }
+
                     TxtMessages.Text = result.Message;
                     if (result.DataTables != null && result.DataTables.Count > 0)
                     {
@@ -1040,24 +1118,88 @@ namespace SSMS
 
             dataGrid.CellFormatting += (_, e) => FormatResultCell(e);
             dataGrid.CellPainting += (_, e) => PaintRowNumber(dataGrid, e);
-            dataGrid.RowHeaderMouseClick += (_, e) =>
+            int rowSelectionAnchor = -1;
+            bool isDraggingRowSelection = false;
+
+            void SelectRowRange(int targetRow)
             {
-                if (e.RowIndex < 0)
+                if (rowSelectionAnchor < 0 || targetRow < 0)
                 {
                     return;
                 }
 
                 dataGrid.ClearSelection();
-                if (dataGrid.Rows[e.RowIndex].Cells.Count > 0)
+                int firstRow = Math.Min(rowSelectionAnchor, targetRow);
+                int lastRow = Math.Max(rowSelectionAnchor, targetRow);
+                if (dataGrid.Rows[targetRow].Cells.Count > 0)
                 {
-                    dataGrid.CurrentCell = dataGrid.Rows[e.RowIndex].Cells[0];
+                    dataGrid.CurrentCell = dataGrid.Rows[targetRow].Cells[0];
                 }
 
-                foreach (WinForms.DataGridViewCell cell in dataGrid.Rows[e.RowIndex].Cells)
+                for (int rowIndex = firstRow; rowIndex <= lastRow; rowIndex++)
                 {
-                    cell.Selected = true;
+                    foreach (WinForms.DataGridViewCell cell in dataGrid.Rows[rowIndex].Cells)
+                    {
+                        cell.Selected = true;
+                    }
                 }
-                dataGrid.Rows[e.RowIndex].Selected = true;
+            }
+
+            dataGrid.CellMouseDown += (_, e) =>
+            {
+                if (e.RowIndex < 0 || e.ColumnIndex != -1 || e.Button != WinForms.MouseButtons.Left)
+                {
+                    return;
+                }
+
+                if ((WinForms.Control.ModifierKeys & WinForms.Keys.Shift) == 0 || rowSelectionAnchor < 0)
+                {
+                    rowSelectionAnchor = e.RowIndex;
+                }
+                isDraggingRowSelection = true;
+                dataGrid.Capture = true;
+                SelectRowRange(e.RowIndex);
+            };
+            dataGrid.MouseMove += (_, e) =>
+            {
+                if (!isDraggingRowSelection || (e.Button & WinForms.MouseButtons.Left) == 0)
+                {
+                    return;
+                }
+
+                var hit = dataGrid.HitTest(e.X, e.Y);
+                if (hit.RowIndex >= 0)
+                {
+                    SelectRowRange(hit.RowIndex);
+                }
+                else if (dataGrid.RowCount > 0 && e.Y < dataGrid.ColumnHeadersHeight && dataGrid.FirstDisplayedScrollingRowIndex > 0)
+                {
+                    int targetRow = dataGrid.FirstDisplayedScrollingRowIndex - 1;
+                    dataGrid.FirstDisplayedScrollingRowIndex = targetRow;
+                    SelectRowRange(targetRow);
+                }
+                else if (dataGrid.RowCount > 0 && e.Y > dataGrid.ClientSize.Height)
+                {
+                    int lastDisplayedRow = Math.Min(
+                        dataGrid.RowCount - 1,
+                        dataGrid.FirstDisplayedScrollingRowIndex + dataGrid.DisplayedRowCount(false) - 1);
+                    if (lastDisplayedRow < dataGrid.RowCount - 1)
+                    {
+                        int targetRow = lastDisplayedRow + 1;
+                        dataGrid.FirstDisplayedScrollingRowIndex = Math.Min(
+                            targetRow,
+                            Math.Max(0, dataGrid.RowCount - dataGrid.DisplayedRowCount(false)));
+                        SelectRowRange(targetRow);
+                    }
+                }
+            };
+            dataGrid.MouseUp += (_, e) =>
+            {
+                if (e.Button == WinForms.MouseButtons.Left)
+                {
+                    isDraggingRowSelection = false;
+                    dataGrid.Capture = false;
+                }
             };
 
             var contextMenu = new WinForms.ContextMenuStrip

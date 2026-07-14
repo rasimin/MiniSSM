@@ -471,6 +471,15 @@
                 }
             });
 
+            editor.onDidChangeModelContent(function() {
+                if (!suppressChangeNotification) {
+                    window.chrome.webview.postMessage({
+                        action: 'contentChanged',
+                        text: editor.getValue()
+                    });
+                }
+            });
+
             // Send signal to C# on keydown inside Monaco for F5
             editor.addCommand(monaco.KeyCode.F5, function() {
                 window.chrome.webview.postMessage({ action: 'execute' });
@@ -711,6 +720,8 @@
         }
 
         // C# callable functions:
+        var suppressChangeNotification = false;
+
         function getQueryText() {
             if (editor) {
                 var selection = editor.getSelection();
@@ -723,9 +734,18 @@
             return '';
         }
 
+        function getAllQueryText() {
+            return editor ? editor.getValue() : '';
+        }
+
         function setQueryText(text) {
             if (editor) {
-                editor.setValue(text);
+                suppressChangeNotification = true;
+                try {
+                    editor.setValue(text);
+                } finally {
+                    suppressChangeNotification = false;
+                }
             }
         }
 

@@ -13,6 +13,7 @@ namespace SSMS
         public string Message { get; set; } = string.Empty;
         public bool IsSuccess { get; set; }
         public bool IsCancelled { get; set; }
+        public string EffectiveDatabaseName { get; set; } = string.Empty;
         public TimeSpan ExecutionTime { get; set; }
     }
 
@@ -176,7 +177,7 @@ namespace SSMS
             {
                 await connection.OpenAsync();
                 var query = @"
-                    SELECT tr.name,
+                    SELECT SCHEMA_NAME(tr.schema_id) + '.' + tr.name,
                            tr.is_disabled
                     FROM sys.triggers tr
                     WHERE tr.parent_id = OBJECT_ID(@TableFullName)
@@ -298,6 +299,7 @@ namespace SSMS
 
                     stopwatch.Stop();
                     result.IsSuccess = true;
+                    result.EffectiveDatabaseName = connection.Database;
                     result.ExecutionTime = stopwatch.Elapsed;
                     result.Message = messages.Length > 0 ? messages.ToString() : "Command completed successfully.";
                 }
