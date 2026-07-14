@@ -1226,6 +1226,18 @@ namespace SSMS
 
             dataGrid.CellFormatting += (_, e) => FormatResultCell(e);
             dataGrid.CellPainting += (_, e) => PaintRowNumber(dataGrid, e);
+            dataGrid.ColumnDividerDoubleClick += (_, e) =>
+            {
+                if (e.ColumnIndex < 0 || e.ColumnIndex >= dataGrid.Columns.Count)
+                {
+                    return;
+                }
+
+                e.Handled = true;
+                dataGrid.AutoResizeColumn(
+                    e.ColumnIndex,
+                    WinForms.DataGridViewAutoSizeColumnMode.DisplayedCells);
+            };
             int rowSelectionAnchor = -1;
             bool isDraggingRowSelection = false;
 
@@ -1255,6 +1267,12 @@ namespace SSMS
 
             dataGrid.CellMouseDown += (_, e) =>
             {
+                if (e.Button == WinForms.MouseButtons.Right && e.RowIndex >= 0 && e.ColumnIndex >= 0)
+                {
+                    dataGrid.CurrentCell = dataGrid.Rows[e.RowIndex].Cells[e.ColumnIndex];
+                    return;
+                }
+
                 if (e.RowIndex < 0 || e.ColumnIndex != -1 || e.Button != WinForms.MouseButtons.Left)
                 {
                     return;
@@ -1318,6 +1336,26 @@ namespace SSMS
             };
             contextMenu.Items.Add("Copy", null, (_, _) => CopyGridToClipboard(dataGrid, false));
             contextMenu.Items.Add("Copy with Headers", null, (_, _) => CopyGridToClipboard(dataGrid, true));
+            contextMenu.Items.Add(new WinForms.ToolStripSeparator());
+            contextMenu.Items.Add("Auto Fit Column", null, (_, _) =>
+            {
+                int columnIndex = dataGrid.CurrentCell?.ColumnIndex ?? -1;
+                if (columnIndex >= 0)
+                {
+                    dataGrid.AutoResizeColumn(
+                        columnIndex,
+                        WinForms.DataGridViewAutoSizeColumnMode.DisplayedCells);
+                }
+            });
+            contextMenu.Items.Add("Widen Column (+200 px)", null, (_, _) =>
+            {
+                int columnIndex = dataGrid.CurrentCell?.ColumnIndex ?? -1;
+                if (columnIndex >= 0)
+                {
+                    var column = dataGrid.Columns[columnIndex];
+                    column.Width = Math.Min(10000, column.Width + 200);
+                }
+            });
             dataGrid.ContextMenuStrip = contextMenu;
             dataGrid.DataSource = dataTable;
             _resultGrids.Add(dataGrid);
@@ -1394,7 +1432,10 @@ namespace SSMS
 
                     int totalColumnWidth = dataGrid.Columns.GetColumnsWidth(
                         WinForms.DataGridViewElementStates.Visible);
-                    int viewportWidth = Math.Max(0, dataGrid.DisplayRectangle.Width);
+                    // DisplayRectangle includes the row-header area. It cannot display
+                    // column content, so exclude it when calculating the scroll range.
+                    int rowHeaderWidth = dataGrid.RowHeadersVisible ? dataGrid.RowHeadersWidth : 0;
+                    int viewportWidth = Math.Max(0, dataGrid.DisplayRectangle.Width - rowHeaderWidth);
                     int maximumHorizontalOffset = Math.Max(0, totalColumnWidth - viewportWidth);
                     horizontalScrollBar.Maximum = maximumHorizontalOffset;
                     horizontalScrollBar.ViewportSize = viewportWidth;
