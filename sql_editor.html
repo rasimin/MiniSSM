@@ -183,6 +183,12 @@
                     var suggestions = [];
                     var fullSql = model.getValue();
                     var sourceContext = /\b(?:FROM|JOIN|APPLY)\s+[\[\]a-zA-Z0-9_.#]*$/i.test(textBeforeCursor);
+                    var cursorOffset = model.getOffsetAt(position);
+                    var activeSqlInfo = getActiveSqlText(model, position);
+                    var activeSql = activeSqlInfo.text;
+                    var activeCursorOffset = activeSqlInfo.cursorOffset;
+                    getLocalObjects(fullSql);
+                    var querySources = getQuerySources(activeSql, activeCursorOffset);
 
                     // Suggest routine parameters after EXEC proc or inside a function call.
                     var routineContext = textBeforeCursor.match(/\bEXEC(?:UTE)?\s+([\[\]a-zA-Z0-9_.]+)\s+(?:[^;]*)$/i) ||
@@ -355,25 +361,39 @@
 
                             // 2. Check if the identifier is a Table directly
                             var columns = tableColumns[identifier];
+                            var matchedSource = querySources.find(source =>
+                                source.qualifier.toLowerCase() === identifier.toLowerCase() ||
+                                source.objectName.toLowerCase() === identifier.toLowerCase());
+                            var columnSource = {
+                                qualifier: identifier,
+                                objectName: identifier,
+                                sourceLabel: identifier,
+                                displayName: identifier,
+                                isAlias: false
+                            };
+                            if (matchedSource) {
+                                columnSource = matchedSource;
+                            }
 
                             // 3. Check if the identifier is a Table Alias
                             if (!columns) {
-                                var realTableName = getTableForAlias(identifier, fullSql);
+                                var realTableName = getTableForAlias(identifier, activeSql, activeCursorOffset);
                                 if (realTableName) {
                                     columns = tableColumns[realTableName];
+                                    columnSource = {
+                                        qualifier: identifier,
+                                        objectName: realTableName,
+                                        sourceLabel: realTableName,
+                                        displayName: identifier + " (" + realTableName + ")",
+                                        isAlias: true
+                                    };
                                 }
                             }
 
                             // If columns found, show column suggestions
                             if (columns) {
                                 columns.forEach(col => {
-                                    suggestions.push({
-                                        label: col,
-                                        kind: monaco.languages.CompletionItemKind.Field,
-                                        insertText: col,
-                                        detail: "Column",
-                                        range: range
-                                    });
+                                    suggestions.push(createColumnSuggestion(col, columnSource, range, true));
                                 });
                                 return { suggestions: suggestions };
                             }
@@ -435,19 +455,11 @@
                     });
 
                     // 2. Columns of tables present in the current query (Smart Autocomplete like Redgate)
-                    var queryTables = getTablesInQuery(model.getValue());
-                    queryTables.forEach(qt => {
-                        var cols = findColumns(qt);
+                    querySources.forEach(source => {
+                        var cols = findColumns(source.objectName);
                         if (cols) {
                             cols.forEach(col => {
-                                suggestions.push({
-                                    label: col,
-                                    kind: monaco.languages.CompletionItemKind.Field,
-                                    insertText: col,
-                                    detail: "Column (" + qt + ")",
-                                    sortText: "0_" + col,
-                                    range: range
-                                });
+                                suggestions.push(createColumnSuggestion(col, source, range, false));
                             });
                         }
                     });
@@ -678,6 +690,198 @@
             return tablesFound;
         }
 
+        function getActiveSqlText(model, position) {
+            var fullText = model.getValue();
+            var cursorOffset = model.getOffsetAt(position);
+            var beforeCursor = fullText.substring(0, cursorOffset);
+            var startOffset = findActiveStatementStart(beforeCursor);
+            return {
+                text: fullText.substring(startOffset, cursorOffset),
+                cursorOffset: cursorOffset - startOffset
+            };
+        }
+
+        function findActiveStatementStart(sqlText) {
+            var depth = 0;
+            var quote = null;
+            var bracketDepth = 0;
+            var lineStart = 0;
+            var lastStart = 0;
+
+            for (var i = 0; i <= sqlText.length; i++) {
+                var ch = i < sqlText.length ? sqlText[i] : '\n';
+
+                if (quote) {
+                    if (ch === quote) {
+                        if (quote === "'" && sqlText[i + 1] === "'") {
+                            i++;
+                        } else {
+                            quote = null;
+                        }
+                    }
+                } else if (bracketDepth > 0) {
+                    if (ch === ']') bracketDepth--;
+                } else {
+                    if (ch === "'" || ch === '"') {
+                        quote = ch;
+                    } else if (ch === '[') {
+                        bracketDepth++;
+                    } else if (ch === '(') {
+                        depth++;
+                    } else if (ch === ')') {
+                        depth = Math.max(0, depth - 1);
+                    } else if ((ch === ';' || ch === '\n') && depth === 0) {
+                        var line = sqlText.substring(lineStart, i);
+                        if (/^\s*GO\s*(?:\d+)?\s*$/i.test(line)) {
+                            lastStart = i + 1;
+                        } else if (/^\s*(?:WITH|SELECT|INSERT|UPDATE|DELETE|MERGE)\b/i.test(line)) {
+                            lastStart = lineStart;
+                        } else if (ch === ';') {
+                            lastStart = i + 1;
+                        }
+                    }
+                }
+
+                if (ch === '\n') {
+                    lineStart = i + 1;
+                }
+            }
+
+            return lastStart;
+        }
+
+        function getQuerySources(sqlText, cursorOffset) {
+            var sources = [];
+            var seen = {};
+            var derivedRanges = [];
+
+            function addSource(objectName, alias, sourceStart, sourceEnd, sourceLabel) {
+                if (typeof cursorOffset === "number" && sourceEnd > cursorOffset) {
+                    return;
+                }
+
+                var cleanObjectName = (objectName || '').replace(/[\[\]]/g, '');
+                var cleanAlias = (alias || '').replace(/[\[\]]/g, '');
+                if (!cleanObjectName) return;
+
+                var qualifier = cleanAlias || cleanObjectName;
+                var key = qualifier.toLowerCase() + "|" + cleanObjectName.toLowerCase();
+                if (seen[key]) return;
+                seen[key] = true;
+
+                sources.push({
+                    qualifier: qualifier,
+                    objectName: cleanObjectName,
+                    sourceLabel: sourceLabel || cleanObjectName,
+                    displayName: cleanAlias ? cleanAlias + " (" + (sourceLabel || cleanObjectName) + ")" : cleanObjectName,
+                    isAlias: !!cleanAlias,
+                    sourceStart: sourceStart || 0
+                });
+            }
+
+            var derivedRegex = /(?:FROM|JOIN|APPLY)\s*\(\s*SELECT\s+([\s\S]*?)\s+FROM[\s\S]*?\)\s+(?:AS\s+)?(\[?[a-zA-Z0-9_]+\]?)/gi;
+            var match;
+            while ((match = derivedRegex.exec(sqlText)) !== null) {
+                var alias = match[2].replace(/[\[\]]/g, '');
+                var columns = inferSelectColumns(match[1]);
+                if (columns.length > 0) {
+                    tableColumns[alias] = columns;
+                }
+                derivedRanges.push({ start: match.index, end: derivedRegex.lastIndex });
+                addSource(alias, alias, match.index, derivedRegex.lastIndex, "Derived Table");
+            }
+
+            var tableRegex = /(?:FROM|JOIN|APPLY)\s+([#a-zA-Z0-9_\.\[\]]+)(?:\s+(?:AS\s+)?(\[?[a-zA-Z_][a-zA-Z0-9_]*\]?))?/gi;
+            var reservedAliases = {
+                ON: true, WHERE: true, INNER: true, LEFT: true, RIGHT: true, FULL: true,
+                CROSS: true, JOIN: true, OUTER: true, APPLY: true, GROUP: true, ORDER: true,
+                HAVING: true, UNION: true, SELECT: true, TOP: true, DISTINCT: true
+            };
+            while ((match = tableRegex.exec(sqlText)) !== null) {
+                if (derivedRanges.some(range => match.index >= range.start && match.index < range.end)) {
+                    continue;
+                }
+                var objectName = match[1].replace(/[\[\]]/g, '');
+                var aliasName = match[2] ? match[2].replace(/[\[\]]/g, '') : '';
+                if (reservedAliases[aliasName.toUpperCase()]) {
+                    aliasName = '';
+                }
+                addSource(objectName, aliasName, match.index, tableRegex.lastIndex);
+            }
+
+            sources.sort(function(a, b) { return b.sourceStart - a.sourceStart; });
+            return sources;
+        }
+
+        function inferSelectColumns(selectList) {
+            return splitSqlList(selectList).map(function(expression) {
+                var trimmed = expression.trim();
+                var aliasMatch = trimmed.match(/\bAS\s+(\[?[a-zA-Z0-9_]+\]?)\s*$/i) ||
+                    trimmed.match(/\s+(\[?[a-zA-Z_][a-zA-Z0-9_]*\]?)\s*$/);
+                if (aliasMatch && !/\)$/i.test(aliasMatch[1])) {
+                    return aliasMatch[1].replace(/[\[\]]/g, '');
+                }
+
+                var cleanExpression = trimmed.replace(/[\[\]]/g, '');
+                var parts = cleanExpression.split('.');
+                var candidate = parts[parts.length - 1].match(/[a-zA-Z0-9_]+$/);
+                return candidate ? candidate[0] : null;
+            }).filter(Boolean);
+        }
+
+        function splitSqlList(text) {
+            var parts = [];
+            var current = '';
+            var depth = 0;
+            var quote = null;
+            for (var i = 0; i < text.length; i++) {
+                var ch = text[i];
+                if (quote) {
+                    current += ch;
+                    if (ch === quote) quote = null;
+                    continue;
+                }
+                if (ch === "'" || ch === '"') {
+                    quote = ch;
+                    current += ch;
+                    continue;
+                }
+                if (ch === '(') depth++;
+                if (ch === ')') depth = Math.max(0, depth - 1);
+                if (ch === ',' && depth === 0) {
+                    parts.push(current);
+                    current = '';
+                    continue;
+                }
+                current += ch;
+            }
+            if (current.trim()) parts.push(current);
+            return parts;
+        }
+
+        function createColumnSuggestion(columnName, source, range, afterDot) {
+            var qualifier = source && source.qualifier ? source.qualifier : '';
+            var objectName = source && source.objectName ? source.objectName : '';
+            var insertText = afterDot || !source || !source.isAlias ? columnName : qualifier + "." + columnName;
+            var label = afterDot || !source || !source.isAlias
+                ? columnName
+                : qualifier + "." + columnName;
+            var sourceLabel = source && source.sourceLabel ? source.sourceLabel : objectName;
+            var detail = source && source.isAlias
+                ? "Column (" + qualifier + " = " + sourceLabel + ")"
+                : "Column (" + (sourceLabel || "table") + ")";
+
+            return {
+                label: label,
+                filterText: source && source.isAlias && !afterDot ? label : columnName,
+                kind: monaco.languages.CompletionItemKind.Field,
+                insertText: insertText,
+                detail: detail,
+                sortText: "0_" + columnName,
+                range: range
+            };
+        }
+
         function requestDatabaseMetadata(databaseName) {
             var key = databaseName.toLowerCase();
             if (pendingDatabaseMetadata[key] || databaseMetadata[key]) {
@@ -830,13 +1034,28 @@
         }
 
         // Resolve Table Alias by searching backwards in sql text
-        function getTableForAlias(alias, sqlText) {
-            var regex = new RegExp("(?:FROM|JOIN|APPLY)\\s+([#a-zA-Z0-9_\\.\\[\\]]+)\\s+(?:AS\\s+)?" + alias + "\\b", "i");
-            var match = sqlText.match(regex);
-            if (match) {
-                return match[1].replace(/[\[\]]/g, '');
+        function getTableForAlias(alias, sqlText, cursorOffset) {
+            var escapedAlias = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            var regex = new RegExp("(?:FROM|JOIN|APPLY)\\s+([#a-zA-Z0-9_\\.\\[\\]]+)\\s+(?:AS\\s+)?" + escapedAlias + "\\b", "gi");
+            var match;
+            var bestMatch = null;
+            var bestStart = -1;
+
+            while ((match = regex.exec(sqlText)) !== null) {
+                var matchStart = match.index;
+                var matchEnd = regex.lastIndex;
+
+                if (typeof cursorOffset === "number" && matchEnd > cursorOffset) {
+                    continue;
+                }
+
+                if (matchStart > bestStart) {
+                    bestStart = matchStart;
+                    bestMatch = match[1];
+                }
             }
-            return null;
+
+            return bestMatch ? bestMatch.replace(/[\[\]]/g, '') : null;
         }
 
         // Extract CTEs and temporary tables declared in the current editor text.

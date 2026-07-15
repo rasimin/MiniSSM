@@ -128,7 +128,7 @@ Hal penting:
 - Ikon jam `ToolbarQueryHistory` membuka satu instance `QueryHistoryWindow`; Open in New Query mencari koneksi server yang masih aktif dan membuat tab dirty baru pada database dari record history.
 - Query History mengambil maksimum 300 record yang cocok langsung dari SQLite; rentang tanggal memakai hari lokal secara inklusif, sedangkan database dan isi SQL memakai pencarian substring literal.
 - `Window_KeyDown` menangani shortcut seperti `F5`, `F8`, `Ctrl+N`, `Ctrl+S`, `Ctrl+O`, `Ctrl+K`, `Ctrl+Shift+K`.
-- Urutan default toolbar mengikuti alur koneksi, pemilihan database, eksekusi, editing, lalu file/query; item tetap dapat di-drag untuk reorder.
+- Urutan default toolbar mengikuti: Connect, Disconnect, Object Explorer, New Query, Save, Database, Execute, Comment, Uncomment, Save As, Open, Query History, Insert Script, lalu Query Tools; item tetap dapat di-drag untuk reorder.
 - `MainWindow` meneruskan pesan native `WM_MOUSEHWHEEL` dari gesture dua jari touchpad ke `ScrollViewer` horizontal di bawah pointer.
 - `RunEditorCommand(...)` menjalankan fungsi JavaScript di Monaco.
 - Formatter Monaco memformat selection atau seluruh dokumen sebagai satu undo step dan menjaga string, quoted identifier, comment, serta separator `GO`.
@@ -136,7 +136,7 @@ Hal penting:
 - `QueryTabControl.CacheAndRefreshAutocompleteAsync()` mengirim payload metadata terpadu: tabel/view beserta kolom dan jenis object, stored procedure, scalar/table-valued function, parameter routine, daftar database, dan database aktif.
 - Provider Monaco memfilter suggestion berdasarkan konteks: table/view/table-valued function setelah `FROM`/`JOIN`/`APPLY`, scalar function di expression, SP setelah `EXEC`/`EXECUTE`, dan parameter setelah routine dipilih.
 - Autocomplete statis mencakup keyword, data type, serta built-in function T-SQL; function seperti `CAST`, `CONVERT`, dan `GETDATE` disisipkan sebagai snippet berparameter.
-- Pada expression context seperti `SELECT`, `WHERE`, `GROUP BY`, dan `ORDER BY`, kolom dari table/view yang terbaca pada `FROM`/`JOIN` mendapat ranking suggestion tertinggi, di atas function dan keyword.
+- Pada expression context seperti `SELECT`, `WHERE`, `GROUP BY`, dan `ORDER BY`, kolom dari table/view yang terbaca pada statement aktif mendapat ranking suggestion tertinggi, di atas function dan keyword; jika source memakai alias, insert text kolom otomatis memakai prefix alias seperti `a.ColumnName`, sementara detail suggestion tetap menampilkan table/source asal.
 - Hover atau selection pada table/view/SP/function menampilkan aksi `View Schema / Definition in New Query`; definition diambil secara lazy hanya saat link diklik. Hover kolom menampilkan data type, nullable, identity, dan primary-key dari cache metadata.
 - Autocomplete mengenali bracketed identifier, CTE, temporary table, dan kolom lokal yang dapat diinferensikan. Metadata lintas database dimuat on-demand melalui pesan `loadDatabaseMetadata` saat pola `Database.Schema.` diketik.
 - Eksekusi DDL `CREATE`/`ALTER`/`DROP` untuk table, view, procedure, atau function menginvalidasi cache database aktif dan me-refresh autocomplete.

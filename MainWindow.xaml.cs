@@ -74,16 +74,16 @@ namespace SSMS
                 ToolbarDisconnect,
                 ToolbarObjectExplorer,
                 ToolbarNewQuery,
+                ToolbarSave,
                 ToolbarDatabase,
                 ToolbarExecute,
-                ToolbarQueryTools,
                 ToolbarComment,
                 ToolbarUncomment,
-                ToolbarSave,
                 ToolbarSaveAs,
                 ToolbarOpen,
                 ToolbarQueryHistory,
-                ToolbarInsertScript
+                ToolbarInsertScript,
+                ToolbarQueryTools
             };
 
             var itemsByName = defaultItems.ToDictionary(item => item.Name, StringComparer.Ordinal);
