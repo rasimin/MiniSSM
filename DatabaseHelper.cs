@@ -10,12 +10,35 @@ namespace SSMS
     public class QueryResult
     {
         public List<DataTable> DataTables { get; set; } = new List<DataTable>();
+        public List<string> ExecutionPlans { get; set; } = new List<string>();
         public string Message { get; set; } = string.Empty;
         public bool IsSuccess { get; set; }
         public bool IsCancelled { get; set; }
         public string EffectiveDatabaseName { get; set; } = string.Empty;
         public int? RowsAffected { get; set; }
         public TimeSpan ExecutionTime { get; set; }
+    }
+
+    public enum QueryExecutionMode
+    {
+        Execute,
+        Parse,
+        EstimatedPlan,
+        ActualPlan
+    }
+
+    public sealed class DatabaseObjectSearchResult
+    {
+        public string DatabaseName { get; init; } = string.Empty;
+        public string SchemaName { get; init; } = string.Empty;
+        public string ObjectName { get; init; } = string.Empty;
+        public string ObjectType { get; init; } = string.Empty;
+        public int ObjectId { get; init; }
+        public DateTime CreateDate { get; init; }
+        public DateTime ModifyDate { get; init; }
+        public string MatchLocation { get; init; } = string.Empty;
+        public string MatchDetail { get; init; } = string.Empty;
+        public string FullName => $"{SchemaName}.{ObjectName}";
     }
 
     public static class DatabaseHelper
@@ -47,23 +70,165 @@ namespace SSMS
         /// <summary>
         /// Gets a list of all databases available on the server.
         /// </summary>
-        public static async Task<List<string>> GetDatabasesAsync(string connectionString)
+        public static async Task<List<string>> GetDatabasesAsync(
+            string connectionString,
+            CancellationToken cancellationToken = default)
         {
             var databases = new List<string>();
             using (var connection = new SqlConnection(connectionString))
             {
-                await connection.OpenAsync();
+                await connection.OpenAsync(cancellationToken);
                 var query = "SELECT name FROM sys.databases ORDER BY name;";
                 using (var command = new SqlCommand(query, connection))
-                using (var reader = await command.ExecuteReaderAsync())
+                using (var reader = await command.ExecuteReaderAsync(cancellationToken))
                 {
-                    while (await reader.ReadAsync())
+                    while (await reader.ReadAsync(cancellationToken))
                     {
                         databases.Add(reader.GetString(0));
                     }
                 }
             }
             return databases;
+        }
+
+        public static async Task<List<DatabaseObjectSearchResult>> SearchObjectsAcrossDatabasesAsync(
+            string connectionString,
+            string searchText,
+            string? databaseFilter = null,
+            CancellationToken cancellationToken = default)
+        {
+            var results = new List<DatabaseObjectSearchResult>();
+            string escapedSearch = searchText
+                .Replace("\\", "\\\\")
+                .Replace("%", "\\%")
+                .Replace("_", "\\_");
+            string pattern = $"%{escapedSearch}%";
+
+            IReadOnlyList<string> databases = string.IsNullOrWhiteSpace(databaseFilter)
+                ? await GetDatabasesAsync(connectionString, cancellationToken)
+                : new[] { databaseFilter };
+
+            foreach (string databaseName in databases)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    using var connection = new SqlConnection(BuildConnectionString(connectionString, databaseName));
+                    await connection.OpenAsync(cancellationToken);
+                    const string query = @"
+WITH SearchableObjects AS
+(
+    SELECT o.object_id,
+           s.name AS SchemaName,
+           o.name AS ObjectName,
+           o.create_date AS CreateDate,
+           o.modify_date AS ModifyDate,
+           CASE o.type
+           WHEN 'U' THEN 'Table'
+           WHEN 'V' THEN 'View'
+           WHEN 'P' THEN 'StoredProcedure'
+           WHEN 'PC' THEN 'StoredProcedure'
+           WHEN 'FN' THEN 'Function'
+           WHEN 'IF' THEN 'Function'
+           WHEN 'TF' THEN 'Function'
+           WHEN 'FS' THEN 'Function'
+           WHEN 'FT' THEN 'Function'
+           WHEN 'TR' THEN 'Trigger'
+           ELSE o.type_desc
+           END AS ObjectType
+    FROM sys.objects o
+    JOIN sys.schemas s ON s.schema_id = o.schema_id
+    WHERE o.is_ms_shipped = 0
+      AND o.type IN ('U', 'V', 'P', 'PC', 'FN', 'IF', 'TF', 'FS', 'FT', 'TR')
+), Matches AS
+(
+    SELECT DB_NAME() AS DatabaseName,
+           o.SchemaName,
+           o.ObjectName,
+           o.ObjectType,
+           o.object_id,
+           o.CreateDate,
+           o.ModifyDate,
+           CASE
+               WHEN c.name LIKE @Pattern ESCAPE '\' THEN 'Column'
+               WHEN o.ObjectName LIKE @Pattern ESCAPE '\' THEN 'Object name'
+               ELSE 'Schema'
+           END AS MatchLocation,
+           CASE
+               WHEN c.name LIKE @Pattern ESCAPE '\' THEN c.name
+               WHEN o.ObjectName LIKE @Pattern ESCAPE '\' THEN o.ObjectName
+               ELSE o.SchemaName
+           END AS MatchDetail
+    FROM SearchableObjects o
+    LEFT JOIN sys.columns c ON c.object_id = o.object_id
+    WHERE o.ObjectName LIKE @Pattern ESCAPE '\'
+       OR o.SchemaName LIKE @Pattern ESCAPE '\'
+       OR c.name LIKE @Pattern ESCAPE '\'
+
+    UNION ALL
+
+    SELECT DB_NAME(),
+           o.SchemaName,
+           o.ObjectName,
+           o.ObjectType,
+           o.object_id,
+           o.CreateDate,
+           o.ModifyDate,
+           'Definition',
+           LTRIM(RTRIM(SUBSTRING(
+               normalized.DefinitionText,
+               CASE WHEN position.MatchPosition > 60 THEN position.MatchPosition - 60 ELSE 1 END,
+               220)))
+    FROM SearchableObjects o
+    JOIN sys.sql_modules m ON m.object_id = o.object_id
+    CROSS APPLY (SELECT REPLACE(REPLACE(m.definition, CHAR(13), ' '), CHAR(10), ' ') AS DefinitionText) normalized
+    CROSS APPLY (SELECT CHARINDEX(@SearchText, normalized.DefinitionText) AS MatchPosition) position
+    WHERE m.definition LIKE @Pattern ESCAPE '\'
+)
+SELECT DISTINCT TOP (250)
+       DatabaseName,
+       SchemaName,
+       ObjectName,
+       ObjectType,
+       object_id,
+       CreateDate,
+       ModifyDate,
+       MatchLocation,
+       MatchDetail
+FROM Matches
+ORDER BY SchemaName, ObjectName, MatchLocation, MatchDetail;";
+                    using var command = new SqlCommand(query, connection);
+                    command.Parameters.AddWithValue("@Pattern", pattern);
+                    command.Parameters.Add("@SearchText", SqlDbType.NVarChar, 4000).Value = searchText;
+                    using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                    while (await reader.ReadAsync(cancellationToken))
+                    {
+                        results.Add(new DatabaseObjectSearchResult
+                        {
+                            DatabaseName = reader.GetString(0),
+                            SchemaName = reader.GetString(1),
+                            ObjectName = reader.GetString(2),
+                            ObjectType = reader.GetString(3),
+                            ObjectId = reader.GetInt32(4),
+                            CreateDate = reader.GetDateTime(5),
+                            ModifyDate = reader.GetDateTime(6),
+                            MatchLocation = reader.GetString(7),
+                            MatchDetail = reader.GetString(8)
+                        });
+                        if (results.Count >= 1000)
+                        {
+                            return results;
+                        }
+                    }
+                }
+                catch (Exception ex) when (ex is SqlException or InvalidOperationException)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    AppLogger.Error(ex, $"Object search skipped database '{databaseName}'");
+                }
+            }
+
+            return results;
         }
 
         /// <summary>
@@ -178,9 +343,13 @@ namespace SSMS
             {
                 await connection.OpenAsync();
                 var query = @"
-                    SELECT SCHEMA_NAME(tr.schema_id) + '.' + tr.name,
+                    SELECT trigger_schema.name + '.' + tr.name,
                            tr.is_disabled
                     FROM sys.triggers tr
+                    INNER JOIN sys.objects trigger_object
+                        ON trigger_object.object_id = tr.object_id
+                    INNER JOIN sys.schemas trigger_schema
+                        ON trigger_schema.schema_id = trigger_object.schema_id
                     WHERE tr.parent_id = OBJECT_ID(@TableFullName)
                     ORDER BY tr.name;";
 
@@ -207,7 +376,8 @@ namespace SSMS
             string databaseName,
             string sqlQuery,
             IProgress<string>? messageProgress = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            QueryExecutionMode mode = QueryExecutionMode.Execute)
         {
             var result = new QueryResult();
             var dbConnString = BuildConnectionString(connectionString, databaseName);
@@ -226,79 +396,70 @@ namespace SSMS
                         messageProgress?.Report(e.Message);
                     };
 
-                    using (var command = new SqlCommand(sqlQuery, connection))
+                    List<SqlBatch> batches = SqlBatchSplitter.Split(sqlQuery);
+                    if (batches.Count == 0)
                     {
-                        command.CommandTimeout = AppSettings.Current.Query.CommandTimeoutSeconds;
-                        using var cancellationRegistration = cancellationToken.Register(() =>
+                        throw new InvalidOperationException("No executable SQL batch was found.");
+                    }
+
+                    string? sessionOption = mode switch
+                    {
+                        QueryExecutionMode.Parse => "SET PARSEONLY ON",
+                        QueryExecutionMode.EstimatedPlan => "SET SHOWPLAN_XML ON",
+                        QueryExecutionMode.ActualPlan => "SET STATISTICS XML ON",
+                        _ => null
+                    };
+                    string? resetOption = mode switch
+                    {
+                        QueryExecutionMode.Parse => "SET PARSEONLY OFF",
+                        QueryExecutionMode.EstimatedPlan => "SET SHOWPLAN_XML OFF",
+                        QueryExecutionMode.ActualPlan => "SET STATISTICS XML OFF",
+                        _ => null
+                    };
+
+                    try
+                    {
+                        if (sessionOption != null)
+                        {
+                            await ExecuteSessionCommandAsync(connection, sessionOption, cancellationToken);
+                        }
+
+                        int batchNumber = 0;
+                        foreach (SqlBatch batch in batches)
+                        {
+                            batchNumber++;
+                            for (int repeat = 0; repeat < batch.RepeatCount; repeat++)
+                            {
+                                cancellationToken.ThrowIfCancellationRequested();
+                                await ExecuteBatchAsync(
+                                    connection,
+                                    batch.Text,
+                                    result,
+                                    messages,
+                                    messageProgress,
+                                    cancellationToken,
+                                    includeDataResults: mode is QueryExecutionMode.Execute or QueryExecutionMode.ActualPlan);
+
+                                if (batch.RepeatCount > 1)
+                                {
+                                    string repeatMessage = $"Batch {batchNumber} completed ({repeat + 1}/{batch.RepeatCount}).";
+                                    messages.AppendLine(repeatMessage);
+                                    messageProgress?.Report(repeatMessage);
+                                }
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        if (resetOption != null && connection.State == ConnectionState.Open)
                         {
                             try
                             {
-                                command.Cancel();
+                                await ExecuteSessionCommandAsync(connection, resetOption, CancellationToken.None);
                             }
-                            catch
+                            catch (Exception resetException)
                             {
-                                // The command may already have completed or been disposed.
-                            }
-                        });
-
-                        using (var reader = await command.ExecuteReaderAsync(cancellationToken))
-                        {
-                            do
-                            {
-                                if (reader.FieldCount > 0)
-                                {
-                                    var dataTable = new DataTable();
-                                    
-                                    // SQL Server permits duplicate result column names (for example:
-                                    // SELECT Units, *). DataTable requires every column name to be
-                                    // unique, so only the display name of duplicates is suffixed.
-                                    var usedColumnNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                                    for (int i = 0; i < reader.FieldCount; i++)
-                                    {
-                                        string baseName = reader.GetName(i);
-                                        if (string.IsNullOrWhiteSpace(baseName))
-                                        {
-                                            baseName = $"Column{i + 1}";
-                                        }
-
-                                        string uniqueName = baseName;
-                                        int duplicateNumber = 2;
-                                        while (!usedColumnNames.Add(uniqueName))
-                                        {
-                                            uniqueName = $"{baseName} ({duplicateNumber++})";
-                                        }
-
-                                        dataTable.Columns.Add(uniqueName, reader.GetFieldType(i));
-                                    }
-
-                                    // Manually load rows
-                                    while (await reader.ReadAsync(cancellationToken))
-                                    {
-                                        var row = dataTable.NewRow();
-                                        for (int i = 0; i < reader.FieldCount; i++)
-                                        {
-                                            row[i] = reader.GetValue(i);
-                                        }
-                                        dataTable.Rows.Add(row);
-                                    }
-
-                                    result.DataTables.Add(dataTable);
-                                }
-                                else
-                                {
-                                    int rowsAffected = reader.RecordsAffected;
-                                    if (rowsAffected >= 0)
-                                    {
-                                        string affectedMessage = $"({rowsAffected} row(s) affected)";
-                                        messages.AppendLine(affectedMessage);
-                                        messageProgress?.Report(affectedMessage);
-                                    }
-                                }
-                            } while (await reader.NextResultAsync(cancellationToken));
-
-                            if (reader.RecordsAffected >= 0)
-                            {
-                                result.RowsAffected = reader.RecordsAffected;
+                                AppLogger.Error(resetException, $"Failed to reset SQL session option: {resetOption}");
                             }
                         }
                     }
@@ -307,7 +468,15 @@ namespace SSMS
                     result.IsSuccess = true;
                     result.EffectiveDatabaseName = connection.Database;
                     result.ExecutionTime = stopwatch.Elapsed;
-                    result.Message = messages.Length > 0 ? messages.ToString() : "Command completed successfully.";
+                    result.Message = messages.Length > 0
+                        ? messages.ToString()
+                        : mode switch
+                        {
+                            QueryExecutionMode.Parse => "Syntax check completed successfully.",
+                            QueryExecutionMode.EstimatedPlan => "Estimated execution plan generated successfully.",
+                            QueryExecutionMode.ActualPlan => "Query completed and actual execution plan generated successfully.",
+                            _ => "Command completed successfully."
+                        };
                 }
             }
             catch (Exception) when (cancellationToken.IsCancellationRequested)
@@ -327,6 +496,115 @@ namespace SSMS
             }
 
             return result;
+        }
+
+        private static async Task ExecuteSessionCommandAsync(
+            SqlConnection connection,
+            string commandText,
+            CancellationToken cancellationToken)
+        {
+            using var command = new SqlCommand(commandText, connection)
+            {
+                CommandTimeout = AppSettings.Current.Query.CommandTimeoutSeconds
+            };
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        private static async Task ExecuteBatchAsync(
+            SqlConnection connection,
+            string sql,
+            QueryResult result,
+            System.Text.StringBuilder messages,
+            IProgress<string>? messageProgress,
+            CancellationToken cancellationToken,
+            bool includeDataResults)
+        {
+            using var command = new SqlCommand(sql, connection)
+            {
+                CommandTimeout = AppSettings.Current.Query.CommandTimeoutSeconds
+            };
+            using var cancellationRegistration = cancellationToken.Register(() =>
+            {
+                try
+                {
+                    command.Cancel();
+                }
+                catch
+                {
+                    // Command may already be completed or disposed.
+                }
+            });
+
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            do
+            {
+                if (reader.FieldCount > 0)
+                {
+                    if (IsExecutionPlanResult(reader))
+                    {
+                        while (await reader.ReadAsync(cancellationToken))
+                        {
+                            if (!reader.IsDBNull(0))
+                            {
+                                result.ExecutionPlans.Add(reader.GetString(0));
+                            }
+                        }
+                    }
+                    else if (includeDataResults)
+                    {
+                        var dataTable = new DataTable();
+                        var usedColumnNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        for (int i = 0; i < reader.FieldCount; i++)
+                        {
+                            string baseName = reader.GetName(i);
+                            if (string.IsNullOrWhiteSpace(baseName))
+                            {
+                                baseName = $"Column{i + 1}";
+                            }
+
+                            string uniqueName = baseName;
+                            int duplicateNumber = 2;
+                            while (!usedColumnNames.Add(uniqueName))
+                            {
+                                uniqueName = $"{baseName} ({duplicateNumber++})";
+                            }
+                            dataTable.Columns.Add(uniqueName, reader.GetFieldType(i));
+                        }
+
+                        while (await reader.ReadAsync(cancellationToken))
+                        {
+                            DataRow row = dataTable.NewRow();
+                            for (int i = 0; i < reader.FieldCount; i++)
+                            {
+                                row[i] = reader.GetValue(i);
+                            }
+                            dataTable.Rows.Add(row);
+                        }
+                        result.DataTables.Add(dataTable);
+                    }
+                    else
+                    {
+                        while (await reader.ReadAsync(cancellationToken))
+                        {
+                            // Consume parse/showplan rows that are not surfaced as grid data.
+                        }
+                    }
+                }
+                else if (reader.RecordsAffected >= 0)
+                {
+                    int rowsAffected = reader.RecordsAffected;
+                    result.RowsAffected = (result.RowsAffected ?? 0) + rowsAffected;
+                    string affectedMessage = $"({rowsAffected} row(s) affected)";
+                    messages.AppendLine(affectedMessage);
+                    messageProgress?.Report(affectedMessage);
+                }
+            } while (await reader.NextResultAsync(cancellationToken));
+        }
+
+        private static bool IsExecutionPlanResult(SqlDataReader reader)
+        {
+            return reader.FieldCount == 1 &&
+                   reader.GetName(0).Contains("Showplan", StringComparison.OrdinalIgnoreCase);
         }
 
         public static async Task<List<string>> GetViewsAsync(string connectionString, string databaseName)

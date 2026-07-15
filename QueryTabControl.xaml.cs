@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
+using System.Xml.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -579,6 +580,19 @@ namespace SSMS
             }
         }
 
+        public async void FormatSql()
+        {
+            if (!IsWebViewInitialized) return;
+            try
+            {
+                await SqlEditorWebView.ExecuteScriptAsync("formatSql();");
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error(ex, "Format SQL failed");
+            }
+        }
+
         private Button CreateSchemaActionButton(string text)
         {
             var button = new Button { Content = text };
@@ -635,7 +649,7 @@ namespace SSMS
             TabResults.SelectedIndex = 0;
         }
 
-        public async void ExecuteQuery()
+        public async void ExecuteQuery(QueryExecutionMode mode = QueryExecutionMode.Execute)
         {
             if (!IsWebViewInitialized || _queryCancellationSource != null) return;
 
@@ -660,10 +674,17 @@ namespace SSMS
 
             // Clear UI previous records
             DisposeDisplayedResults();
+            ClearExecutionPlanTabs();
             TxtMessages.Text = "";
             var cancellationSource = new CancellationTokenSource();
             _queryCancellationSource = cancellationSource;
-            LoadingMessageText.Text = "Executing query...";
+            LoadingMessageText.Text = mode switch
+            {
+                QueryExecutionMode.Parse => "Checking SQL syntax...",
+                QueryExecutionMode.EstimatedPlan => "Generating estimated execution plan...",
+                QueryExecutionMode.ActualPlan => "Executing query with actual plan...",
+                _ => "Executing query..."
+            };
             CancelQueryButton.Content = "Cancel query";
             CancelQueryButton.IsEnabled = true;
             LoadingOverlay.Visibility = Visibility.Visible;
@@ -672,7 +693,7 @@ namespace SSMS
             var messageProgress = new Progress<string>(AppendLiveQueryMessage);
 
             var mainWindow = Window.GetWindow(this) as MainWindow;
-            mainWindow?.UpdateStatusText("Executing query...");
+            mainWindow?.UpdateStatusText(LoadingMessageText.Text);
             string startedDatabaseName = DatabaseName;
             DateTimeOffset executionStartedAt = DateTimeOffset.UtcNow;
             bool historyRecorded = false;
@@ -684,10 +705,14 @@ namespace SSMS
                     DatabaseName,
                     sqlQuery,
                     messageProgress,
-                    cancellationSource.Token);
+                    cancellationSource.Token,
+                    mode);
 
-                await RecordQueryHistoryAsync(sqlQuery, startedDatabaseName, executionStartedAt, result);
-                historyRecorded = true;
+                if (mode is QueryExecutionMode.Execute or QueryExecutionMode.ActualPlan)
+                {
+                    await RecordQueryHistoryAsync(sqlQuery, startedDatabaseName, executionStartedAt, result);
+                    historyRecorded = true;
+                }
 
                 // Populate Results Pane
                 if (result.IsCancelled)
@@ -733,10 +758,23 @@ namespace SSMS
                         TotalResultColumns = 0;
                         TabResults.SelectedIndex = 1; // Select Messages Textbox Tab
                     }
+                    if (result.ExecutionPlans.Count > 0)
+                    {
+                        DisplayExecutionPlans(result.ExecutionPlans, mode);
+                    }
+
+                    mainWindow?.UpdateStatusText(mode switch
+                    {
+                        QueryExecutionMode.Parse => "Syntax check passed.",
+                        QueryExecutionMode.EstimatedPlan => $"Generated {result.ExecutionPlans.Count} estimated plan(s).",
+                        QueryExecutionMode.ActualPlan => $"Query completed with {result.ExecutionPlans.Count} actual plan(s).",
+                        _ => "Query completed successfully."
+                    });
                     mainWindow?.UpdateStatusTime($"Success: {result.ExecutionTime.TotalMilliseconds:F2} ms");
                     mainWindow?.UpdateStatusRowsAndColumns(TotalResultRows, TotalResultColumns);
 
-                    if (System.Text.RegularExpressions.Regex.IsMatch(
+                    if ((mode is QueryExecutionMode.Execute or QueryExecutionMode.ActualPlan) &&
+                        System.Text.RegularExpressions.Regex.IsMatch(
                         sqlQuery,
                         @"\b(CREATE|ALTER|DROP)\s+(TABLE|VIEW|PROCEDURE|PROC|FUNCTION)\b",
                         System.Text.RegularExpressions.RegexOptions.IgnoreCase))
@@ -759,11 +797,14 @@ namespace SSMS
             {
                 if (!historyRecorded)
                 {
-                    await RecordUnexpectedQueryErrorAsync(
-                        sqlQuery,
-                        startedDatabaseName,
-                        executionStartedAt,
-                        ex);
+                    if (mode is QueryExecutionMode.Execute or QueryExecutionMode.ActualPlan)
+                    {
+                        await RecordUnexpectedQueryErrorAsync(
+                            sqlQuery,
+                            startedDatabaseName,
+                            executionStartedAt,
+                            ex);
+                    }
                 }
                 TotalResultRows = 0;
                 TotalResultColumns = 0;
@@ -784,6 +825,170 @@ namespace SSMS
                 CancelQueryButton.Content = "Cancel query";
                 CancelQueryButton.IsEnabled = true;
                 LoadingOverlay.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        private void DisplayExecutionPlans(IReadOnlyList<string> plans, QueryExecutionMode mode)
+        {
+            for (int i = 0; i < plans.Count; i++)
+            {
+                string planXml = plans[i];
+                var planTab = new TabItem
+                {
+                    Header = $"{(mode == QueryExecutionMode.EstimatedPlan ? "Estimated" : "Actual")} Plan {i + 1}",
+                    Tag = new ExecutionPlanTabInfo(planXml),
+                    ToolTip = "Execution plan XML. Save as .sqlplan to open graphically in SSMS."
+                };
+
+                var viewer = new ICSharpCode.AvalonEdit.TextEditor
+                {
+                    Text = planXml,
+                    IsReadOnly = true,
+                    ShowLineNumbers = true,
+                    SyntaxHighlighting = HighlightingManager.Instance.GetDefinition("XML"),
+                    WordWrap = false,
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    Background = (SolidColorBrush)new BrushConverter().ConvertFromString("#1E1E1E")!,
+                    Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("#D4D4D4")!,
+                    LineNumbersForeground = (SolidColorBrush)new BrushConverter().ConvertFromString("#858585")!,
+                    FontFamily = new FontFamily("Consolas"),
+                    FontSize = 12,
+                    Padding = new Thickness(10),
+                    BorderThickness = new Thickness(0)
+                };
+                planTab.Content = CreateExecutionPlanContent(planXml, viewer);
+
+                var contextMenu = new ContextMenu();
+                var saveItem = new MenuItem { Header = "Save as .sqlplan..." };
+                saveItem.Click += (_, _) => SaveExecutionPlan(planXml, i + 1);
+                contextMenu.Items.Add(saveItem);
+                var copyItem = new MenuItem { Header = "Copy XML" };
+                copyItem.Click += (_, _) => Clipboard.SetText(planXml);
+                contextMenu.Items.Add(copyItem);
+                contextMenu.Items.Add(new Separator());
+                var closeItem = new MenuItem { Header = "Close" };
+                closeItem.Click += (_, _) => TabResults.Items.Remove(planTab);
+                contextMenu.Items.Add(closeItem);
+                planTab.ContextMenu = contextMenu;
+
+                TabResults.Items.Add(planTab);
+                if (i == 0)
+                {
+                    TabResults.SelectedItem = planTab;
+                }
+            }
+        }
+
+        private FrameworkElement CreateExecutionPlanContent(
+            string planXml,
+            ICSharpCode.AvalonEdit.TextEditor xmlViewer)
+        {
+            var tabs = new TabControl
+            {
+                Background = (SolidColorBrush)new BrushConverter().ConvertFromString("#1E1E1E")!,
+                BorderThickness = new Thickness(0)
+            };
+            var operatorTree = new TreeView
+            {
+                Background = (SolidColorBrush)new BrushConverter().ConvertFromString("#1E1E1E")!,
+                Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("#D4D4D4")!,
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(10)
+            };
+
+            try
+            {
+                XDocument document = XDocument.Parse(planXml);
+                XNamespace ns = document.Root?.Name.Namespace ?? XNamespace.None;
+                int statementNumber = 0;
+                foreach (XElement statement in document.Descendants(ns + "StmtSimple"))
+                {
+                    statementNumber++;
+                    string statementText = (string?)statement.Attribute("StatementText") ?? $"Statement {statementNumber}";
+                    statementText = System.Text.RegularExpressions.Regex.Replace(statementText, @"\s+", " ").Trim();
+                    if (statementText.Length > 180) statementText = statementText[..177] + "...";
+
+                    var statementItem = new TreeViewItem
+                    {
+                        Header = $"Statement {statementNumber}: {statementText}",
+                        IsExpanded = true,
+                        Foreground = Brushes.White
+                    };
+                    XElement? queryPlan = statement.Descendants(ns + "QueryPlan").FirstOrDefault();
+                    foreach (XElement rootOperator in queryPlan?.Elements(ns + "RelOp") ?? Enumerable.Empty<XElement>())
+                    {
+                        statementItem.Items.Add(CreateExecutionPlanOperatorItem(rootOperator, ns));
+                    }
+                    operatorTree.Items.Add(statementItem);
+                }
+
+                if (operatorTree.Items.Count == 0)
+                {
+                    operatorTree.Items.Add(new TreeViewItem { Header = "No relational operators were found in this plan." });
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error(ex, "Failed to parse execution plan XML");
+                operatorTree.Items.Add(new TreeViewItem { Header = $"Unable to parse plan summary: {ex.Message}" });
+            }
+
+            tabs.Items.Add(new TabItem { Header = "Plan Operators", Content = operatorTree });
+            tabs.Items.Add(new TabItem { Header = "Plan XML", Content = xmlViewer });
+            tabs.SelectedIndex = 0;
+            return tabs;
+        }
+
+        private static TreeViewItem CreateExecutionPlanOperatorItem(XElement relOp, XNamespace ns)
+        {
+            string nodeId = (string?)relOp.Attribute("NodeId") ?? "?";
+            string physical = (string?)relOp.Attribute("PhysicalOp") ?? "Unknown";
+            string logical = (string?)relOp.Attribute("LogicalOp") ?? physical;
+            string estimatedRows = (string?)relOp.Attribute("EstimateRows") ?? "?";
+            string estimatedCost = (string?)relOp.Attribute("EstimatedTotalSubtreeCost") ?? "?";
+            long actualRows = relOp.Descendants(ns + "RunTimeCountersPerThread")
+                .Select(counter => long.TryParse((string?)counter.Attribute("ActualRows"), out long rows) ? rows : 0)
+                .Sum();
+            string actualText = actualRows > 0 ? $" | Actual rows: {actualRows:N0}" : string.Empty;
+
+            var item = new TreeViewItem
+            {
+                Header = $"[{nodeId}] {physical} ({logical}) | Est. rows: {estimatedRows} | Cost: {estimatedCost}{actualText}",
+                IsExpanded = true,
+                Foreground = (SolidColorBrush)new BrushConverter().ConvertFromString("#D4D4D4")!
+            };
+
+            IEnumerable<XElement> childOperators = relOp.Descendants(ns + "RelOp")
+                .Where(child => child.Ancestors(ns + "RelOp").FirstOrDefault() == relOp);
+            foreach (XElement child in childOperators)
+            {
+                item.Items.Add(CreateExecutionPlanOperatorItem(child, ns));
+            }
+            return item;
+        }
+
+        private void SaveExecutionPlan(string planXml, int planNumber)
+        {
+            var dialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Save Execution Plan",
+                Filter = "SQL Server Execution Plan (*.sqlplan)|*.sqlplan|XML File (*.xml)|*.xml",
+                FileName = $"ExecutionPlan_{planNumber}.sqlplan",
+                AddExtension = true
+            };
+            if (dialog.ShowDialog() == true)
+            {
+                File.WriteAllText(dialog.FileName, planXml, System.Text.Encoding.UTF8);
+            }
+        }
+
+        private void ClearExecutionPlanTabs()
+        {
+            foreach (TabItem tab in TabResults.Items.OfType<TabItem>()
+                         .Where(item => item.Tag is ExecutionPlanTabInfo).ToList())
+            {
+                TabResults.Items.Remove(tab);
             }
         }
 
@@ -1053,6 +1258,12 @@ namespace SSMS
             SharedMetadataCache.TryRemove(cacheKey, out _);
         }
 
+        public async Task RefreshAutocompleteAsync()
+        {
+            InvalidateAutocompleteCache(DatabaseName);
+            await CacheAndRefreshAutocompleteAsync();
+        }
+
         private void RequestAutocompleteMetadata()
         {
             if (_metadataRequested || _isDisposed) return;
@@ -1121,7 +1332,7 @@ namespace SSMS
                 _resultTables.Add(dataTables[i]);
                 ResultsGridContainer.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-                var grid = CreateResultDataGrid(dataTables[i]);
+                var grid = CreateResultDataGrid(dataTables[i], i);
                 Grid.SetRow(grid, ResultsGridContainer.RowDefinitions.Count - 1);
                 ResultsGridContainer.Children.Add(grid);
 
@@ -1143,7 +1354,7 @@ namespace SSMS
             }
         }
 
-        private FrameworkElement CreateResultDataGrid(DataTable dataTable)
+        private FrameworkElement CreateResultDataGrid(DataTable dataTable, int resultIndex)
         {
             var dataGrid = new BufferedDataGridView
             {
@@ -1336,6 +1547,12 @@ namespace SSMS
             };
             contextMenu.Items.Add("Copy", null, (_, _) => CopyGridToClipboard(dataGrid, false));
             contextMenu.Items.Add("Copy with Headers", null, (_, _) => CopyGridToClipboard(dataGrid, true));
+            var exportMenu = new WinForms.ToolStripMenuItem("Export Results");
+            exportMenu.DropDownItems.Add("CSV...", null, (_, _) => ExportResultTable(dataTable, resultIndex, ResultExportFormat.Csv));
+            exportMenu.DropDownItems.Add("Tab-delimited Text...", null, (_, _) => ExportResultTable(dataTable, resultIndex, ResultExportFormat.Tsv));
+            exportMenu.DropDownItems.Add("JSON...", null, (_, _) => ExportResultTable(dataTable, resultIndex, ResultExportFormat.Json));
+            exportMenu.DropDownItems.Add("XML...", null, (_, _) => ExportResultTable(dataTable, resultIndex, ResultExportFormat.Xml));
+            contextMenu.Items.Add(exportMenu);
             contextMenu.Items.Add(new WinForms.ToolStripSeparator());
             contextMenu.Items.Add("Auto Fit Column", null, (_, _) =>
             {
@@ -1637,6 +1854,112 @@ namespace SSMS
             grid.ClipboardCopyMode = originalMode;
         }
 
+        private void ExportResultTable(DataTable table, int resultIndex, ResultExportFormat format)
+        {
+            try
+            {
+                string extension = format switch
+                {
+                    ResultExportFormat.Csv => "csv",
+                    ResultExportFormat.Tsv => "txt",
+                    ResultExportFormat.Json => "json",
+                    ResultExportFormat.Xml => "xml",
+                    _ => "txt"
+                };
+                string filter = format switch
+                {
+                    ResultExportFormat.Csv => "CSV File (*.csv)|*.csv",
+                    ResultExportFormat.Tsv => "Tab-delimited Text (*.txt)|*.txt",
+                    ResultExportFormat.Json => "JSON File (*.json)|*.json",
+                    ResultExportFormat.Xml => "XML File (*.xml)|*.xml",
+                    _ => "All Files (*.*)|*.*"
+                };
+
+                var dialog = new Microsoft.Win32.SaveFileDialog
+                {
+                    Title = $"Export Result Set {resultIndex + 1}",
+                    FileName = $"QueryResult_{resultIndex + 1}.{extension}",
+                    DefaultExt = extension,
+                    Filter = filter,
+                    AddExtension = true
+                };
+                if (dialog.ShowDialog() != true) return;
+
+                switch (format)
+                {
+                    case ResultExportFormat.Csv:
+                        File.WriteAllText(dialog.FileName, BuildDelimitedText(table, ','), new System.Text.UTF8Encoding(true));
+                        break;
+                    case ResultExportFormat.Tsv:
+                        File.WriteAllText(dialog.FileName, BuildDelimitedText(table, '\t'), new System.Text.UTF8Encoding(true));
+                        break;
+                    case ResultExportFormat.Json:
+                        File.WriteAllText(dialog.FileName, BuildJson(table), new System.Text.UTF8Encoding(false));
+                        break;
+                    case ResultExportFormat.Xml:
+                        DataTable xmlTable = table.Copy();
+                        xmlTable.TableName = $"ResultSet{resultIndex + 1}";
+                        xmlTable.WriteXml(dialog.FileName, XmlWriteMode.WriteSchema);
+                        xmlTable.Dispose();
+                        break;
+                }
+
+                if (Window.GetWindow(this) is MainWindow mainWindow)
+                {
+                    mainWindow.UpdateStatusText($"Result set {resultIndex + 1} exported to {Path.GetFileName(dialog.FileName)}");
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error(ex, "Failed to export query result");
+                MessageBox.Show($"Failed to export results: {ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private static string BuildDelimitedText(DataTable table, char delimiter)
+        {
+            var builder = new System.Text.StringBuilder();
+            builder.AppendLine(string.Join(delimiter, table.Columns.Cast<DataColumn>().Select(column => EscapeDelimited(column.ColumnName, delimiter))));
+            foreach (DataRow row in table.Rows)
+            {
+                builder.AppendLine(string.Join(delimiter, row.ItemArray.Select(value =>
+                    EscapeDelimited(FormatExportValue(value), delimiter))));
+            }
+            return builder.ToString();
+        }
+
+        private static string EscapeDelimited(string value, char delimiter)
+        {
+            if (value.Contains(delimiter) || value.Contains('"') || value.Contains('\r') || value.Contains('\n'))
+            {
+                return $"\"{value.Replace("\"", "\"\"")}\"";
+            }
+            return value;
+        }
+
+        private static string FormatExportValue(object? value)
+        {
+            if (value == null || value == DBNull.Value) return string.Empty;
+            return value switch
+            {
+                DateTime dateTime => dateTime.ToString("yyyy-MM-dd HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture),
+                DateTimeOffset offset => offset.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+                byte[] bytes => Convert.ToHexString(bytes),
+                IFormattable formattable => formattable.ToString(null, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
+                _ => value.ToString() ?? string.Empty
+            };
+        }
+
+        private static string BuildJson(DataTable table)
+        {
+            var rows = table.Rows.Cast<DataRow>()
+                .Select(row => table.Columns.Cast<DataColumn>().ToDictionary(
+                    column => column.ColumnName,
+                    column => row[column] == DBNull.Value ? null : row[column]))
+                .ToList();
+            return JsonSerializer.Serialize(rows, new JsonSerializerOptions { WriteIndented = true });
+        }
+
         private string GetDefaultHtmlContent()
         {
             return @"<!DOCTYPE html><html><head><style>html,body,#container{width:100%;height:100%;margin:0;padding:0;overflow:hidden;background-color:#1e1e1e;}</style></head><body><div id='container'></div><script src='https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js'></script><script>require.config({paths:{vs:'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.39.0/min/vs'}});var editor;var tables=[];var columns=[];require(['vs/editor/editor.main'],function(){monaco.languages.registerCompletionItemProvider('sql',{provideCompletionItems:function(model,position){var word=model.getWordUntilPosition(position);var range={startLineNumber:position.lineNumber,endLineNumber:position.lineNumber,startColumn:word.startColumn,endColumn:word.endColumn};var suggestions=[];var keywords=['SELECT','FROM','WHERE','INSERT','INTO','UPDATE','SET','DELETE','CREATE','TABLE','JOIN','INNER','LEFT','ON','GROUP','BY','ORDER','AND','OR','AS'];keywords.forEach(kw=>{suggestions.push({label:kw,kind:monaco.languages.CompletionItemKind.Keyword,insertText:kw,range:range});});tables.forEach(t=>{suggestions.push({label:t,kind:monaco.languages.CompletionItemKind.Class,insertText:t,detail:'Table',range:range});});columns.forEach(c=>{suggestions.push({label:c,kind:monaco.languages.CompletionItemKind.Field,insertText:c,detail:'Column',range:range});});return{suggestions:suggestions};}});editor=monaco.editor.create(document.getElementById('container'),{value:'-- Write SQL Query\nSELECT * FROM sys.databases;',language:'sql',theme:'vs-dark',automaticLayout:true,fontSize:14,acceptSuggestionOnEnter:'off',scrollbar:{verticalScrollbarSize:5,horizontalScrollbarSize:5,useShadows:false}});editor.addCommand(monaco.KeyCode.F5,function(){window.chrome.webview.postMessage({action:'execute'});});editor.addCommand(monaco.KeyMod.CtrlCmd|monaco.KeyCode.KeyN,function(){window.chrome.webview.postMessage({action:'newQuery'});});});function getQueryText(){if(editor){var selection=editor.getSelection();var selectedText=editor.getModel().getValueInRange(selection);if(selectedText&&selectedText.trim().length>0){return selectedText;}return editor.getValue();}return'';}function setQueryText(text){if(editor)editor.setValue(text);}function updateMetadata(t,c){tables=t||[];columns=c||[];}</script></body></html>";
@@ -1677,4 +2000,13 @@ namespace SSMS
     }
 
     internal sealed record SchemaTabInfo(string ObjectName, string ObjectType);
+    internal sealed record ExecutionPlanTabInfo(string PlanXml);
+
+    internal enum ResultExportFormat
+    {
+        Csv,
+        Tsv,
+        Json,
+        Xml
+    }
 }

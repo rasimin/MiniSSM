@@ -28,6 +28,7 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 | `QueryTabControl.xaml` | Layout satu tab query: WebView2 editor, splitter, Results/Messages tab, loading overlay. |
 | `QueryTabControl.xaml.cs` | Inisialisasi WebView2/Monaco, eksekusi query, tampilkan result grid, cache autocomplete metadata. |
 | `DatabaseHelper.cs` | Semua akses SQL Server: metadata database/object, eksekusi query, generate script. |
+| `SqlBatchSplitter.cs` | Memecah script pada separator `GO`/`GO n` tanpa memecah `GO` di string atau comment; dipakai semua mode eksekusi. |
 | `ObjectExplorerNode.cs` | Model data `Tag` untuk node TreeView Object Explorer. |
 | `AppLogger.cs` | Logger file sederhana untuk error global dan event penting seperti create/close tab. Log tersimpan di `logs\minissms-YYYYMMDD.log` dalam output app. |
 | `AppSettings.cs` | Model serta load/save parameter aplikasi dari `appsettings.json`. |
@@ -36,6 +37,7 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 | `QueryHistoryEntry.cs` | Model satu record history eksekusi beserta properti display untuk grid. |
 | `QueryHistoryService.cs` | Inisialisasi schema SQLite, insert history, retention maksimum 10.000 record, dan pembacaan maksimum 300 record terbaru. |
 | `QueryHistoryWindow.xaml`, `QueryHistoryWindow.xaml.cs` | Window dark-mode untuk melihat query execution history, filter rentang tanggal/database/isi SQL, detail query/message, Copy Query, refresh, double-click, dan Open in New Query. |
+| `ObjectSearchWindow.xaml`, `ObjectSearchWindow.xaml.cs` | Pencarian table/view/routine/trigger/column lintas database yang dapat diakses pada satu server, lalu membuka SELECT atau definition. |
 | `sql_editor.html` | Monaco SQL editor, command JavaScript, autocomplete, bridge message ke WPF. |
 | `Assets/MiniSSMS.ico`, `Assets/MiniSSMS.png` | Icon aplikasi untuk executable dan window WPF. |
 
@@ -74,8 +76,12 @@ Lokasi utama: `MainWindow.xaml.cs`.
 - Folder filter ada di `_folderFilters`, `CreateFolderContextMenu`, `OpenFilterDialog`, `GetFolderHeader`.
 - Folder Databases, Tables, Views, Stored Procedures, Scalar-valued Functions, dan Table-valued Functions menampilkan tombol filter saat header di-hover; filter Databases berlaku per koneksi server, sedangkan filter object berlaku per database.
 - Context menu object ada di `CreateObjectContextMenu`.
+- Tombol Refresh pada header Object Explorer dan context menu node/folder me-reload metadata node terpilih sekaligus menginvalidasi autocomplete tab terkait; shortcut `Ctrl+Shift+R`.
+- Tombol Search pada header Object Explorer membuka pencarian object, schema, column, serta isi definition view/SP/function/trigger melalui `sys.sql_modules`, maksimum 1.000 hasil; hasil menampilkan lokasi dan cuplikan match. Window search memakai dark-mode ComboBox/button, menyediakan filter seluruh server aktif, filter semua/satu database, serta Cancel/Escape yang meneruskan cancellation ke proses load/query SQL.
+- Window Object Search memakai layout master-detail: grid hasil di atas; selection memuat generated CREATE script untuk table atau module definition untuk view/SP/function/trigger di kiri bawah, sedangkan kanan bawah menampilkan server, database, schema, type, Object ID, create/modify date, dan informasi match.
 - Semua node Object Explorer yang memiliki `ObjectExplorerNode` mendapat menu `Copy Name` secara otomatis saat diklik kanan; nama diambil dari `DetailName` atau identitas node/folder tanpa icon header.
 - Context menu folder object dibuat oleh `CreateFolderContextMenu`; Tables, Views, Stored Procedures, dan kedua jenis Functions menyediakan template `Create New`.
+- Context menu table menyediakan scripting CREATE, INSERT, UPDATE, DELETE, ALTER, dan DROP; template UPDATE/DELETE memakai variable `NULL` dan WHERE primary key sebagai default aman.
 - Saat lazy-load metadata berjalan, node menampilkan teks titik bergerak lewat `CreateAnimatedLoadingItem`.
 - Script object dibuat lewat `ScriptObjectToQueryTabAsync`.
 - Node trigger di bawah table memiliki context menu `CREATE`, `ALTER`, dan `DROP` melalui alur scripting object yang sama.
@@ -113,6 +119,10 @@ Hal penting:
 - Query tab melacak perubahan Monaco dengan indikator `*`; Save menghapus indikator, sedangkan close tab/close aplikasi memakai `UnsavedChangesWindow` dark-mode untuk konfirmasi Save/Don’t Save/Cancel pada tab yang masih dirty.
 - Nama default dialog Save mengikuti judul tab tanpa indikator `*`, dan penyimpanan selalu mengambil seluruh isi editor meskipun ada selection.
 - `BtnExecute_Click` memanggil `ExecuteQuery()` pada tab aktif.
+- Query Tools menyediakan Parse (`Ctrl+F5`), Estimated Plan (`Ctrl+L`), Actual Plan (`Ctrl+Alt+L`), dan Format SQL (`Ctrl+Shift+F`).
+- Execute/Parse/plan memakai `SqlBatchSplitter`; `GO` dan `GO n` tidak dikirim ke SQL Server, tetapi dipakai sebagai pemisah/repeat batch.
+- Estimated/Actual execution plan ditampilkan sebagai tree operator (physical/logical operator, estimates/cost, actual rows bila tersedia) dan XML; XML dapat disimpan sebagai `.sqlplan` untuk tampilan graphical penuh di SSMS.
+- Context menu setiap result grid dapat export result set asli ke CSV, tab-delimited TXT, JSON, atau XML; nilai export tidak memakai trimming khusus display grid.
 - Setelah query sukses, database aktual pada koneksi dibaca kembali; perintah `USE <database>` menyinkronkan database tab, status, autocomplete, dan combo toolbar. Jika eksekusi gagal, context database tab tidak diubah.
 - Ikon gear di pojok kanan toolbar membuka `SettingsWindow`; query timeout disimpan sebagai `Query.CommandTimeoutSeconds` di `appsettings.json` dan berlaku mulai eksekusi berikutnya (`0` berarti tanpa batas).
 - Ikon jam `ToolbarQueryHistory` membuka satu instance `QueryHistoryWindow`; Open in New Query mencari koneksi server yang masih aktif dan membuat tab dirty baru pada database dari record history.
@@ -121,6 +131,7 @@ Hal penting:
 - Urutan default toolbar mengikuti alur koneksi, pemilihan database, eksekusi, editing, lalu file/query; item tetap dapat di-drag untuk reorder.
 - `MainWindow` meneruskan pesan native `WM_MOUSEHWHEEL` dari gesture dua jari touchpad ke `ScrollViewer` horizontal di bawah pointer.
 - `RunEditorCommand(...)` menjalankan fungsi JavaScript di Monaco.
+- Formatter Monaco memformat selection atau seluruh dokumen sebagai satu undo step dan menjaga string, quoted identifier, comment, serta separator `GO`.
 - `SaveActiveTabQuery()` menyimpan ke path tab aktif, sedangkan Save As selalu meminta path baru; `OpenSqlFile()` dan drag-drop file `.sql` membuka setiap file sebagai tab baru. External drop WebView2 dimatikan agar drop di area Monaco tetap ditangani window.
 - `QueryTabControl.CacheAndRefreshAutocompleteAsync()` mengirim payload metadata terpadu: tabel/view beserta kolom dan jenis object, stored procedure, scalar/table-valued function, parameter routine, daftar database, dan database aktif.
 - Provider Monaco memfilter suggestion berdasarkan konteks: table/view/table-valued function setelah `FROM`/`JOIN`/`APPLY`, scalar function di expression, SP setelah `EXEC`/`EXECUTE`, dan parameter setelah routine dipilih.
@@ -148,8 +159,9 @@ Method penting:
 - `GetFunctionsAsync` (memisahkan scalar-valued dan table-valued)
 - `GetColumnsAsync`
 - `GetIndexesAsync`
-- `GetTriggersAsync`
+- `GetTriggersAsync` (schema trigger diambil melalui `sys.objects`/`sys.schemas` karena `sys.triggers` tidak memiliki kolom `schema_id`)
 - `ExecuteQueryAsync`
+- `SearchObjectsAcrossDatabasesAsync`
 - `GetObjectDefinitionAsync`
 - `GenerateTableCreateScriptAsync`
 
@@ -161,6 +173,7 @@ Pola yang dipakai:
 - Parameter object name memakai parameter SQL seperti `@TableFullName`.
 - Result set dengan nama kolom duplikat (misalnya `SELECT Units, *`) diberi suffix tampilan `(2)`, `(3)`, dan seterusnya karena `DataTable` memerlukan nama unik.
 - `QueryResult` membawa database efektif, rows affected, status/message, data table, dan durasi yang dipakai oleh pencatatan query history.
+- `QueryResult` juga membawa collection execution-plan XML; `ExecuteQueryAsync` mendukung mode Execute, Parse, EstimatedPlan, dan ActualPlan pada koneksi/session yang sama.
 - Result grid memakai pixel scrolling, recycling virtualization, cache satu halaman, serta tinggi row/header tetap agar layout tidak mengukur ulang ukuran cell saat scroll; telemetry per-frame/visual-tree saat scroll tidak dipasang agar UI tetap ringan.
 - Result grid menampilkan nomor baris melalui row header, menonaktifkan sort saat header diklik, dan memakai header text selectable agar nama kolom dapat disalin.
 - Row header result grid mendukung klik Shift dan drag ke atas/bawah untuk memilih rentang beberapa row, termasuk auto-scroll sederhana saat pointer melewati batas grid.

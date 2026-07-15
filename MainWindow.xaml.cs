@@ -41,6 +41,7 @@ namespace SSMS
         private bool _allowWindowClose;
         private bool _isCloseConfirmationInProgress;
         private QueryHistoryWindow? _queryHistoryWindow;
+        private ObjectSearchWindow? _objectSearchWindow;
 
         private static readonly Duration ReorderAnimationDuration = new(TimeSpan.FromMilliseconds(320));
         private const string QueryTabDragHandleTag = "QueryTabDragHandle";
@@ -72,6 +73,7 @@ namespace SSMS
                 ToolbarNewQuery,
                 ToolbarDatabase,
                 ToolbarExecute,
+                ToolbarQueryTools,
                 ToolbarComment,
                 ToolbarUncomment,
                 ToolbarSave,
@@ -579,6 +581,10 @@ namespace SSMS
             disconnectMenu.Click += (s, e) => DisconnectServer(serverNode);
             contextMenu.Items.Add(disconnectMenu);
 
+            var refreshMenu = new MenuItem { Header = "Refresh" };
+            refreshMenu.Click += async (s, e) => await RefreshObjectExplorerNodeAsync(serverNode);
+            contextMenu.Items.Add(refreshMenu);
+
             serverNode.ContextMenu = contextMenu;
 
             TreeObjectExplorer.Items.Add(serverNode);
@@ -654,6 +660,9 @@ namespace SSMS
                             var newQueryItem = new MenuItem { Header = "New Query" };
                             newQueryItem.Click += (s, ev) => CreateNewQueryTab(connStr, db);
                             contextMenu.Items.Add(newQueryItem);
+                            var refreshItem = new MenuItem { Header = "Refresh" };
+                            refreshItem.Click += async (s, ev) => await RefreshObjectExplorerNodeAsync(dbItem);
+                            contextMenu.Items.Add(refreshItem);
                             dbItem.ContextMenu = contextMenu;
 
                             item.Items.Add(dbItem);
@@ -904,6 +913,133 @@ namespace SSMS
             return (loadingItem, timer);
         }
 
+        private async void BtnRefreshObjectExplorer_Click(object sender, RoutedEventArgs e)
+        {
+            if (TreeObjectExplorer.SelectedItem is TreeViewItem selectedItem)
+            {
+                await RefreshObjectExplorerNodeAsync(selectedItem);
+                return;
+            }
+
+            if (TreeObjectExplorer.Items.OfType<TreeViewItem>().FirstOrDefault() is TreeViewItem firstServer)
+            {
+                await RefreshObjectExplorerNodeAsync(firstServer);
+            }
+        }
+
+        private void BtnSearchObjects_Click(object sender, RoutedEventArgs e)
+        {
+            string? connectionString = null;
+            if (TreeObjectExplorer.SelectedItem is TreeViewItem selectedItem &&
+                selectedItem.Tag is ObjectExplorerNode selectedNode)
+            {
+                connectionString = selectedNode.ConnectionString;
+            }
+            connectionString ??= TreeObjectExplorer.Items.OfType<TreeViewItem>()
+                .Select(item => item.Tag)
+                .OfType<ObjectExplorerNode>()
+                .FirstOrDefault(node => node.NodeType == "Server")?.ConnectionString;
+
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                MessageBox.Show("Connect to a server before searching database objects.", "Object Search", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            if (_objectSearchWindow != null)
+            {
+                _objectSearchWindow.Activate();
+                return;
+            }
+
+            var serverOptions = TreeObjectExplorer.Items.OfType<TreeViewItem>()
+                .Select(item => item.Tag)
+                .OfType<ObjectExplorerNode>()
+                .Where(node => node.NodeType == "Server")
+                .Select(node => new ObjectSearchServerOption
+                {
+                    ServerName = new SqlConnectionStringBuilder(node.ConnectionString).DataSource,
+                    ConnectionString = node.ConnectionString
+                })
+                .GroupBy(server => server.ConnectionString, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .OrderBy(server => server.ServerName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            _objectSearchWindow = new ObjectSearchWindow(serverOptions, connectionString) { Owner = this };
+            _objectSearchWindow.OpenRequested += ObjectSearchWindow_OpenRequested;
+            _objectSearchWindow.Closed += (_, _) => _objectSearchWindow = null;
+            _objectSearchWindow.Show();
+        }
+
+        private async void ObjectSearchWindow_OpenRequested(object? sender, DatabaseObjectSearchResult result)
+        {
+            if (sender is not ObjectSearchWindow searchWindow)
+            {
+                return;
+            }
+
+            if (searchWindow.Owner is not MainWindow)
+            {
+                return;
+            }
+            string connectionString = searchWindow.ConnectionString;
+
+            if (result.ObjectType is "Table" or "View")
+            {
+                string sql = $"SELECT TOP 200 * FROM {QuoteMultipartIdentifier(result.FullName)};";
+                CreateNewQueryTab(connectionString, result.DatabaseName, sql, $"{result.FullName} (Top 200)");
+            }
+            else
+            {
+                await OpenObjectDefinitionFromEditorAsync(
+                    connectionString,
+                    result.DatabaseName,
+                    result.ObjectType,
+                    result.FullName);
+            }
+        }
+
+
+        private async Task RefreshObjectExplorerNodeAsync(TreeViewItem item)
+        {
+            if (item.Tag is not ObjectExplorerNode node)
+            {
+                return;
+            }
+
+            _serverDatabasesCache.Remove(node.ConnectionString);
+            var matchingTabs = TabQueryControls.Items.OfType<TabItem>()
+                .Select(tab => tab.Content)
+                .OfType<QueryTabControl>()
+                .Where(tab => string.Equals(tab.ConnectionString, node.ConnectionString, StringComparison.OrdinalIgnoreCase) &&
+                              (node.NodeType is "Server" or "DatabasesFolder" ||
+                               string.Equals(tab.DatabaseName, node.DatabaseName, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+            foreach (QueryTabControl tab in matchingTabs)
+            {
+                await tab.RefreshAutocompleteAsync();
+            }
+
+            if (CanReloadObjectExplorerNode(node.NodeType))
+            {
+                item.IsExpanded = false;
+                item.Items.Clear();
+                item.Items.Add(new TreeViewItem { Header = "Loading..." });
+                item.IsExpanded = true;
+            }
+
+            UpdateStatusText($"Refreshed {node.NodeType}.");
+        }
+
+        private static bool CanReloadObjectExplorerNode(string nodeType)
+        {
+            return nodeType is "Server" or "DatabasesFolder" or "Database" or
+                "TablesFolder" or "ViewsFolder" or "SpsFolder" or "FuncsFolder" or
+                "ScalarFunctionsFolder" or "TableFunctionsFolder" or "Table" or "View" or
+                "ColumnsFolder" or "IndexesFolder" or "TriggersFolder";
+        }
+
         #endregion
 
         #region Toolbar Events
@@ -1017,11 +1153,11 @@ namespace SSMS
             Activate();
         }
 
-        private void ExecuteActiveTabQuery()
+        private void ExecuteActiveTabQuery(QueryExecutionMode mode = QueryExecutionMode.Execute)
         {
             if (TabQueryControls.SelectedItem is TabItem tabItem && tabItem.Content is QueryTabControl activeTab)
             {
-                activeTab.ExecuteQuery();
+                activeTab.ExecuteQuery(mode);
             }
             else
             {
@@ -1077,14 +1213,47 @@ namespace SSMS
 
         private void Window_KeyDown(object sender, KeyEventArgs e)
         {
-            if (e.Key == Key.F5)
+            if (e.Key == Key.F5 &&
+                (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                ExecuteActiveTabQuery(QueryExecutionMode.Parse);
+                e.Handled = true;
+            }
+            else if (e.Key == Key.F5)
             {
                 ExecuteActiveTabQuery();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.L &&
+                     (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control &&
+                     (Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt)
+            {
+                ExecuteActiveTabQuery(QueryExecutionMode.ActualPlan);
+                e.Handled = true;
+            }
+            else if (e.Key == Key.L &&
+                     (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                ExecuteActiveTabQuery(QueryExecutionMode.EstimatedPlan);
                 e.Handled = true;
             }
             else if (e.Key == Key.F8)
             {
                 ToggleObjectExplorer();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.R &&
+                     (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control &&
+                     (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+            {
+                BtnRefreshObjectExplorer_Click(this, new RoutedEventArgs());
+                e.Handled = true;
+            }
+            else if (e.Key == Key.F &&
+                     (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control &&
+                     (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+            {
+                FormatActiveQuery();
                 e.Handled = true;
             }
             else if (e.Key == Key.N && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
@@ -1126,6 +1295,33 @@ namespace SSMS
             CreateNewQueryFromCurrentContext();
         }
 
+        private void BtnQueryTools_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button button) return;
+
+            var menu = new ContextMenu();
+            var parseItem = new MenuItem { Header = "Parse / Check Syntax", InputGestureText = "Ctrl+F5" };
+            parseItem.Click += (_, _) => ExecuteActiveTabQuery(QueryExecutionMode.Parse);
+            menu.Items.Add(parseItem);
+
+            var estimatedItem = new MenuItem { Header = "Display Estimated Plan", InputGestureText = "Ctrl+L" };
+            estimatedItem.Click += (_, _) => ExecuteActiveTabQuery(QueryExecutionMode.EstimatedPlan);
+            menu.Items.Add(estimatedItem);
+
+            var actualItem = new MenuItem { Header = "Execute with Actual Plan", InputGestureText = "Ctrl+Alt+L" };
+            actualItem.Click += (_, _) => ExecuteActiveTabQuery(QueryExecutionMode.ActualPlan);
+            menu.Items.Add(actualItem);
+
+            menu.Items.Add(new Separator());
+            var formatItem = new MenuItem { Header = "Format SQL", InputGestureText = "Ctrl+Shift+F" };
+            formatItem.Click += (_, _) => FormatActiveQuery();
+            menu.Items.Add(formatItem);
+
+            button.ContextMenu = menu;
+            menu.PlacementTarget = button;
+            menu.IsOpen = true;
+        }
+
         public void CreateNewQueryFromCurrentContext()
         {
             if (TryGetSelectedObjectExplorerContext(out string connectionString, out string databaseName))
@@ -1141,6 +1337,14 @@ namespace SSMS
             else
             {
                 CreateNewQueryTab(_initialConnectionString, "master");
+            }
+        }
+
+        private void FormatActiveQuery()
+        {
+            if (TabQueryControls.SelectedItem is TabItem tabItem && tabItem.Content is QueryTabControl activeTab)
+            {
+                activeTab.FormatSql();
             }
         }
 
@@ -2139,6 +2343,10 @@ namespace SSMS
             var newQueryItem = new MenuItem { Header = "New Query" };
             newQueryItem.Click += (s, e) => CreateNewQueryTab(connStr, dbName);
             menu.Items.Add(newQueryItem);
+
+            var refreshItem = new MenuItem { Header = "Refresh" };
+            refreshItem.Click += async (s, e) => await RefreshObjectExplorerNodeAsync(folderItem);
+            menu.Items.Add(refreshItem);
             
             var filterItem = new MenuItem { Header = "Filter..." };
             filterItem.Click += (s, e) => OpenFilterDialog(folderItem, dbName, folderType, baseName);
@@ -2279,6 +2487,18 @@ namespace SSMS
                 insertToMenu.Items.Add(insertDataNewQuery);
 
                 scriptAsMenu.Items.Add(insertToMenu);
+
+                var updateToMenu = new MenuItem { Header = "UPDATE To" };
+                var updateNewQuery = new MenuItem { Header = "New Query Editor Window" };
+                updateNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "UPDATE");
+                updateToMenu.Items.Add(updateNewQuery);
+                scriptAsMenu.Items.Add(updateToMenu);
+
+                var deleteToMenu = new MenuItem { Header = "DELETE To" };
+                var deleteNewQuery = new MenuItem { Header = "New Query Editor Window" };
+                deleteNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "DELETE");
+                deleteToMenu.Items.Add(deleteNewQuery);
+                scriptAsMenu.Items.Add(deleteToMenu);
             }
 
             var alterToMenu = new MenuItem { Header = "ALTER To" };
@@ -2388,6 +2608,64 @@ namespace SSMS
                         sb.AppendLine(");");
                         sql = sb.ToString();
                     }
+                    else if (scriptType == "UPDATE" || scriptType == "DELETE")
+                    {
+                        var columns = await DatabaseHelper.GetColumnsAsync(connectionString, databaseName, objectName);
+                        var keyColumns = columns.Where(column => column.IsPrimaryKey).ToList();
+                        if (keyColumns.Count == 0 && columns.Count > 0)
+                        {
+                            keyColumns.Add(columns[0]);
+                        }
+
+                        var sb = new System.Text.StringBuilder();
+                        string safeName = QuoteMultipartIdentifier(objectName);
+                        if (!columns.Any(column => column.IsPrimaryKey))
+                        {
+                            sb.AppendLine("-- WARNING: No primary key was found. Review the generated WHERE clause before execution.");
+                        }
+                        sb.AppendLine("SET XACT_ABORT ON;");
+                        sb.AppendLine();
+
+                        IEnumerable<(string ColumnName, string DataType, bool IsPrimaryKey)> variables =
+                            scriptType == "UPDATE" ? columns : keyColumns;
+                        foreach (var column in variables)
+                        {
+                            sb.AppendLine($"DECLARE @{SanitizeSqlVariableName(column.ColumnName)} {column.DataType} = NULL;");
+                        }
+                        sb.AppendLine();
+
+                        if (scriptType == "UPDATE")
+                        {
+                            var updateColumns = columns.Where(column => !column.IsPrimaryKey).ToList();
+                            sb.AppendLine($"UPDATE {safeName}");
+                            sb.AppendLine("SET");
+                            if (updateColumns.Count == 0 && keyColumns.Count > 0)
+                            {
+                                sb.AppendLine($"    {QuoteSqlIdentifier(keyColumns[0].ColumnName)} = {QuoteSqlIdentifier(keyColumns[0].ColumnName)}");
+                            }
+                            for (int i = 0; i < updateColumns.Count; i++)
+                            {
+                                string suffix = i < updateColumns.Count - 1 ? "," : string.Empty;
+                                sb.AppendLine($"    {QuoteSqlIdentifier(updateColumns[i].ColumnName)} = @{SanitizeSqlVariableName(updateColumns[i].ColumnName)}{suffix}");
+                            }
+                        }
+                        else
+                        {
+                            sb.AppendLine($"DELETE FROM {safeName}");
+                        }
+
+                        if (keyColumns.Count > 0)
+                        {
+                            sb.AppendLine("WHERE");
+                            for (int i = 0; i < keyColumns.Count; i++)
+                            {
+                                string prefix = i == 0 ? "    " : "    AND ";
+                                sb.AppendLine($"{prefix}{QuoteSqlIdentifier(keyColumns[i].ColumnName)} = @{SanitizeSqlVariableName(keyColumns[i].ColumnName)}");
+                            }
+                        }
+                        sb.AppendLine(";");
+                        sql = sb.ToString();
+                    }
                     else // ALTER Table
                     {
                         sql = $"-- Alter Table Script for {objectName}\n-- ALTER TABLE {objectName} ADD [NewColumnName] DataType;";
@@ -2427,6 +2705,23 @@ namespace SSMS
             }
 
             CreateNewQueryTab(connectionString, databaseName, sql, $"{objectName}_{scriptType}.sql");
+        }
+
+        private static string QuoteMultipartIdentifier(string objectName)
+        {
+            return string.Join(".", objectName.Split('.').Select(QuoteSqlIdentifier));
+        }
+
+        private static string QuoteSqlIdentifier(string identifier)
+        {
+            return "[" + identifier.Replace("]", "]]") + "]";
+        }
+
+        private static string SanitizeSqlVariableName(string columnName)
+        {
+            string name = new(columnName.Select(character => char.IsLetterOrDigit(character) || character == '_' ? character : '_').ToArray());
+            if (string.IsNullOrWhiteSpace(name)) return "Value";
+            return char.IsDigit(name[0]) ? $"Value_{name}" : name;
         }
 
         private void ShowInsertWithDataDialog(string connectionString, string databaseName, string tableName)

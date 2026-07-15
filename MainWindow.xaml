@@ -548,6 +548,17 @@
                         </StackPanel>
                     </Border>
 
+                    <Border Name="ToolbarQueryTools" Background="Transparent" Padding="2,0" Margin="0,0,4,0"
+                            PreviewMouseLeftButtonDown="ToolbarItem_PreviewMouseLeftButtonDown"
+                            PreviewMouseMove="ToolbarItem_PreviewMouseMove"
+                            PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="&#x22EE;" Foreground="#555555" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
+                            <Button Style="{StaticResource ToolbarButton}" Content="Query Tools" Click="BtnQueryTools_Click"
+                                    ToolTip="Parse, execution plan, and SQL formatting"/>
+                        </StackPanel>
+                    </Border>
+
                     <Border Name="ToolbarQueryHistory" Background="Transparent" Padding="2,0" Margin="0,0,4,0"
                             PreviewMouseLeftButtonDown="ToolbarItem_PreviewMouseLeftButtonDown"
                             PreviewMouseMove="ToolbarItem_PreviewMouseMove"
@@ -628,8 +639,27 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <Border Grid.Row="0" Background="#252526" BorderBrush="#2D2D30" BorderThickness="0,0,1,1" Padding="12,8">
-                    <TextBlock Text="Object Explorer" FontWeight="SemiBold" Foreground="#FFFFFF" FontSize="12"/>
+                <Border Grid.Row="0" Background="#252526" BorderBrush="#2D2D30" BorderThickness="0,0,1,1" Padding="8,5">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Object Explorer" FontWeight="SemiBold" Foreground="#FFFFFF" FontSize="12" VerticalAlignment="Center" Margin="4,0"/>
+                        <Button Grid.Column="1" Style="{StaticResource ToolbarButton}" Click="BtnSearchObjects_Click"
+                                ToolTip="Search objects across databases" Padding="5" Margin="1,0">
+                            <Viewbox Width="14" Height="14">
+                                <Path Fill="#CCCCCC" Data="M9.5,3 A6.5,6.5 0 1,0 9.5,16 A6.5,6.5 0 0,0 9.5,3 M9.5,5 A4.5,4.5 0 1,1 9.5,14 A4.5,4.5 0 0,1 9.5,5 M14,13 L21,20 L19.5,21.5 L12.5,14.5 Z"/>
+                            </Viewbox>
+                        </Button>
+                        <Button Grid.Column="2" Style="{StaticResource ToolbarButton}" Click="BtnRefreshObjectExplorer_Click"
+                                ToolTip="Refresh selected Object Explorer node (Ctrl+Shift+R)" Padding="5" Margin="1,0">
+                            <Viewbox Width="14" Height="14">
+                                <Path Fill="#CCCCCC" Data="M17.65,6.35 C16.2,4.9 14.21,4 12,4 C7.58,4 4,7.58 4,12 C4,16.42 7.58,20 12,20 C15.73,20 18.84,17.45 19.73,14 L17.65,14 C16.83,16.33 14.61,18 12,18 C8.69,18 6,15.31 6,12 C6,8.69 8.69,6 12,6 C13.66,6 15.14,6.69 16.22,7.78 L13,11 L20,11 L20,4 Z"/>
+                            </Viewbox>
+                        </Button>
+                    </Grid>
                 </Border>
                 <ScrollViewer Grid.Row="1"
                               Background="#1E1E1E"
