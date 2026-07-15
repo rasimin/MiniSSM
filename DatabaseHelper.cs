@@ -123,6 +123,7 @@ WITH SearchableObjects AS
            o.name AS ObjectName,
            o.create_date AS CreateDate,
            o.modify_date AS ModifyDate,
+           m.definition AS DefinitionText,
            CASE o.type
            WHEN 'U' THEN 'Table'
            WHEN 'V' THEN 'View'
@@ -138,65 +139,56 @@ WITH SearchableObjects AS
            END AS ObjectType
     FROM sys.objects o
     JOIN sys.schemas s ON s.schema_id = o.schema_id
+    LEFT JOIN sys.sql_modules m ON m.object_id = o.object_id
     WHERE o.is_ms_shipped = 0
       AND o.type IN ('U', 'V', 'P', 'PC', 'FN', 'IF', 'TF', 'FS', 'FT', 'TR')
-), Matches AS
-(
-    SELECT DB_NAME() AS DatabaseName,
-           o.SchemaName,
-           o.ObjectName,
-           o.ObjectType,
-           o.object_id,
-           o.CreateDate,
-           o.ModifyDate,
-           CASE
-               WHEN c.name LIKE @Pattern ESCAPE '\' THEN 'Column'
-               WHEN o.ObjectName LIKE @Pattern ESCAPE '\' THEN 'Object name'
-               ELSE 'Schema'
-           END AS MatchLocation,
-           CASE
-               WHEN c.name LIKE @Pattern ESCAPE '\' THEN c.name
-               WHEN o.ObjectName LIKE @Pattern ESCAPE '\' THEN o.ObjectName
-               ELSE o.SchemaName
-           END AS MatchDetail
-    FROM SearchableObjects o
-    LEFT JOIN sys.columns c ON c.object_id = o.object_id
-    WHERE o.ObjectName LIKE @Pattern ESCAPE '\'
-       OR o.SchemaName LIKE @Pattern ESCAPE '\'
-       OR c.name LIKE @Pattern ESCAPE '\'
-
-    UNION ALL
-
-    SELECT DB_NAME(),
-           o.SchemaName,
-           o.ObjectName,
-           o.ObjectType,
-           o.object_id,
-           o.CreateDate,
-           o.ModifyDate,
-           'Definition',
-           LTRIM(RTRIM(SUBSTRING(
-               normalized.DefinitionText,
-               CASE WHEN position.MatchPosition > 60 THEN position.MatchPosition - 60 ELSE 1 END,
-               220)))
-    FROM SearchableObjects o
-    JOIN sys.sql_modules m ON m.object_id = o.object_id
-    CROSS APPLY (SELECT REPLACE(REPLACE(m.definition, CHAR(13), ' '), CHAR(10), ' ') AS DefinitionText) normalized
-    CROSS APPLY (SELECT CHARINDEX(@SearchText, normalized.DefinitionText) AS MatchPosition) position
-    WHERE m.definition LIKE @Pattern ESCAPE '\'
 )
-SELECT DISTINCT TOP (250)
-       DatabaseName,
-       SchemaName,
-       ObjectName,
-       ObjectType,
-       object_id,
-       CreateDate,
-       ModifyDate,
-       MatchLocation,
-       MatchDetail
-FROM Matches
-ORDER BY SchemaName, ObjectName, MatchLocation, MatchDetail;";
+SELECT TOP (250)
+       DB_NAME() AS DatabaseName,
+       o.SchemaName,
+       o.ObjectName,
+       o.ObjectType,
+       o.object_id,
+       o.CreateDate,
+       o.ModifyDate,
+       STUFF(
+           CASE WHEN o.ObjectName LIKE @Pattern ESCAPE '\' THEN ', Object name' ELSE '' END +
+           CASE WHEN o.SchemaName LIKE @Pattern ESCAPE '\' THEN ', Schema' ELSE '' END +
+           CASE WHEN matchedColumn.ColumnName IS NOT NULL THEN ', Column' ELSE '' END +
+           CASE WHEN o.DefinitionText LIKE @Pattern ESCAPE '\' THEN ', Definition' ELSE '' END,
+           1, 2, '') AS MatchLocation,
+       STUFF(
+           CASE WHEN o.ObjectName LIKE @Pattern ESCAPE '\' THEN ' | Object: ' + o.ObjectName ELSE '' END +
+           CASE WHEN o.SchemaName LIKE @Pattern ESCAPE '\' THEN ' | Schema: ' + o.SchemaName ELSE '' END +
+           CASE WHEN matchedColumn.ColumnName IS NOT NULL THEN ' | Column: ' + matchedColumn.ColumnName ELSE '' END +
+           CASE WHEN definitionMatch.MatchPosition > 0 THEN ' | Definition: ' +
+               LTRIM(RTRIM(SUBSTRING(
+                   normalized.DefinitionText,
+                   CASE WHEN definitionMatch.MatchPosition > 60 THEN definitionMatch.MatchPosition - 60 ELSE 1 END,
+                   220))) ELSE '' END,
+           1, 3, '') AS MatchDetail
+FROM SearchableObjects o
+OUTER APPLY
+(
+    SELECT TOP (1) c.name AS ColumnName
+    FROM sys.columns c
+    WHERE c.object_id = o.object_id
+      AND c.name LIKE @Pattern ESCAPE '\'
+    ORDER BY c.column_id
+) matchedColumn
+CROSS APPLY
+(
+    SELECT REPLACE(REPLACE(o.DefinitionText, CHAR(13), ' '), CHAR(10), ' ') AS DefinitionText
+) normalized
+CROSS APPLY
+(
+    SELECT CHARINDEX(@SearchText, normalized.DefinitionText) AS MatchPosition
+) definitionMatch
+WHERE o.ObjectName LIKE @Pattern ESCAPE '\'
+   OR o.SchemaName LIKE @Pattern ESCAPE '\'
+   OR matchedColumn.ColumnName IS NOT NULL
+   OR o.DefinitionText LIKE @Pattern ESCAPE '\'
+ORDER BY o.SchemaName, o.ObjectName;";
                     using var command = new SqlCommand(query, connection);
                     command.Parameters.AddWithValue("@Pattern", pattern);
                     command.Parameters.Add("@SearchText", SqlDbType.NVarChar, 4000).Value = searchText;

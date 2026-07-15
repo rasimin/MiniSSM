@@ -38,6 +38,7 @@ namespace SSMS
         private double _draggedToolbarGrabOffsetX;
         private GridLength _lastObjectExplorerWidth = new(260);
         private bool _isObjectExplorerVisible = true;
+        private bool _useObjectExplorerContextForNewQuery;
         private bool _allowWindowClose;
         private bool _isCloseConfirmationInProgress;
         private QueryHistoryWindow? _queryHistoryWindow;
@@ -61,6 +62,8 @@ namespace SSMS
 
             // Connect TreeView expanded event handler
             TreeObjectExplorer.AddHandler(TreeViewItem.ExpandedEvent, new RoutedEventHandler(TreeItem_Expanded));
+            TreeObjectExplorer.SelectedItemChanged += (_, _) => _useObjectExplorerContextForNewQuery = true;
+            TreeObjectExplorer.PreviewMouseDown += (_, _) => _useObjectExplorerContextForNewQuery = true;
         }
 
         private void ApplyToolbarOrder()
@@ -281,6 +284,7 @@ namespace SSMS
             AppLogger.Info($"Creating query tab: {tabTitle}");
 
             var queryTabControl = new QueryTabControl(connectionString, databaseName);
+            queryTabControl.EditorActivated += (_, _) => _useObjectExplorerContextForNewQuery = false;
             queryTabControl.FilePath = filePath;
             if (!string.IsNullOrEmpty(initialSql))
             {
@@ -1324,7 +1328,8 @@ namespace SSMS
 
         public void CreateNewQueryFromCurrentContext()
         {
-            if (TryGetSelectedObjectExplorerContext(out string connectionString, out string databaseName))
+            if (_useObjectExplorerContextForNewQuery &&
+                TryGetSelectedObjectExplorerContext(out string connectionString, out string databaseName))
             {
                 CreateNewQueryTab(connectionString, databaseName);
                 return;
@@ -1820,6 +1825,8 @@ namespace SSMS
 
         private void TabItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
+            _useObjectExplorerContextForNewQuery = false;
+
             if (sender is TabItem tabItem)
             {
                 if (!IsQueryTabDragHandle(e.OriginalSource as DependencyObject))

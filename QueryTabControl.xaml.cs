@@ -44,6 +44,7 @@ namespace SSMS
         public int TotalResultColumns { get; private set; } = 0;
         public Task EditorReady => _editorReadyCompletion.Task;
         public event EventHandler? DirtyStateChanged;
+        public event EventHandler? EditorActivated;
 
         private readonly TaskCompletionSource<bool> _editorReadyCompletion =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -230,6 +231,10 @@ namespace SSMS
                 else if (action.GetString() == "editorReady")
                 {
                     _ = CompleteEditorInitializationAsync();
+                }
+                else if (action.GetString() == "editorFocused")
+                {
+                    EditorActivated?.Invoke(this, EventArgs.Empty);
                 }
                 else if (action.GetString() == "contentChanged")
                 {

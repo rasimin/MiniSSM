@@ -638,6 +638,10 @@
                 }
             });
 
+            editor.onDidFocusEditorText(function() {
+                window.chrome.webview.postMessage({ action: 'editorFocused' });
+            });
+
             // Send signal to C# on keydown inside Monaco for F5
             editor.addCommand(monaco.KeyCode.F5, function() {
                 window.chrome.webview.postMessage({ action: 'execute' });
