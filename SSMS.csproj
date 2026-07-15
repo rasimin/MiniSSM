@@ -13,7 +13,7 @@
   <ItemGroup>
     <Resource Include="Assets\MiniSSMS.ico" />
     <Resource Include="Assets\MiniSSMS.png" />
-    <Resource Include="SqlDark.xshd" />
+    <Resource Include="Resources\SqlDark.xshd" />
   </ItemGroup>
 
   <ItemGroup>
@@ -24,7 +24,34 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="sql_editor.html">
+    <None Update="Editor\sql_editor.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Editor\sql_editor.css">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Editor\sql_editor_state.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Editor\sql_editor_catalog.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Editor\sql_editor_autocomplete.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Editor\sql_editor_completion.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Editor\sql_editor_hover.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Editor\sql_editor_formatter.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Editor\sql_editor_bridge.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Editor\sql_editor.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="appsettings.json">

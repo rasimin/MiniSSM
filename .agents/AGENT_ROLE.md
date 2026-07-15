@@ -52,18 +52,18 @@ Larangan keras:
 
 ## Kebiasaan Saat Edit
 
-- Untuk Object Explorer, cek `MainWindow.xaml.cs`, `ObjectExplorerNode.cs`, dan `DatabaseHelper.cs`.
-- Untuk layout/show-hide Object Explorer, cek named columns/panel di `MainWindow.xaml` dan `ToggleObjectExplorer()` di `MainWindow.xaml.cs`.
-- Untuk perilaku tab query satu baris atau default isi editor baru, cek `MainWindow.xaml` dan `sql_editor.html`.
-- Untuk drag/reorder tab query, pastikan hanya header panel bertag `QueryTabDragHandle` yang bisa memulai drag di `MainWindow.xaml.cs`.
+- Untuk Object Explorer, cek `Windows\MainWindow.xaml.cs`, `Models\ObjectExplorerNode.cs`, dan `Services\DatabaseHelper.cs`.
+- Untuk layout/show-hide Object Explorer, cek named columns/panel di `Windows\MainWindow.xaml` dan `ToggleObjectExplorer()` di `Windows\MainWindow.xaml.cs`.
+- Untuk perilaku tab query satu baris atau default isi editor baru, cek `Windows\MainWindow.xaml` dan `Editor\sql_editor.js`.
+- Untuk drag/reorder tab query, pastikan hanya header panel bertag `QueryTabDragHandle` yang bisa memulai drag di `Windows\MainWindow.xaml.cs`.
 - Jangan reorder `TabQueryControls.Items` berulang saat mouse move; lakukan commit reorder tab sekali saat mouse-up agar UI tidak patah-patah.
-- Untuk ukuran scrollbar, jaga standar 6px di `App.xaml`, `MainWindow.xaml`, dan `sql_editor.html`.
-- Untuk splitter editor/results, cek `QueryTabControl.xaml` dan handler `EditorResultsSplitter_DragDelta` / `ResultsPane_PreviewMouse*` di `QueryTabControl.xaml.cs`; splitter harus resize row editor dan results, bukan menggeser header tab.
-- Untuk editor SQL/Monaco, cek `sql_editor.html` dan `QueryTabControl.xaml.cs`.
-- Untuk logging/error auto close, cek `AppLogger.cs`, global handlers di `App.xaml.cs`, dan event create/close tab di `MainWindow.xaml.cs`.
-- Untuk UI utama, cek `MainWindow.xaml`.
+- Untuk ukuran scrollbar, jaga standar 6px di `App.xaml`, `Windows\MainWindow.xaml`, dan `Editor\sql_editor.js`.
+- Untuk splitter editor/results, cek `Controls\QueryTabControl.xaml` dan handler `EditorResultsSplitter_DragDelta` / `ResultsPane_PreviewMouse*` di `Controls\QueryTabControl.xaml.cs`; splitter harus resize row editor dan results, bukan menggeser header tab.
+- Untuk editor SQL/Monaco, cek file `Editor\sql_editor*.js`, `Editor\sql_editor.html`, dan `Controls\QueryTabControl.xaml.cs`.
+- Untuk logging/error auto close, cek `Services\AppLogger.cs`, global handlers di `App.xaml.cs`, dan event create/close tab di `Windows\MainWindow.xaml.cs`.
+- Untuk UI utama, cek `Windows\MainWindow.xaml`.
 - Untuk style global, cek `App.xaml`.
-- Untuk dialog koneksi, cek `ConnectionWindow.xaml` dan `ConnectionWindow.xaml.cs`.
+- Untuk dialog koneksi, cek `Windows\ConnectionWindow.xaml` dan `Windows\ConnectionWindow.xaml.cs`.
 
 ## Bahasa Respons
 

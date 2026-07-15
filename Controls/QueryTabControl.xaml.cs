@@ -163,9 +163,11 @@ namespace SSMS
                 await SqlEditorWebView.EnsureCoreWebView2Async(env);
                 SqlEditorWebView.DefaultBackgroundColor = Drawing.Color.FromArgb(30, 30, 30);
 
-                string htmlPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sql_editor.html");
+                string editorDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Editor");
+                string htmlPath = Path.Combine(editorDirectory, "sql_editor.html");
                 if (!File.Exists(htmlPath))
                 {
+                    Directory.CreateDirectory(editorDirectory);
                     File.WriteAllText(htmlPath, GetDefaultHtmlContent());
                 }
 
@@ -569,7 +571,7 @@ namespace SSMS
         {
             try
             {
-                var resource = Application.GetResourceStream(new Uri("SqlDark.xshd", UriKind.Relative));
+                var resource = Application.GetResourceStream(new Uri("Resources/SqlDark.xshd", UriKind.Relative));
                 if (resource == null)
                 {
                     return HighlightingManager.Instance.GetDefinition("SQL");
@@ -1456,6 +1458,43 @@ namespace SSMS
             };
             int rowSelectionAnchor = -1;
             bool isDraggingRowSelection = false;
+            List<(int RowIndex, int ColumnIndex)>? rightClickSelectionSnapshot = null;
+            bool rightClickWasOnSelection = false;
+
+            void CaptureSelectionSnapshot()
+            {
+                rightClickSelectionSnapshot = dataGrid.SelectedCells
+                    .Cast<WinForms.DataGridViewCell>()
+                    .Select(cell => (cell.RowIndex, cell.ColumnIndex))
+                    .ToList();
+            }
+
+            void RestoreSelectionSnapshot()
+            {
+                if (rightClickSelectionSnapshot == null || rightClickSelectionSnapshot.Count == 0)
+                {
+                    return;
+                }
+
+                dataGrid.ClearSelection();
+                foreach (var (rowIndex, columnIndex) in rightClickSelectionSnapshot)
+                {
+                    if (rowIndex < 0 || rowIndex >= dataGrid.RowCount ||
+                        columnIndex < 0 || columnIndex >= dataGrid.ColumnCount)
+                    {
+                        continue;
+                    }
+
+                    dataGrid.Rows[rowIndex].Cells[columnIndex].Selected = true;
+                }
+
+                var firstSelected = rightClickSelectionSnapshot[0];
+                if (firstSelected.RowIndex >= 0 && firstSelected.RowIndex < dataGrid.RowCount &&
+                    firstSelected.ColumnIndex >= 0 && firstSelected.ColumnIndex < dataGrid.ColumnCount)
+                {
+                    dataGrid.CurrentCell = dataGrid.Rows[firstSelected.RowIndex].Cells[firstSelected.ColumnIndex];
+                }
+            }
 
             void SelectRowRange(int targetRow)
             {
@@ -1485,7 +1524,23 @@ namespace SSMS
             {
                 if (e.Button == WinForms.MouseButtons.Right && e.RowIndex >= 0 && e.ColumnIndex >= 0)
                 {
-                    dataGrid.CurrentCell = dataGrid.Rows[e.RowIndex].Cells[e.ColumnIndex];
+                    var clickedCell = dataGrid.Rows[e.RowIndex].Cells[e.ColumnIndex];
+                    rightClickWasOnSelection = clickedCell.Selected;
+
+                    if (rightClickWasOnSelection)
+                    {
+                        // Keep the whole selection available for Copy, just like SSMS.
+                        CaptureSelectionSnapshot();
+                        dataGrid.CurrentCell = clickedCell;
+                    }
+                    else
+                    {
+                        rightClickSelectionSnapshot = null;
+                        dataGrid.ClearSelection();
+                        clickedCell.Selected = true;
+                        dataGrid.CurrentCell = clickedCell;
+                    }
+
                     return;
                 }
 
@@ -1578,6 +1633,18 @@ namespace SSMS
                     column.Width = Math.Min(10000, column.Width + 200);
                 }
             });
+            contextMenu.Opening += (_, _) =>
+            {
+                if (rightClickWasOnSelection)
+                {
+                    RestoreSelectionSnapshot();
+                }
+            };
+            contextMenu.Closed += (_, _) =>
+            {
+                rightClickSelectionSnapshot = null;
+                rightClickWasOnSelection = false;
+            };
             dataGrid.ContextMenuStrip = contextMenu;
             dataGrid.DataSource = dataTable;
             _resultGrids.Add(dataGrid);

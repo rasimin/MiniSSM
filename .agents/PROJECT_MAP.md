@@ -11,34 +11,41 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 - SQL client library: `Microsoft.Data.SqlClient`.
 - Query history lokal: `Microsoft.Data.Sqlite`, disimpan di `%LocalAppData%\MiniSSMS\Data\query-history.db`.
 - Editor SQL: Monaco Editor di dalam `Microsoft.Web.WebView2`.
-- File HTML editor: `sql_editor.html`, disalin ke output lewat `SSMS.csproj`.
+- File host editor: `Editor\sql_editor.html`; style host ada di `Editor\sql_editor.css`; state global ada di `Editor\sql_editor_state.js`; katalog keyword/function T-SQL ada di `Editor\sql_editor_catalog.js`; helper autocomplete/parser ada di `Editor\sql_editor_autocomplete.js`; provider completion ada di `Editor\sql_editor_completion.js`; hover ada di `Editor\sql_editor_hover.js`; formatter ada di `Editor\sql_editor_formatter.js`; bridge C# ada di `Editor\sql_editor_bridge.js`; bootstrap Monaco ada di `Editor\sql_editor.js`; semuanya disalin ke output lewat `SSMS.csproj`.
 
 ## File Utama
 
 | File | Isi / tanggung jawab |
 | --- | --- |
-| `SSMS.csproj` | Target framework, package WebView2 dan SqlClient, aturan copy `sql_editor.html`. |
+| `SSMS.csproj` | Target framework, package WebView2 dan SqlClient, aturan copy file editor `sql_editor*` dan `appsettings.json`. |
 | `Properties/PublishProfiles/FolderProfile.pubxml` | Publish profile Release ke folder lokal `D:\\Publish\\SSMS`. |
 | `App.xaml` | Style global WPF: scrollbar, DataGrid, DataGrid cell/header, ContextMenu, MenuItem. |
 | `App.xaml.cs` | Startup aplikasi. Biasanya membuka `ConnectionWindow`, lalu `MainWindow` jika koneksi sukses. |
-| `ConnectionWindow.xaml` | UI dialog koneksi SQL Server. |
-| `ConnectionWindow.xaml.cs` | Build connection string, test/connect, simpan history koneksi ke `connection_settings.json`. |
-| `MainWindow.xaml` | Layout utama: toolbar, Object Explorer, tab query, status bar, style lokal toolbar/tree/tab. |
-| `MainWindow.xaml.cs` | Orkestrasi aplikasi utama: tab query, Object Explorer, context menu, shortcut, open/save script, script object. |
-| `QueryTabControl.xaml` | Layout satu tab query: WebView2 editor, splitter, Results/Messages tab, loading overlay. |
-| `QueryTabControl.xaml.cs` | Inisialisasi WebView2/Monaco, eksekusi query, tampilkan result grid, cache autocomplete metadata. |
-| `DatabaseHelper.cs` | Semua akses SQL Server: metadata database/object, eksekusi query, generate script. |
-| `SqlBatchSplitter.cs` | Memecah script pada separator `GO`/`GO n` tanpa memecah `GO` di string atau comment; dipakai semua mode eksekusi. |
-| `ObjectExplorerNode.cs` | Model data `Tag` untuk node TreeView Object Explorer. |
-| `AppLogger.cs` | Logger file sederhana untuk error global dan event penting seperti create/close tab. Log tersimpan di `logs\minissms-YYYYMMDD.log` dalam output app. |
-| `AppSettings.cs` | Model serta load/save parameter aplikasi dari `appsettings.json`. |
-| `SettingsWindow.xaml`, `SettingsWindow.xaml.cs` | Dialog Settings dari ikon gear di kanan toolbar; saat ini mengatur query command timeout. |
-| `UnsavedChangesWindow.xaml`, `UnsavedChangesWindow.xaml.cs` | Dialog dark-mode custom untuk konfirmasi Save, Don't Save, atau Cancel saat menutup query yang masih berubah. |
-| `QueryHistoryEntry.cs` | Model satu record history eksekusi beserta properti display untuk grid. |
-| `QueryHistoryService.cs` | Inisialisasi schema SQLite, insert history, retention maksimum 10.000 record, dan pembacaan maksimum 300 record terbaru. |
-| `QueryHistoryWindow.xaml`, `QueryHistoryWindow.xaml.cs` | Window dark-mode untuk melihat query execution history, filter rentang tanggal/database/isi SQL, detail query/message, Copy Query, refresh, double-click, dan Open in New Query. |
-| `ObjectSearchWindow.xaml`, `ObjectSearchWindow.xaml.cs` | Pencarian table/view/routine/trigger/column lintas database yang dapat diakses pada satu server, lalu membuka SELECT atau definition. |
-| `sql_editor.html` | Monaco SQL editor, command JavaScript, autocomplete, bridge message ke WPF. |
+| `Windows\ConnectionWindow.xaml`, `Windows\ConnectionWindow.xaml.cs` | Dialog koneksi SQL Server, build connection string, test/connect, dan simpan history koneksi ke `connection_settings.json`. |
+| `Windows\MainWindow.xaml`, `Windows\MainWindow.xaml.cs` | Layout utama dan orkestrasi aplikasi: toolbar, Object Explorer, tab query, context menu, shortcut, open/save script, dan script object. |
+| `Controls\QueryTabControl.xaml`, `Controls\QueryTabControl.xaml.cs` | Layout dan logic satu tab query: WebView2 editor, splitter, Results/Messages tab, eksekusi query, result grid, dan cache autocomplete metadata. |
+| `Services\DatabaseHelper.cs` | Semua akses SQL Server: metadata database/object, eksekusi query, generate script. |
+| `Utilities\SqlBatchSplitter.cs` | Memecah script pada separator `GO`/`GO n` tanpa memecah `GO` di string atau comment; dipakai semua mode eksekusi. |
+| `Models\ObjectExplorerNode.cs` | Model data `Tag` untuk node TreeView Object Explorer. |
+| `Services\AppLogger.cs` | Logger file sederhana untuk error global dan event penting seperti create/close tab. Log tersimpan di `logs\minissms-YYYYMMDD.log` dalam output app. |
+| `Models\AppSettings.cs` | Model serta load/save parameter aplikasi dari `appsettings.json`. |
+| `Windows\SettingsWindow.xaml`, `Windows\SettingsWindow.xaml.cs` | Dialog Settings dari ikon gear di kanan toolbar; saat ini mengatur query command timeout. |
+| `Windows\UnsavedChangesWindow.xaml`, `Windows\UnsavedChangesWindow.xaml.cs` | Dialog dark-mode custom untuk konfirmasi Save, Don't Save, atau Cancel saat menutup query yang masih berubah. |
+| `Models\QueryHistoryEntry.cs` | Model satu record history eksekusi beserta properti display untuk grid. |
+| `Services\QueryHistoryService.cs` | Inisialisasi schema SQLite, insert history, retention maksimum 10.000 record, dan pembacaan maksimum 300 record terbaru. |
+| `Windows\QueryHistoryWindow.xaml`, `Windows\QueryHistoryWindow.xaml.cs` | Window dark-mode untuk melihat query execution history, filter rentang tanggal/database/isi SQL, detail query/message, Copy Query, refresh, double-click, dan Open in New Query. |
+| `Windows\ObjectSearchWindow.xaml`, `Windows\ObjectSearchWindow.xaml.cs` | Pencarian table/view/routine/trigger/column lintas database yang dapat diakses pada satu server, lalu membuka SELECT atau definition. |
+| `Editor\sql_editor.html` | Host ringan WebView2 untuk container Monaco, stylesheet, require.js, catalog, dan script editor. |
+| `Editor\sql_editor.css` | Style host WebView2/Monaco container. |
+| `Editor\sql_editor_state.js` | Konfigurasi require.js dan state global editor/metadata. |
+| `Editor\sql_editor_catalog.js` | Katalog keyword, data type, dan built-in function T-SQL untuk autocomplete. |
+| `Editor\sql_editor_autocomplete.js` | Helper parsing statement aktif, alias/source query, lookup kolom, metadata lintas database, dan hover object/column info. |
+| `Editor\sql_editor_completion.js` | Provider autocomplete Monaco untuk keyword, table, schema, routine, parameter, dan kolom. |
+| `Editor\sql_editor_hover.js` | Provider hover Monaco dan command `View Schema / Definition`. |
+| `Editor\sql_editor_formatter.js` | Formatter SQL sederhana untuk selection atau dokumen penuh. |
+| `Editor\sql_editor_bridge.js` | Fungsi callable dari WPF seperti get/set text, comment/uncomment, insert text, focus, dan update metadata. |
+| `Editor\sql_editor.js` | Bootstrap Monaco: register provider, create editor, binding shortcut, dan event bridge ke WPF. |
+| `Resources\SqlDark.xshd` | Syntax highlighting resource untuk SQL editor fallback/AvalonEdit. |
 | `Assets/MiniSSMS.ico`, `Assets/MiniSSMS.png` | Icon aplikasi untuk executable dan window WPF. |
 
 ## Alur Aplikasi
@@ -49,20 +56,20 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 4. `MainWindow.Window_Loaded` memanggil `AddServerToExplorerAsync` dan membuat tab query pertama.
    Startup overlay tetap menutup workspace sampai Monaco pada tab pertama siap, dan background WebView2 dipaksa dark untuk mencegah blink putih saat transisi dari dialog koneksi.
 5. Setiap tab query adalah instance `QueryTabControl`.
-6. `QueryTabControl` memuat `sql_editor.html` ke WebView2, lalu update autocomplete dari metadata database.
+6. `QueryTabControl` memuat `Editor\sql_editor.html` ke WebView2, lalu update autocomplete dari metadata database.
 7. Tombol Execute/F5 memanggil `QueryTabControl.ExecuteQuery()`.
 8. Query dieksekusi oleh `DatabaseHelper.ExecuteQueryAsync()`, lalu hasil ditampilkan di DataGrid atau Messages.
 9. Setiap query yang benar-benar dikirim ke SQL Server dicatat ke SQLite setelah selesai, termasuk server, database awal/akhir, waktu, durasi, status, message, rows affected, dan jumlah row hasil SELECT; kegagalan history tidak menggagalkan query utama.
 
 ## Object Explorer
 
-Lokasi utama: `MainWindow.xaml.cs`.
+Lokasi utama: `Windows\MainWindow.xaml.cs`.
 
 - Root server dibuat di `AddServerToExplorerAsync`.
 - Lazy loading tree ada di `TreeItem_Expanded`.
 - Expand node menahan `RequestBringIntoView` agar posisi scroll Object Explorer tidak meloncat ke node yang dibuka.
 - Panel Object Explorer bisa di-hide/show lewat tombol toolbar `BtnToggleObjectExplorer` atau shortcut `F8`.
-- Toggle panel memakai `ObjectExplorerColumn`, `ObjectExplorerSplitterColumn`, `ObjectExplorerPanel`, dan `ObjectExplorerSplitter` di `MainWindow.xaml`, dengan logic di `ToggleObjectExplorer()` pada `MainWindow.xaml.cs`.
+- Toggle panel memakai `ObjectExplorerColumn`, `ObjectExplorerSplitterColumn`, `ObjectExplorerPanel`, dan `ObjectExplorerSplitter` di `Windows\MainWindow.xaml`, dengan logic di `ToggleObjectExplorer()` pada `Windows\MainWindow.xaml.cs`.
 - Node type disimpan di `TreeViewItem.Tag` sebagai `ObjectExplorerNode`.
 - Struktur umum:
   - `Server`
@@ -90,31 +97,33 @@ Saat menambah node baru:
 
 1. Tambahkan `NodeType` baru di `ObjectExplorerNode` usage.
 2. Tambahkan cabang lazy-load di `TreeItem_Expanded`.
-3. Tambahkan method SQL metadata di `DatabaseHelper.cs` jika perlu.
+3. Tambahkan method SQL metadata di `Services\DatabaseHelper.cs` jika perlu.
 4. Tambahkan context menu jika node perlu aksi.
 
 ## Query Tab dan Editor
 
 Lokasi utama:
 
-- WPF container: `QueryTabControl.xaml`.
-- Logic tab: `QueryTabControl.xaml.cs`.
-- Monaco editor: `sql_editor.html`.
-- Tab management: `MainWindow.xaml.cs`.
+- WPF container: `Controls\QueryTabControl.xaml`.
+- Logic tab: `Controls\QueryTabControl.xaml.cs`.
+- Monaco editor host: `Editor\sql_editor.html`.
+- Monaco editor style/state/catalog: `Editor\sql_editor.css`, `Editor\sql_editor_state.js`, `Editor\sql_editor_catalog.js`.
+- Monaco editor logic: `Editor\sql_editor_autocomplete.js`, `Editor\sql_editor_completion.js`, `Editor\sql_editor_hover.js`, `Editor\sql_editor_formatter.js`, `Editor\sql_editor_bridge.js`, `Editor\sql_editor.js`.
+- Tab management: `Windows\MainWindow.xaml.cs`.
 
 Hal penting:
 
 - `CreateNewQueryTab(...)` membuat tab baru di posisi paling kiri (`Insert(0, tabItem)`) lalu memilih tab baru.
-- Tab query baru kosong secara default; default editor value ada di `sql_editor.html`.
-- Header tab query memakai style `QueryTabsControl` di `MainWindow.xaml` agar tetap satu baris dengan horizontal scroll, bukan wrap bertingkat.
-- Scrollbar standar project memakai ukuran 6px: `StandardScrollBar` di `App.xaml` dipakai eksplisit oleh template `ScrollViewer`, DataGrid, Object Explorer external `ScrollViewer`, header tab query, dan Monaco editor di `sql_editor.html`.
+- Tab query baru kosong secara default; default editor value ada di `sql_editor.js`.
+- Header tab query memakai style `QueryTabsControl` di `Windows\MainWindow.xaml` agar tetap satu baris dengan horizontal scroll, bukan wrap bertingkat.
+- Scrollbar standar project memakai ukuran 6px: `StandardScrollBar` di `App.xaml` dipakai eksplisit oleh template `ScrollViewer`, DataGrid, Object Explorer external `ScrollViewer`, header tab query, dan Monaco editor di `Editor\sql_editor.js`.
 - Scrollbar horizontal harus memakai command `PageLeft/PageRight`; scrollbar vertical memakai `PageUp/PageDown`.
-- Splitter editor/results memakai `EditorResultsSplitter` berbasis `Thumb` di `QueryTabControl.xaml`, plus resize fallback di 12px teratas `ResultsPane`; logic ada di `QueryTabControl.xaml.cs`.
+- Splitter editor/results memakai `EditorResultsSplitter` berbasis `Thumb` di `Controls\QueryTabControl.xaml`, plus resize fallback di 12px teratas `ResultsPane`; logic ada di `Controls\QueryTabControl.xaml.cs`.
 - Scrollbar horizontal result grid menghitung viewport area kolom tanpa lebar row-number header, sehingga posisi paling kanan menampilkan kolom terakhir secara penuh.
 - Lebar kolom result grid dapat disesuaikan tanpa ruang drag di tepi monitor: double-click divider menjalankan auto-fit, sedangkan context menu sel menyediakan `Auto Fit Column` dan `Widen Column (+200 px)`.
 - Tab schema di area bawah Results memiliki context menu Close, Close All, dan Set Color yang hanya memengaruhi tab schema pada `TabResults`.
-- Drag tab query di `MainWindow.xaml.cs` hanya boleh mulai dari header panel bertag `QueryTabDragHandle`; saat drag tab hanya bergerak visual, reorder `Items` dilakukan sekali di mouse-up lewat `CommitTabDrag()` agar tidak patah-patah.
-- Logging global dipasang di `App.xaml.cs` untuk UI exception, domain exception, dan unobserved task exception. `MainWindow.xaml.cs` juga log create/close query tab.
+- Drag tab query di `Windows\MainWindow.xaml.cs` hanya boleh mulai dari header panel bertag `QueryTabDragHandle`; saat drag tab hanya bergerak visual, reorder `Items` dilakukan sekali di mouse-up lewat `CommitTabDrag()` agar tidak patah-patah.
+- Logging global dipasang di `App.xaml.cs` untuk UI exception, domain exception, dan unobserved task exception. `Windows\MainWindow.xaml.cs` juga log create/close query tab.
 - `TabQueryControls_SelectionChanged` sync status server/database dan combo database.
 - Query tab melacak perubahan Monaco dengan indikator `*`; Save menghapus indikator, sedangkan close tab/close aplikasi memakai `UnsavedChangesWindow` dark-mode untuk konfirmasi Save/Don’t Save/Cancel pada tab yang masih dirty.
 - Nama default dialog Save mengikuti judul tab tanpa indikator `*`, dan penyimpanan selalu mengambil seluruh isi editor meskipun ada selection.
@@ -142,11 +151,11 @@ Hal penting:
 - Eksekusi DDL `CREATE`/`ALTER`/`DROP` untuk table, view, procedure, atau function menginvalidasi cache database aktif dan me-refresh autocomplete.
 - Monaco mengirim pesan `editorReady` dan memasang binding eksplisit `Ctrl+Space`; metadata dikirim ulang setelah editor siap agar suggestion tidak kosong akibat race saat navigasi.
 
-Jika mengubah fitur editor seperti autocomplete, comment/uncomment, keyboard shortcut Monaco, atau get/set text, cek `sql_editor.html` dulu.
+Jika mengubah fitur editor seperti autocomplete, comment/uncomment, keyboard shortcut Monaco, atau get/set text, cek file `Editor\sql_editor_*.js` yang sesuai dulu: completion di `Editor\sql_editor_completion.js`, parser/helper di `Editor\sql_editor_autocomplete.js`, formatter di `Editor\sql_editor_formatter.js`, bridge WPF di `Editor\sql_editor_bridge.js`, bootstrap/binding editor di `Editor\sql_editor.js`. Cek `Editor\sql_editor_catalog.js` untuk keyword/function static, dan `Editor\sql_editor.html`/`Editor\sql_editor.css` hanya untuk host/container WebView.
 
 ## DatabaseHelper
 
-Lokasi: `DatabaseHelper.cs`.
+Lokasi: `Services\DatabaseHelper.cs`.
 
 Method penting:
 
@@ -183,30 +192,30 @@ Pola yang dipakai:
 ## UI dan Style
 
 - Style global ada di `App.xaml`.
-- Style khusus window utama ada di `MainWindow.xaml`.
-- Style connection dialog ada di `ConnectionWindow.xaml`.
+- Style khusus window utama ada di `Windows\MainWindow.xaml`.
+- Style connection dialog ada di `Windows\ConnectionWindow.xaml`.
 - Style result grid mengikuti style global `DataGrid` di `App.xaml`.
-- TreeView Object Explorer saat ini memakai header string langsung, termasuk icon emoji di `MainWindow.xaml.cs`.
+- TreeView Object Explorer saat ini memakai header string langsung, termasuk icon emoji di `Windows\MainWindow.xaml.cs`.
 - Template header TreeView memakai `ContentPresenter` tanpa `HeaderTemplate` berbasis `TextBlock`, sehingga header string dan header control interaktif untuk filter sama-sama dirender dengan benar.
 
 Jika mengubah tampilan:
 
 - Cek dulu style existing agar konsisten dengan dark theme.
 - Jangan refactor besar style global kalau perubahan hanya untuk satu area kecil.
-- Untuk icon Object Explorer, cari string `Header =` di `MainWindow.xaml.cs`.
+- Untuk icon Object Explorer, cari string `Header =` di `Windows\MainWindow.xaml.cs`.
 
 ## Area Perubahan Cepat
 
 | Permintaan user | File yang dicek dulu |
 | --- | --- |
-| Ubah tree Object Explorer | `MainWindow.xaml.cs`, `ObjectExplorerNode.cs`, `DatabaseHelper.cs` |
-| Ubah show/hide Object Explorer | `MainWindow.xaml`, `MainWindow.xaml.cs` |
-| Tambah metadata SQL object | `DatabaseHelper.cs`, lalu `MainWindow.xaml.cs` |
-| Ubah toolbar atau shortcut | `MainWindow.xaml`, `MainWindow.xaml.cs` |
-| Ubah tab query | `MainWindow.xaml.cs`, `QueryTabControl.xaml`, `QueryTabControl.xaml.cs` |
-| Ubah hasil query/grid | `QueryTabControl.xaml.cs`, `App.xaml` |
-| Ubah Monaco editor | `sql_editor.html`, `QueryTabControl.xaml.cs` |
-| Ubah connection dialog | `ConnectionWindow.xaml`, `ConnectionWindow.xaml.cs` |
+| Ubah tree Object Explorer | `Windows\MainWindow.xaml.cs`, `Models\ObjectExplorerNode.cs`, `Services\DatabaseHelper.cs` |
+| Ubah show/hide Object Explorer | `Windows\MainWindow.xaml`, `Windows\MainWindow.xaml.cs` |
+| Tambah metadata SQL object | `Services\DatabaseHelper.cs`, lalu `Windows\MainWindow.xaml.cs` |
+| Ubah toolbar atau shortcut | `Windows\MainWindow.xaml`, `Windows\MainWindow.xaml.cs` |
+| Ubah tab query | `Windows\MainWindow.xaml.cs`, `Controls\QueryTabControl.xaml`, `Controls\QueryTabControl.xaml.cs` |
+| Ubah hasil query/grid | `Controls\QueryTabControl.xaml.cs`, `App.xaml` |
+| Ubah Monaco editor | `Editor\sql_editor_*.js`, `Editor\sql_editor.html`, `Editor\sql_editor.css`, `Controls\QueryTabControl.xaml.cs` |
+| Ubah connection dialog | `Windows\ConnectionWindow.xaml`, `Windows\ConnectionWindow.xaml.cs` |
 | Ubah theme global | `App.xaml` |
 | Ubah package/build | `SSMS.csproj` |
 
