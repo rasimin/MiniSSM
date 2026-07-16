@@ -25,8 +25,10 @@
                     var activeSqlInfo = getActiveSqlText(model, position);
                     var activeSql = activeSqlInfo.text;
                     var activeCursorOffset = activeSqlInfo.cursorOffset;
+                    var includeFollowingSources = isSelectListContext(activeSql, activeCursorOffset);
+                    var sourceLookupOffset = includeFollowingSources ? undefined : activeCursorOffset;
                     getLocalObjects(fullSql);
-                    var querySources = getQuerySources(activeSql, activeCursorOffset);
+                    var querySources = getQuerySources(activeSql, sourceLookupOffset);
 
                     // Suggest routine parameters after EXEC proc or inside a function call.
                     var routineContext = textBeforeCursor.match(/\bEXEC(?:UTE)?\s+([\[\]a-zA-Z0-9_.]+)\s+(?:[^;]*)$/i) ||
@@ -215,7 +217,7 @@
 
                             // 3. Check if the identifier is a Table Alias
                             if (!columns) {
-                                var realTableName = getTableForAlias(identifier, activeSql, activeCursorOffset);
+                                var realTableName = getTableForAlias(identifier, activeSql, sourceLookupOffset);
                                 if (realTableName) {
                                     columns = tableColumns[realTableName];
                                     columnSource = {

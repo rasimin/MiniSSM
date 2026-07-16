@@ -17,10 +17,72 @@
             var cursorOffset = model.getOffsetAt(position);
             var beforeCursor = fullText.substring(0, cursorOffset);
             var startOffset = findActiveStatementStart(beforeCursor);
+            var endOffset = findActiveStatementEnd(fullText, startOffset, cursorOffset);
             return {
-                text: fullText.substring(startOffset, cursorOffset),
+                text: fullText.substring(startOffset, endOffset),
                 cursorOffset: cursorOffset - startOffset
             };
+        }
+
+        function findActiveStatementEnd(sqlText, startOffset, cursorOffset) {
+            var depth = 0;
+            var quote = null;
+            var bracketDepth = 0;
+            var lineStart = startOffset;
+
+            for (var i = startOffset; i <= sqlText.length; i++) {
+                var ch = i < sqlText.length ? sqlText[i] : '\n';
+
+                if (quote) {
+                    if (ch === quote) {
+                        if (quote === "'" && sqlText[i + 1] === "'") {
+                            i++;
+                        } else {
+                            quote = null;
+                        }
+                    }
+                } else if (bracketDepth > 0) {
+                    if (ch === ']') bracketDepth--;
+                } else {
+                    if (ch === "'" || ch === '"') {
+                        quote = ch;
+                    } else if (ch === '[') {
+                        bracketDepth++;
+                    } else if (ch === '(') {
+                        depth++;
+                    } else if (ch === ')') {
+                        depth = Math.max(0, depth - 1);
+                    } else if (ch === ';' && depth === 0 && i >= cursorOffset) {
+                        return i;
+                    } else if (ch === '\n' && depth === 0) {
+                        var line = sqlText.substring(lineStart, i);
+                        if (lineStart > cursorOffset &&
+                            (/^\s*GO\s*(?:\d+)?\s*$/i.test(line) ||
+                             /^\s*(?:WITH|SELECT|INSERT|UPDATE|DELETE|MERGE)\b/i.test(line))) {
+                            return lineStart;
+                        }
+                    }
+                }
+
+                if (ch === '\n') {
+                    lineStart = i + 1;
+                }
+            }
+
+            return sqlText.length;
+        }
+
+        function isSelectListContext(sqlText, cursorOffset) {
+            var textBeforeCursor = sqlText.substring(0, cursorOffset);
+            var keywordRegex = /\b(SELECT|FROM)\b/gi;
+            var match;
+            var lastKeyword = '';
+
+            while ((match = keywordRegex.exec(textBeforeCursor)) !== null) {
+                lastKeyword = match[1].toUpperCase();
+            }
+
+            return lastKeyword === 'SELECT';
         }
 
         function findActiveStatementStart(sqlText) {
