@@ -93,7 +93,8 @@ namespace SSMS
         private static Task<CoreWebView2Environment> CreateSharedEnvironmentAsync()
         {
             string userDataFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebView2_UserData");
-            return CoreWebView2Environment.CreateAsync(null, userDataFolder);
+            var options = new CoreWebView2EnvironmentOptions("--process-per-site --renderer-process-limit=1");
+            return CoreWebView2Environment.CreateAsync(null, userDataFolder, options);
         }
 
         public QueryTabControl(string connectionString, string databaseName)
