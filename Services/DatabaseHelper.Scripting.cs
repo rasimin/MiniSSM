@@ -1,0 +1,557 @@
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Data.SqlClient;
+
+namespace SSMS
+{
+    public static partial class DatabaseHelper
+    {
+        public static async Task<string> GetObjectDefinitionAsync(string connectionString, string databaseName, string objectName)
+        {
+            var dbConnString = BuildConnectionString(connectionString, databaseName);
+            using (var connection = new SqlConnection(dbConnString))
+            {
+                await connection.OpenAsync();
+                var query = "SELECT definition FROM sys.sql_modules WHERE object_id = OBJECT_ID(@ObjectName);";
+                using (var command = new SqlCommand(query, connection))
+                {
+                    command.Parameters.AddWithValue("@ObjectName", objectName);
+                    var result = await command.ExecuteScalarAsync();
+                    return result?.ToString() ?? string.Empty;
+                }
+            }
+        }
+
+        public static async Task<string> GenerateTableCreateScriptAsync(string connectionString, string databaseName, string tableName)
+        {
+            var columns = new List<TableColumnScriptInfo>();
+            var keyConstraints = new Dictionary<int, KeyConstraintScriptInfo>();
+            var checks = new List<CheckConstraintScriptInfo>();
+            var foreignKeys = new Dictionary<int, ForeignKeyScriptInfo>();
+            var indexes = new Dictionary<int, IndexScriptInfo>();
+            var triggers = new List<TriggerScriptInfo>();
+            string schemaName;
+            string resolvedTableName;
+            var dbConnString = BuildConnectionString(connectionString, databaseName);
+
+            using (var connection = new SqlConnection(dbConnString))
+            {
+                await connection.OpenAsync();
+                const string query = @"
+DECLARE @ObjectId INT = OBJECT_ID(@TableName, N'U');
+IF @ObjectId IS NULL
+    THROW 50000, 'Table was not found in the selected database.', 1;
+
+SELECT s.name AS SchemaName, tb.name AS TableName
+FROM sys.tables tb
+JOIN sys.schemas s ON s.schema_id = tb.schema_id
+WHERE tb.object_id = @ObjectId;
+
+SELECT c.column_id, c.name, ts.name AS TypeSchema, ty.name AS TypeName,
+       ty.is_user_defined, c.max_length, c.precision, c.scale, c.is_nullable,
+       c.collation_name,
+       CONVERT(NVARCHAR(100), ic.seed_value) AS IdentitySeed,
+       CONVERT(NVARCHAR(100), ic.increment_value) AS IdentityIncrement,
+       cc.definition AS ComputedDefinition, ISNULL(cc.is_persisted, 0) AS IsPersisted,
+       dc.name AS DefaultName, dc.definition AS DefaultDefinition,
+       c.is_rowguidcol, c.is_sparse, c.is_column_set
+FROM sys.columns c
+JOIN sys.types ty ON ty.user_type_id = c.user_type_id
+JOIN sys.schemas ts ON ts.schema_id = ty.schema_id
+LEFT JOIN sys.identity_columns ic ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+LEFT JOIN sys.computed_columns cc ON cc.object_id = c.object_id AND cc.column_id = c.column_id
+LEFT JOIN sys.default_constraints dc ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
+WHERE c.object_id = @ObjectId
+ORDER BY c.column_id;
+
+SELECT kc.object_id AS ConstraintId, kc.name, kc.type, i.type_desc, ds.name AS DataSpaceName,
+       ds.type_desc AS DataSpaceType, ic.key_ordinal, c.name AS ColumnName,
+       ic.is_descending_key, ic.partition_ordinal
+FROM sys.key_constraints kc
+JOIN sys.indexes i ON i.object_id = kc.parent_object_id AND i.index_id = kc.unique_index_id
+JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id AND ic.key_ordinal > 0
+JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+LEFT JOIN sys.data_spaces ds ON ds.data_space_id = i.data_space_id
+WHERE kc.parent_object_id = @ObjectId
+ORDER BY kc.object_id, ic.key_ordinal;
+
+SELECT object_id, name, definition, is_not_for_replication, is_disabled, is_not_trusted
+FROM sys.check_constraints
+WHERE parent_object_id = @ObjectId
+ORDER BY name;
+
+SELECT fk.object_id, fk.name, rs.name AS ReferencedSchema, rt.name AS ReferencedTable,
+       fk.delete_referential_action_desc, fk.update_referential_action_desc,
+       fk.is_not_for_replication, fk.is_disabled, fk.is_not_trusted,
+       fkc.constraint_column_id, pc.name AS ParentColumn, rc.name AS ReferencedColumn
+FROM sys.foreign_keys fk
+JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
+JOIN sys.tables rt ON rt.object_id = fk.referenced_object_id
+JOIN sys.schemas rs ON rs.schema_id = rt.schema_id
+JOIN sys.columns pc ON pc.object_id = fk.parent_object_id AND pc.column_id = fkc.parent_column_id
+JOIN sys.columns rc ON rc.object_id = fk.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+WHERE fk.parent_object_id = @ObjectId
+ORDER BY fk.object_id, fkc.constraint_column_id;
+
+SELECT i.index_id, i.name, i.type, i.type_desc, i.is_unique, i.has_filter, i.filter_definition,
+       ds.name AS DataSpaceName, ds.type_desc AS DataSpaceType, ic.index_column_id,
+       ic.key_ordinal, ic.is_included_column, ic.is_descending_key,
+       ic.partition_ordinal, c.name AS ColumnName, i.is_disabled
+FROM sys.indexes i
+LEFT JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+LEFT JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+LEFT JOIN sys.data_spaces ds ON ds.data_space_id = i.data_space_id
+WHERE i.object_id = @ObjectId
+  AND i.index_id > 0
+  AND i.name IS NOT NULL
+  AND i.is_primary_key = 0
+  AND i.is_unique_constraint = 0
+  AND i.is_hypothetical = 0
+ORDER BY i.index_id, ic.is_included_column, ic.key_ordinal, ic.index_column_id;
+
+SELECT tr.name, tr.is_disabled, sm.definition, sm.uses_ansi_nulls, sm.uses_quoted_identifier
+FROM sys.triggers tr
+LEFT JOIN sys.sql_modules sm ON sm.object_id = tr.object_id
+WHERE tr.parent_id = @ObjectId
+ORDER BY tr.name;";
+
+                using (var command = new SqlCommand(query, connection))
+                {
+                    command.Parameters.AddWithValue("@TableName", tableName);
+                    using (var reader = await command.ExecuteReaderAsync())
+                    {
+                        if (!await reader.ReadAsync())
+                        {
+                            throw new InvalidOperationException($"Table '{tableName}' was not found.");
+                        }
+
+                        schemaName = reader.GetString(0);
+                        resolvedTableName = reader.GetString(1);
+
+                        await reader.NextResultAsync();
+                        while (await reader.ReadAsync())
+                        {
+                            columns.Add(new TableColumnScriptInfo
+                            {
+                                Name = reader.GetString(1),
+                                TypeSchema = reader.GetString(2),
+                                TypeName = reader.GetString(3),
+                                IsUserDefined = reader.GetBoolean(4),
+                                MaxLength = reader.GetInt16(5),
+                                Precision = reader.GetByte(6),
+                                Scale = reader.GetByte(7),
+                                IsNullable = reader.GetBoolean(8),
+                                CollationName = reader.IsDBNull(9) ? null : reader.GetString(9),
+                                IdentitySeed = reader.IsDBNull(10) ? null : reader.GetString(10),
+                                IdentityIncrement = reader.IsDBNull(11) ? null : reader.GetString(11),
+                                ComputedDefinition = reader.IsDBNull(12) ? null : reader.GetString(12),
+                                IsPersisted = reader.GetBoolean(13),
+                                DefaultName = reader.IsDBNull(14) ? null : reader.GetString(14),
+                                DefaultDefinition = reader.IsDBNull(15) ? null : reader.GetString(15),
+                                IsRowGuid = reader.GetBoolean(16),
+                                IsSparse = reader.GetBoolean(17),
+                                IsColumnSet = reader.GetBoolean(18)
+                            });
+                        }
+
+                        await reader.NextResultAsync();
+                        while (await reader.ReadAsync())
+                        {
+                            int id = reader.GetInt32(0);
+                            if (!keyConstraints.TryGetValue(id, out var constraint))
+                            {
+                                constraint = new KeyConstraintScriptInfo
+                                {
+                                    Name = reader.GetString(1),
+                                    IsPrimaryKey = reader.GetString(2) == "PK",
+                                    IndexType = reader.GetString(3),
+                                    DataSpaceName = reader.IsDBNull(4) ? null : reader.GetString(4),
+                                    DataSpaceType = reader.IsDBNull(5) ? null : reader.GetString(5)
+                                };
+                                keyConstraints.Add(id, constraint);
+                            }
+
+                            constraint.Columns.Add(new IndexColumnScriptInfo
+                            {
+                                Name = reader.GetString(7),
+                                IsDescending = reader.GetBoolean(8)
+                            });
+                            if (reader.GetByte(9) > 0)
+                            {
+                                constraint.PartitionColumnName = reader.GetString(7);
+                            }
+                        }
+
+                        await reader.NextResultAsync();
+                        while (await reader.ReadAsync())
+                        {
+                            checks.Add(new CheckConstraintScriptInfo
+                            {
+                                Name = reader.GetString(1),
+                                Definition = reader.GetString(2),
+                                IsNotForReplication = reader.GetBoolean(3),
+                                IsDisabled = reader.GetBoolean(4),
+                                IsNotTrusted = reader.GetBoolean(5)
+                            });
+                        }
+
+                        await reader.NextResultAsync();
+                        while (await reader.ReadAsync())
+                        {
+                            int id = reader.GetInt32(0);
+                            if (!foreignKeys.TryGetValue(id, out var foreignKey))
+                            {
+                                foreignKey = new ForeignKeyScriptInfo
+                                {
+                                    Name = reader.GetString(1),
+                                    ReferencedSchema = reader.GetString(2),
+                                    ReferencedTable = reader.GetString(3),
+                                    DeleteAction = reader.GetString(4),
+                                    UpdateAction = reader.GetString(5),
+                                    IsNotForReplication = reader.GetBoolean(6),
+                                    IsDisabled = reader.GetBoolean(7),
+                                    IsNotTrusted = reader.GetBoolean(8)
+                                };
+                                foreignKeys.Add(id, foreignKey);
+                            }
+
+                            foreignKey.ParentColumns.Add(reader.GetString(10));
+                            foreignKey.ReferencedColumns.Add(reader.GetString(11));
+                        }
+
+                        await reader.NextResultAsync();
+                        while (await reader.ReadAsync())
+                        {
+                            int id = reader.GetInt32(0);
+                            if (!indexes.TryGetValue(id, out var index))
+                            {
+                                index = new IndexScriptInfo
+                                {
+                                    Name = reader.GetString(1),
+                                    Type = reader.GetByte(2),
+                                    TypeDescription = reader.GetString(3),
+                                    IsUnique = reader.GetBoolean(4),
+                                    FilterDefinition = reader.IsDBNull(6) ? null : reader.GetString(6),
+                                    DataSpaceName = reader.IsDBNull(7) ? null : reader.GetString(7),
+                                    DataSpaceType = reader.IsDBNull(8) ? null : reader.GetString(8),
+                                    IsDisabled = reader.GetBoolean(15)
+                                };
+                                indexes.Add(id, index);
+                            }
+
+                            if (!reader.IsDBNull(14))
+                            {
+                                var indexColumn = new IndexColumnScriptInfo
+                                {
+                                    Name = reader.GetString(14),
+                                    IsDescending = reader.GetBoolean(12)
+                                };
+                                if (reader.GetBoolean(11))
+                                {
+                                    index.IncludedColumns.Add(indexColumn);
+                                }
+                                else
+                                {
+                                    index.KeyColumns.Add(indexColumn);
+                                }
+                                if (reader.GetByte(13) > 0)
+                                {
+                                    index.PartitionColumnName = reader.GetString(14);
+                                }
+                            }
+                        }
+
+                        await reader.NextResultAsync();
+                        while (await reader.ReadAsync())
+                        {
+                            triggers.Add(new TriggerScriptInfo
+                            {
+                                Name = reader.GetString(0),
+                                IsDisabled = reader.GetBoolean(1),
+                                Definition = reader.IsDBNull(2) ? null : reader.GetString(2),
+                                UsesAnsiNulls = reader.IsDBNull(3) || reader.GetBoolean(3),
+                                UsesQuotedIdentifier = reader.IsDBNull(4) || reader.GetBoolean(4)
+                            });
+                        }
+                    }
+                }
+            }
+
+            var sb = new System.Text.StringBuilder();
+            string qualifiedTableName = $"{QuoteIdentifier(schemaName)}.{QuoteIdentifier(resolvedTableName)}";
+            sb.AppendLine($"-- Complete CREATE script for {qualifiedTableName}");
+            sb.AppendLine("SET ANSI_NULLS ON;");
+            sb.AppendLine("SET QUOTED_IDENTIFIER ON;");
+            sb.AppendLine("GO");
+            sb.AppendLine();
+            sb.AppendLine($"CREATE TABLE {qualifiedTableName}");
+            sb.AppendLine("(");
+            for (int i = 0; i < columns.Count; i++)
+            {
+                sb.Append("    ");
+                sb.Append(BuildColumnDefinition(columns[i]));
+                sb.AppendLine(i < columns.Count - 1 ? "," : string.Empty);
+            }
+            sb.AppendLine(");");
+            sb.AppendLine("GO");
+
+            foreach (var constraint in keyConstraints.Values)
+            {
+                sb.AppendLine();
+                string constraintType = constraint.IsPrimaryKey ? "PRIMARY KEY" : "UNIQUE";
+                sb.AppendLine($"ALTER TABLE {qualifiedTableName} ADD CONSTRAINT {QuoteIdentifier(constraint.Name)} {constraintType} {NormalizeIndexType(constraint.IndexType)}");
+                AppendIndexColumnList(sb, constraint.Columns, includeSortDirection: true);
+                AppendDataSpaceClause(sb, constraint.DataSpaceName, constraint.DataSpaceType, constraint.PartitionColumnName);
+                sb.AppendLine(";");
+                sb.AppendLine("GO");
+            }
+
+            foreach (var check in checks)
+            {
+                sb.AppendLine();
+                string trustMode = check.IsNotTrusted ? "NOCHECK" : "CHECK";
+                string notForReplication = check.IsNotForReplication ? " NOT FOR REPLICATION" : string.Empty;
+                sb.AppendLine($"ALTER TABLE {qualifiedTableName} WITH {trustMode} ADD CONSTRAINT {QuoteIdentifier(check.Name)} CHECK{notForReplication} {check.Definition};");
+                sb.AppendLine($"ALTER TABLE {qualifiedTableName} {(check.IsDisabled ? "NOCHECK" : "CHECK")} CONSTRAINT {QuoteIdentifier(check.Name)};");
+                sb.AppendLine("GO");
+            }
+
+            foreach (var index in indexes.Values)
+            {
+                sb.AppendLine();
+                AppendIndexScript(sb, qualifiedTableName, index);
+                sb.AppendLine("GO");
+            }
+
+            foreach (var foreignKey in foreignKeys.Values)
+            {
+                sb.AppendLine();
+                string trustMode = foreignKey.IsNotTrusted ? "NOCHECK" : "CHECK";
+                sb.AppendLine($"ALTER TABLE {qualifiedTableName} WITH {trustMode} ADD CONSTRAINT {QuoteIdentifier(foreignKey.Name)} FOREIGN KEY");
+                AppendSimpleColumnList(sb, foreignKey.ParentColumns);
+                sb.AppendLine($"REFERENCES {QuoteIdentifier(foreignKey.ReferencedSchema)}.{QuoteIdentifier(foreignKey.ReferencedTable)}");
+                AppendSimpleColumnList(sb, foreignKey.ReferencedColumns);
+                if (foreignKey.DeleteAction != "NO_ACTION")
+                {
+                    sb.AppendLine($"ON DELETE {foreignKey.DeleteAction.Replace('_', ' ')}");
+                }
+                if (foreignKey.UpdateAction != "NO_ACTION")
+                {
+                    sb.AppendLine($"ON UPDATE {foreignKey.UpdateAction.Replace('_', ' ')}");
+                }
+                if (foreignKey.IsNotForReplication)
+                {
+                    sb.AppendLine("NOT FOR REPLICATION");
+                }
+                sb.AppendLine(";");
+                sb.AppendLine($"ALTER TABLE {qualifiedTableName} {(foreignKey.IsDisabled ? "NOCHECK" : "CHECK")} CONSTRAINT {QuoteIdentifier(foreignKey.Name)};");
+                sb.AppendLine("GO");
+            }
+
+            foreach (var trigger in triggers)
+            {
+                sb.AppendLine();
+                if (string.IsNullOrWhiteSpace(trigger.Definition))
+                {
+                    sb.AppendLine($"-- Trigger {QuoteIdentifier(trigger.Name)} is encrypted and could not be scripted.");
+                    continue;
+                }
+
+                sb.AppendLine($"SET ANSI_NULLS {(trigger.UsesAnsiNulls ? "ON" : "OFF")};");
+                sb.AppendLine("GO");
+                sb.AppendLine($"SET QUOTED_IDENTIFIER {(trigger.UsesQuotedIdentifier ? "ON" : "OFF")};");
+                sb.AppendLine("GO");
+                sb.AppendLine(trigger.Definition.Trim());
+                sb.AppendLine("GO");
+                if (trigger.IsDisabled)
+                {
+                    sb.AppendLine($"DISABLE TRIGGER {QuoteIdentifier(trigger.Name)} ON {qualifiedTableName};");
+                    sb.AppendLine("GO");
+                }
+            }
+
+            return sb.ToString();
+        }
+
+        private static string BuildColumnDefinition(TableColumnScriptInfo column)
+        {
+            string quotedName = QuoteIdentifier(column.Name);
+            if (!string.IsNullOrWhiteSpace(column.ComputedDefinition))
+            {
+                return $"{quotedName} AS {column.ComputedDefinition}{(column.IsPersisted ? " PERSISTED" : string.Empty)}";
+            }
+
+            var parts = new List<string> { quotedName, BuildTypeDeclaration(column) };
+            if (!string.IsNullOrWhiteSpace(column.CollationName) && TypeSupportsCollation(column.TypeName))
+            {
+                parts.Add($"COLLATE {column.CollationName}");
+            }
+            if (column.IdentitySeed != null && column.IdentityIncrement != null)
+            {
+                parts.Add($"IDENTITY({column.IdentitySeed},{column.IdentityIncrement})");
+            }
+            if (column.IsRowGuid)
+            {
+                parts.Add("ROWGUIDCOL");
+            }
+            if (column.IsSparse)
+            {
+                parts.Add("SPARSE");
+            }
+            if (column.IsColumnSet)
+            {
+                parts.Add("COLUMN_SET FOR ALL_SPARSE_COLUMNS");
+            }
+
+            parts.Add(column.IsNullable ? "NULL" : "NOT NULL");
+            if (!string.IsNullOrWhiteSpace(column.DefaultDefinition))
+            {
+                if (!string.IsNullOrWhiteSpace(column.DefaultName))
+                {
+                    parts.Add($"CONSTRAINT {QuoteIdentifier(column.DefaultName)}");
+                }
+                parts.Add($"DEFAULT {column.DefaultDefinition}");
+            }
+            return string.Join(" ", parts);
+        }
+
+        private static string BuildTypeDeclaration(TableColumnScriptInfo column)
+        {
+            if (column.IsUserDefined)
+            {
+                return $"{QuoteIdentifier(column.TypeSchema)}.{QuoteIdentifier(column.TypeName)}";
+            }
+
+            string typeName = column.TypeName.ToLowerInvariant();
+            return typeName switch
+            {
+                "varchar" or "char" or "varbinary" or "binary" =>
+                    $"{typeName}({(column.MaxLength == -1 ? "MAX" : column.MaxLength.ToString())})",
+                "nvarchar" or "nchar" =>
+                    $"{typeName}({(column.MaxLength == -1 ? "MAX" : (column.MaxLength / 2).ToString())})",
+                "decimal" or "numeric" => $"{typeName}({column.Precision},{column.Scale})",
+                "datetime2" or "datetimeoffset" or "time" => $"{typeName}({column.Scale})",
+                "float" => $"float({column.Precision})",
+                _ => typeName
+            };
+        }
+
+        private static bool TypeSupportsCollation(string typeName)
+        {
+            return typeName.ToLowerInvariant() is "char" or "varchar" or "text" or "nchar" or "nvarchar" or "ntext";
+        }
+
+        private static void AppendIndexScript(System.Text.StringBuilder sb, string tableName, IndexScriptInfo index)
+        {
+            string unique = index.IsUnique ? "UNIQUE " : string.Empty;
+            if (index.Type is 1 or 2)
+            {
+                sb.AppendLine($"CREATE {unique}{NormalizeIndexType(index.TypeDescription)} INDEX {QuoteIdentifier(index.Name)} ON {tableName}");
+                AppendIndexColumnList(sb, index.KeyColumns, includeSortDirection: true);
+                if (index.IncludedColumns.Count > 0)
+                {
+                    sb.AppendLine("INCLUDE");
+                    AppendIndexColumnList(sb, index.IncludedColumns, includeSortDirection: false);
+                }
+                if (!string.IsNullOrWhiteSpace(index.FilterDefinition))
+                {
+                    sb.AppendLine($"WHERE {index.FilterDefinition}");
+                }
+                AppendDataSpaceClause(sb, index.DataSpaceName, index.DataSpaceType, index.PartitionColumnName);
+                sb.AppendLine(";");
+                AppendDisabledIndexStatement(sb, tableName, index);
+                return;
+            }
+
+            if (index.Type is 5 or 6)
+            {
+                string kind = index.Type == 5 ? "CLUSTERED COLUMNSTORE" : "NONCLUSTERED COLUMNSTORE";
+                sb.Append($"CREATE {kind} INDEX {QuoteIdentifier(index.Name)} ON {tableName}");
+                if (index.Type == 6 && index.KeyColumns.Count > 0)
+                {
+                    sb.AppendLine();
+                    AppendIndexColumnList(sb, index.KeyColumns, includeSortDirection: false);
+                }
+                else
+                {
+                    sb.AppendLine();
+                }
+                AppendDataSpaceClause(sb, index.DataSpaceName, index.DataSpaceType, index.PartitionColumnName);
+                sb.AppendLine(";");
+                AppendDisabledIndexStatement(sb, tableName, index);
+                return;
+            }
+
+            sb.AppendLine($"-- Index {QuoteIdentifier(index.Name)} uses {index.TypeDescription} and requires specialized scripting.");
+        }
+
+        private static void AppendDisabledIndexStatement(
+            System.Text.StringBuilder sb,
+            string tableName,
+            IndexScriptInfo index)
+        {
+            if (index.IsDisabled)
+            {
+                sb.AppendLine($"ALTER INDEX {QuoteIdentifier(index.Name)} ON {tableName} DISABLE;");
+            }
+        }
+
+        private static void AppendIndexColumnList(System.Text.StringBuilder sb, List<IndexColumnScriptInfo> columns, bool includeSortDirection)
+        {
+            sb.AppendLine("(");
+            for (int i = 0; i < columns.Count; i++)
+            {
+                string direction = includeSortDirection ? (columns[i].IsDescending ? " DESC" : " ASC") : string.Empty;
+                sb.AppendLine($"    {QuoteIdentifier(columns[i].Name)}{direction}{(i < columns.Count - 1 ? "," : string.Empty)}");
+            }
+            sb.AppendLine(")");
+        }
+
+        private static void AppendSimpleColumnList(System.Text.StringBuilder sb, List<string> columns)
+        {
+            sb.AppendLine("(");
+            for (int i = 0; i < columns.Count; i++)
+            {
+                sb.AppendLine($"    {QuoteIdentifier(columns[i])}{(i < columns.Count - 1 ? "," : string.Empty)}");
+            }
+            sb.AppendLine(")");
+        }
+
+        private static void AppendDataSpaceClause(
+            System.Text.StringBuilder sb,
+            string? dataSpaceName,
+            string? dataSpaceType,
+            string? partitionColumnName)
+        {
+            if (string.IsNullOrWhiteSpace(dataSpaceName))
+            {
+                return;
+            }
+
+            if (dataSpaceType == "PARTITION_SCHEME" && !string.IsNullOrWhiteSpace(partitionColumnName))
+            {
+                sb.AppendLine($"ON {QuoteIdentifier(dataSpaceName)}({QuoteIdentifier(partitionColumnName)})");
+                return;
+            }
+
+            if (dataSpaceType != "PARTITION_SCHEME")
+            {
+                sb.AppendLine($"ON {QuoteIdentifier(dataSpaceName)}");
+            }
+        }
+
+        private static string NormalizeIndexType(string typeDescription)
+        {
+            return typeDescription.Replace('_', ' ');
+        }
+
+        private static string QuoteIdentifier(string identifier)
+        {
+            return $"[{identifier.Replace("]", "]]", StringComparison.Ordinal)}]";
+        }
+
+    }
+}
