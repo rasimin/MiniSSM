@@ -248,6 +248,9 @@ namespace SSMS
         {
             try
             {
+                // 0. Initialize keep-alive WebView to ensure Chromium engine never shuts down
+                _ = KeepAliveWebView.EnsureCoreWebView2Async(await QueryTabControl.GetSharedEnvironmentAsync());
+
                 // 1. Add the initial server to Object Explorer
                 await AddServerToExplorerAsync(_initialConnectionString);
 

@@ -38,6 +38,9 @@ namespace SSMS
                 Dispatcher.Invoke(DispatcherPriority.Render, new Action(() => { }));
             };
 
+            // Preload WebView2 environment in the background so that the first query tab opens instantly
+            _ = QueryTabControl.PreloadWebViewEnvironmentAsync();
+
             if (connWindow.ShowDialog() == true)
             {
                 var mainWindow = new MainWindow(connWindow.ConnectionString);

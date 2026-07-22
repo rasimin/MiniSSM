@@ -58,6 +58,16 @@ namespace SSMS
             new(CreateSharedEnvironmentAsync, LazyThreadSafetyMode.ExecutionAndPublication);
         private double? _pendingEditorHeight;
         private bool _editorResizeScheduled;
+
+        public static Task PreloadWebViewEnvironmentAsync()
+        {
+            return SharedEnvironment.Value;
+        }
+
+        public static Task<CoreWebView2Environment> GetSharedEnvironmentAsync()
+        {
+            return SharedEnvironment.Value;
+        }
         private bool _webViewInitializationStarted;
         private bool _editorReadyHandled;
         private bool _isDisposed;

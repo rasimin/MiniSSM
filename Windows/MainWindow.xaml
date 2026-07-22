@@ -711,5 +711,8 @@
                 </StackPanel>
             </Grid>
         </Border>
+
+        <!-- Dummy WebView2 to keep Chromium processes alive -->
+        <wv2:WebView2 x:Name="KeepAliveWebView" Visibility="Collapsed" Width="0" Height="0" />
     </Grid>
 </Window>
