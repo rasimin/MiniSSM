@@ -76,6 +76,7 @@ namespace SSMS
         private CancellationTokenSource? _queryCancellationSource;
         private readonly List<WinForms.DataGridView> _resultGrids = new();
         private readonly List<DataTable> _resultTables = new();
+        private readonly List<WindowsFormsHost> _resultHosts = new();
 
         private sealed class AutocompleteMetadata
         {

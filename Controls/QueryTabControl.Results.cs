@@ -355,6 +355,7 @@ namespace SSMS
                 Background = (SolidColorBrush)new BrushConverter().ConvertFromString("#1E1E1E")!,
                 Child = dataGrid
             };
+            _resultHosts.Add(host);
 
             var verticalScrollBar = new System.Windows.Controls.Primitives.ScrollBar
             {
@@ -547,6 +548,20 @@ namespace SSMS
                 table.Dispose();
             }
             _resultTables.Clear();
+
+            foreach (var host in _resultHosts)
+            {
+                try
+                {
+                    host.Child = null;
+                    host.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Error(ex, "Failed to dispose WindowsFormsHost");
+                }
+            }
+            _resultHosts.Clear();
         }
 
         private void ExportResultTable(DataTable table, int resultIndex, ResultExportFormat format)

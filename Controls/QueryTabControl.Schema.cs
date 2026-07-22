@@ -216,8 +216,13 @@ namespace SSMS
                     databases = metadata.Databases,
                     activeDatabase = DatabaseName
                 };
-                string jsonPayload = JsonSerializer.Serialize(payload);
-                await SqlEditorWebView.ExecuteScriptAsync($"updateMetadata({jsonPayload});");
+                var messageObj = new
+                {
+                    action = "updateMetadata",
+                    payload = payload
+                };
+                string messagePayload = JsonSerializer.Serialize(messageObj);
+                SqlEditorWebView.CoreWebView2.PostWebMessageAsJson(messagePayload);
             }
             catch (Exception ex)
             {

@@ -135,3 +135,4 @@
         }
     
 
+window.chrome.webview.addEventListener('message', function (e) { if (e.data && e.data.action === 'updateMetadata') { updateMetadata(e.data.payload); } });
