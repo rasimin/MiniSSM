@@ -84,11 +84,10 @@ Lokasi utama: `Windows\MainWindow.xaml.cs`.
 - Folder Databases, Tables, Views, Stored Procedures, Scalar-valued Functions, dan Table-valued Functions menampilkan tombol filter saat header di-hover; filter Databases berlaku per koneksi server, sedangkan filter object berlaku per database.
 - Context menu object ada di `CreateObjectContextMenu`.
 - Tombol Refresh pada header Object Explorer dan context menu node/folder me-reload metadata node terpilih sekaligus menginvalidasi autocomplete tab terkait; shortcut `Ctrl+Shift+R`.
-- Tombol Search pada header Object Explorer membuka pencarian object, schema, column, serta isi definition view/SP/function/trigger melalui `sys.sql_modules`, maksimum 1.000 hasil; hasil menampilkan lokasi dan cuplikan match. Window search memakai dark-mode ComboBox/button, menyediakan filter seluruh server aktif, filter semua/satu database, serta Cancel/Escape yang meneruskan cancellation ke proses load/query SQL.
-- Window Object Search memakai layout master-detail: grid hasil di atas; selection memuat generated CREATE script untuk table atau module definition untuk view/SP/function/trigger di kiri bawah, sedangkan kanan bawah menampilkan server, database, schema, type, Object ID, create/modify date, dan informasi match.
-- Semua node Object Explorer yang memiliki `ObjectExplorerNode` mendapat menu `Copy Name` secara otomatis saat diklik kanan; nama diambil dari `DetailName` atau identitas node/folder tanpa icon header.
-- Context menu folder object dibuat oleh `CreateFolderContextMenu`; Tables, Views, Stored Procedures, dan kedua jenis Functions menyediakan template `Create New`.
-- Context menu table menyediakan scripting CREATE, INSERT, UPDATE, DELETE, ALTER, dan DROP; template UPDATE/DELETE memakai variable `NULL` dan WHERE primary key sebagai default aman.
+- TreeView Object Explorer mendukung navigasi penuh tombol panah keyboard (`Up`, `Down`, `Left`, `Right`, `Enter`) serta pencarian ketik huruf (*type-ahead search*, misal menekan `C` melompat ke item berawalan `C` secara sirkular).
+- Window Object Search otomatis menyesuaikan filter Database default sesuai konteks aktif terakhir: jika sedang memilih node di Object Explorer maka menyelaraskan ke database Object Explorer tersebut, jika sedang aktif di Query Editor maka menyelaraskan ke database tab query aktif.
+- Context menu table menyediakan scripting CREATE, INSERT (termasuk dialog *INSERT To (with data)* dengan opsi menyampingkan kolom auto-increment/identity & computed column), UPDATE, DELETE, ALTER, dan DROP.
+- Dialog `UnsavedChangesWindow` menyediakan opsi `Don't Save All` saat mengonfirmasi penutupan banyak tab dirty (*Close All*, *Close All But This*, atau penutupan aplikasi).
 - Saat lazy-load metadata berjalan, node menampilkan teks titik bergerak lewat `CreateAnimatedLoadingItem`.
 - Script object dibuat lewat `ScriptObjectToQueryTabAsync`.
 - Node trigger di bawah table memiliki context menu `CREATE`, `ALTER`, dan `DROP` melalui alur scripting object yang sama.

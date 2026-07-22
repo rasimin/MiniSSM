@@ -92,6 +92,15 @@
                     </Style>
                 </CheckBox.Style>
             </CheckBox>
+
+            <CheckBox x:Name="ChkExcludeIdentityAndComputed" Content="Abaikan Kolom Auto Increment / Identity &amp; Computed Column" Foreground="#FFFFFF" FontSize="12" IsChecked="True" Margin="0,8,0,0">
+                <CheckBox.Style>
+                    <Style TargetType="CheckBox">
+                        <Setter Property="VerticalContentAlignment" Value="Center"/>
+                        <Setter Property="Cursor" Value="Hand"/>
+                    </Style>
+                </CheckBox.Style>
+            </CheckBox>
         </StackPanel>
 
         <!-- Buttons Row -->

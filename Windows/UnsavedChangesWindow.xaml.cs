@@ -7,6 +7,7 @@ namespace SSMS
     {
         Cancel,
         DontSave,
+        DontSaveAll,
         Save
     }
 
@@ -14,10 +15,11 @@ namespace SSMS
     {
         public UnsavedChangesChoice Choice { get; private set; } = UnsavedChangesChoice.Cancel;
 
-        public UnsavedChangesWindow(string queryName)
+        public UnsavedChangesWindow(string queryName, bool showDontSaveAll = false)
         {
             InitializeComponent();
             QueryNameText.Text = queryName;
+            BtnDontSaveAll.Visibility = showDontSaveAll ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -36,6 +38,11 @@ namespace SSMS
         private void DontSaveButton_Click(object sender, RoutedEventArgs e)
         {
             CloseWithChoice(UnsavedChangesChoice.DontSave);
+        }
+
+        private void DontSaveAllButton_Click(object sender, RoutedEventArgs e)
+        {
+            CloseWithChoice(UnsavedChangesChoice.DontSaveAll);
         }
 
         private void CancelButton_Click(object sender, RoutedEventArgs e)

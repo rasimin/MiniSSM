@@ -57,8 +57,9 @@ namespace SSMS
             {
                 string where = TxtWhereClause.Text;
                 bool useVars = ChkUseVariables.IsChecked == true;
+                bool excludeIdentityAndComputed = ChkExcludeIdentityAndComputed.IsChecked == true;
                 
-                GeneratedSql = await GenerateInsertWithDataScriptAsync(_connectionString, _databaseName, _tableName, where, useVars);
+                GeneratedSql = await GenerateInsertWithDataScriptAsync(_connectionString, _databaseName, _tableName, where, useVars, excludeIdentityAndComputed);
                 IsGenerated = true;
                 DialogResult = true;
                 Close();
@@ -74,7 +75,7 @@ namespace SSMS
             }
         }
 
-        private async Task<string> GenerateInsertWithDataScriptAsync(string connectionString, string databaseName, string tableName, string whereClause, bool useVariables)
+        private async Task<string> GenerateInsertWithDataScriptAsync(string connectionString, string databaseName, string tableName, string whereClause, bool useVariables, bool excludeIdentityAndComputed)
         {
             string safeTableName = tableName;
             var parts = tableName.Split('.');
@@ -87,16 +88,16 @@ namespace SSMS
                 safeTableName = $"[{tableName}]";
             }
 
-            // 1. Get identity columns
-            var identityColumns = new List<string>();
+            // 1. Get identity and computed columns
+            var identityColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var computedColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var dbConnString = DatabaseHelper.BuildConnectionString(connectionString, databaseName);
             using (var connection = new Microsoft.Data.SqlClient.SqlConnection(dbConnString))
             {
                 await connection.OpenAsync();
                 var query = @"
-                    SELECT c.name 
+                    SELECT c.name, c.is_identity, c.is_computed 
                     FROM sys.columns c 
-                    JOIN sys.identity_columns ic ON c.object_id = ic.object_id AND c.column_id = ic.column_id 
                     WHERE c.object_id = OBJECT_ID(@TableFullName);";
                 using (var command = new Microsoft.Data.SqlClient.SqlCommand(query, connection))
                 {
@@ -105,7 +106,11 @@ namespace SSMS
                     {
                         while (await reader.ReadAsync())
                         {
-                            identityColumns.Add(reader.GetString(0));
+                            string colName = reader.GetString(0);
+                            bool isIdentity = reader.GetBoolean(1);
+                            bool isComputed = reader.GetBoolean(2);
+                            if (isIdentity) identityColumns.Add(colName);
+                            if (isComputed) computedColumns.Add(colName);
                         }
                     }
                 }
@@ -145,6 +150,11 @@ namespace SSMS
             {
                 if (dataTable.Columns.Contains(col.ColumnName))
                 {
+                    if (excludeIdentityAndComputed && (identityColumns.Contains(col.ColumnName) || computedColumns.Contains(col.ColumnName)))
+                    {
+                        continue;
+                    }
+
                     string varName = col.ColumnName.Replace(" ", "_");
                     varName = new string(varName.Where(c => char.IsLetterOrDigit(c) || c == '_').ToArray());
                     activeCols.Add((col.ColumnName, col.DataType, varName));
@@ -167,7 +177,7 @@ namespace SSMS
                 sb.AppendLine();
             }
 
-            bool hasIdentity = identityColumns.Count > 0;
+            bool hasIdentity = activeCols.Any(c => identityColumns.Contains(c.Name));
             if (hasIdentity)
             {
                 sb.AppendLine($"SET IDENTITY_INSERT {safeTableName} ON;");

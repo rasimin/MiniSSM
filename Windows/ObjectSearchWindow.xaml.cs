@@ -20,6 +20,7 @@ namespace SSMS
         private const string AllDatabasesLabel = "(All accessible databases)";
         private readonly IReadOnlyList<ObjectSearchServerOption> _servers;
         private readonly string _initialConnectionString;
+        private readonly string? _initialDatabaseName;
         private CancellationTokenSource? _searchCancellation;
         private CancellationTokenSource? _databaseLoadCancellation;
         private bool _windowLoaded;
@@ -34,11 +35,13 @@ namespace SSMS
 
         public ObjectSearchWindow(
             IReadOnlyList<ObjectSearchServerOption> servers,
-            string initialConnectionString)
+            string initialConnectionString,
+            string? initialDatabaseName = null)
         {
             InitializeComponent();
             _servers = servers;
             _initialConnectionString = initialConnectionString;
+            _initialDatabaseName = initialDatabaseName;
             Loaded += ObjectSearchWindow_Loaded;
             Closed += ObjectSearchWindow_Closed;
         }
@@ -88,7 +91,18 @@ namespace SSMS
                 var options = new List<string> { AllDatabasesLabel };
                 options.AddRange(databases);
                 DatabaseComboBox.ItemsSource = options;
-                DatabaseComboBox.SelectedIndex = 0;
+
+                if (!string.IsNullOrEmpty(_initialDatabaseName) &&
+                    databases.Any(db => string.Equals(db, _initialDatabaseName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    string targetDb = databases.First(db => string.Equals(db, _initialDatabaseName, StringComparison.OrdinalIgnoreCase));
+                    DatabaseComboBox.SelectedItem = targetDb;
+                }
+                else
+                {
+                    DatabaseComboBox.SelectedIndex = 0;
+                }
+
                 DatabaseComboBox.IsEnabled = true;
                 StatusText.Text = $"{databases.Count} accessible database(s) loaded.";
             }

@@ -197,6 +197,7 @@
             <Setter Property="Foreground" Value="#CCCCCC"/>
             <Setter Property="FontSize" Value="12.5"/>
             <EventSetter Event="PreviewMouseRightButtonDown" Handler="OnTreeViewItemPreviewMouseRightButtonDown"/>
+            <EventSetter Event="PreviewMouseLeftButtonDown" Handler="OnTreeViewItemPreviewMouseLeftButtonDown"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TreeViewItem">
@@ -670,8 +671,10 @@
                         <Style TargetType="{x:Type ScrollBar}" BasedOn="{StaticResource StandardScrollBar}"/>
                     </ScrollViewer.Resources>
                     <TreeView x:Name="TreeObjectExplorer"
+                              Focusable="True"
                               BorderThickness="0"
-                              RequestBringIntoView="TreeObjectExplorer_RequestBringIntoView"/>
+                              RequestBringIntoView="TreeObjectExplorer_RequestBringIntoView"
+                              PreviewKeyDown="TreeObjectExplorer_PreviewKeyDown"/>
                 </ScrollViewer>
             </Grid>
 

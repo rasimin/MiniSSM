@@ -170,11 +170,27 @@ namespace SSMS
             _isCloseConfirmationInProgress = true;
             try
             {
+                var dirtyTabs = TabQueryControls.Items.OfType<TabItem>()
+                    .Where(t => t.Content is QueryTabControl q && q.IsDirty)
+                    .ToList();
+
+                bool skipRemainingUnsaved = false;
+
                 foreach (TabItem tab in TabQueryControls.Items.OfType<TabItem>().ToList())
                 {
-                    if (!await ConfirmTabCanCloseAsync(tab))
+                    if (!skipRemainingUnsaved && tab.Content is QueryTabControl q && q.IsDirty)
                     {
-                        return;
+                        bool showDontSaveAll = dirtyTabs.Count > 1;
+                        var choice = await ConfirmTabCanCloseChoiceAsync(tab, showDontSaveAll);
+                        if (choice == UnsavedChangesChoice.Cancel)
+                        {
+                            return;
+                        }
+                        if (choice == UnsavedChangesChoice.DontSaveAll)
+                        {
+                            skipRemainingUnsaved = true;
+                        }
+                        dirtyTabs.Remove(tab);
                     }
                 }
 
@@ -334,6 +350,7 @@ namespace SSMS
                 await CloseTabAsync(tabItem);
             };
 
+
             headerPanel.Children.Add(headerText);
             headerPanel.Children.Add(closeBtn);
 
@@ -398,16 +415,20 @@ namespace SSMS
             }
         }
 
-        private async Task<bool> CloseTabAsync(TabItem tabItem)
+        private async Task<bool> CloseTabAsync(TabItem tabItem, bool skipConfirmation = false)
         {
             if (!TabQueryControls.Items.Contains(tabItem))
             {
                 return true;
             }
 
-            if (!await ConfirmTabCanCloseAsync(tabItem))
+            if (!skipConfirmation)
             {
-                return false;
+                var choice = await ConfirmTabCanCloseChoiceAsync(tabItem, showDontSaveAll: false);
+                if (choice == UnsavedChangesChoice.Cancel)
+                {
+                    return false;
+                }
             }
 
             AppLogger.Info($"Closing query tab: {GetTabHeaderText(tabItem)}");
@@ -459,9 +480,30 @@ namespace SSMS
 
         private async Task<bool> CloseAllTabsAsync()
         {
+            var dirtyTabs = TabQueryControls.Items.OfType<TabItem>()
+                .Where(t => t.Content is QueryTabControl q && q.IsDirty)
+                .ToList();
+
+            bool skipRemainingUnsaved = false;
+
             foreach (TabItem item in TabQueryControls.Items.OfType<TabItem>().ToList())
             {
-                if (!await CloseTabAsync(item))
+                if (!skipRemainingUnsaved && item.Content is QueryTabControl q && q.IsDirty)
+                {
+                    bool showDontSaveAll = dirtyTabs.Count > 1;
+                    var choice = await ConfirmTabCanCloseChoiceAsync(item, showDontSaveAll);
+                    if (choice == UnsavedChangesChoice.Cancel)
+                    {
+                        return false;
+                    }
+                    if (choice == UnsavedChangesChoice.DontSaveAll)
+                    {
+                        skipRemainingUnsaved = true;
+                    }
+                    dirtyTabs.Remove(item);
+                }
+
+                if (!await CloseTabAsync(item, skipConfirmation: true))
                 {
                     return false;
                 }
@@ -471,9 +513,29 @@ namespace SSMS
 
         private async Task CloseAllTabsExceptAsync(TabItem tabItem)
         {
-            foreach (var item in TabQueryControls.Items.OfType<TabItem>().Where(item => item != tabItem).ToList())
+            var targetTabs = TabQueryControls.Items.OfType<TabItem>().Where(item => item != tabItem).ToList();
+            var dirtyTabs = targetTabs.Where(t => t.Content is QueryTabControl q && q.IsDirty).ToList();
+
+            bool skipRemainingUnsaved = false;
+
+            foreach (var item in targetTabs)
             {
-                if (!await CloseTabAsync(item))
+                if (!skipRemainingUnsaved && item.Content is QueryTabControl q && q.IsDirty)
+                {
+                    bool showDontSaveAll = dirtyTabs.Count > 1;
+                    var choice = await ConfirmTabCanCloseChoiceAsync(item, showDontSaveAll);
+                    if (choice == UnsavedChangesChoice.Cancel)
+                    {
+                        return;
+                    }
+                    if (choice == UnsavedChangesChoice.DontSaveAll)
+                    {
+                        skipRemainingUnsaved = true;
+                    }
+                    dirtyTabs.Remove(item);
+                }
+
+                if (!await CloseTabAsync(item, skipConfirmation: true))
                 {
                     return;
                 }
@@ -483,8 +545,8 @@ namespace SSMS
 
         private async void TabQueryControls_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            // Only respond when the selection changes on TabQueryControls directly
             if (e.Source != TabQueryControls) return;
+            _useObjectExplorerContextForNewQuery = false;
 
             try
             {
@@ -543,7 +605,269 @@ namespace SSMS
 
         #endregion
 
-        #region TreeView (Object Explorer) Loading
+        #region TreeView (Object Explorer) Loading & Navigation
+
+        private string _typeAheadBuffer = string.Empty;
+        private DispatcherTimer? _typeAheadTimer;
+
+        private void OnTreeViewItemPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is TreeViewItem item)
+            {
+                _useObjectExplorerContextForNewQuery = true;
+                item.IsSelected = true;
+                item.Focus();
+            }
+        }
+
+        private void TreeObjectExplorer_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            var selectedItem = TreeObjectExplorer.SelectedItem as TreeViewItem;
+            var visibleItems = GetVisibleTreeViewItems(TreeObjectExplorer);
+
+            if (e.Key == Key.Down)
+            {
+                e.Handled = true;
+                if (visibleItems.Count == 0) return;
+                int currentIndex = selectedItem != null ? visibleItems.IndexOf(selectedItem) : -1;
+                int nextIndex = currentIndex < visibleItems.Count - 1 ? currentIndex + 1 : currentIndex;
+                if (nextIndex >= 0 && nextIndex < visibleItems.Count)
+                {
+                    SelectAndFocusTreeViewItem(visibleItems[nextIndex]);
+                }
+            }
+            else if (e.Key == Key.Up)
+            {
+                e.Handled = true;
+                if (visibleItems.Count == 0) return;
+                int currentIndex = selectedItem != null ? visibleItems.IndexOf(selectedItem) : -1;
+                int prevIndex = currentIndex > 0 ? currentIndex - 1 : 0;
+                if (prevIndex >= 0 && prevIndex < visibleItems.Count)
+                {
+                    SelectAndFocusTreeViewItem(visibleItems[prevIndex]);
+                }
+            }
+            else if (e.Key == Key.Right)
+            {
+                if (selectedItem != null)
+                {
+                    e.Handled = true;
+                    if (selectedItem.HasItems && !selectedItem.IsExpanded)
+                    {
+                        selectedItem.IsExpanded = true;
+                    }
+                    else if (selectedItem.HasItems && selectedItem.IsExpanded)
+                    {
+                        if (selectedItem.Items.Count > 0 && selectedItem.Items[0] is TreeViewItem firstChild)
+                        {
+                            SelectAndFocusTreeViewItem(firstChild);
+                        }
+                    }
+                }
+            }
+            else if (e.Key == Key.Left)
+            {
+                if (selectedItem != null)
+                {
+                    e.Handled = true;
+                    if (selectedItem.HasItems && selectedItem.IsExpanded)
+                    {
+                        selectedItem.IsExpanded = false;
+                    }
+                    else
+                    {
+                        var parentItem = FindParentTreeViewItem(TreeObjectExplorer, selectedItem);
+                        if (parentItem != null)
+                        {
+                            SelectAndFocusTreeViewItem(parentItem);
+                        }
+                    }
+                }
+            }
+            else if (e.Key == Key.Enter)
+            {
+                if (selectedItem != null && selectedItem.HasItems)
+                {
+                    e.Handled = true;
+                    selectedItem.IsExpanded = !selectedItem.IsExpanded;
+                }
+            }
+            else
+            {
+                char keyChar = GetCharFromKey(e.Key);
+                if (keyChar != '\0' && !Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && !Keyboard.Modifiers.HasFlag(ModifierKeys.Alt))
+                {
+                    e.Handled = true;
+                    ProcessTypeAheadSearch(keyChar, selectedItem, visibleItems);
+                }
+            }
+        }
+
+        private void SelectAndFocusTreeViewItem(TreeViewItem item)
+        {
+            _useObjectExplorerContextForNewQuery = true;
+            item.IsSelected = true;
+            item.Focus();
+            item.BringIntoView();
+        }
+
+        private List<TreeViewItem> GetVisibleTreeViewItems(ItemsControl parent)
+        {
+            var list = new List<TreeViewItem>();
+            foreach (var child in parent.Items.OfType<TreeViewItem>())
+            {
+                list.Add(child);
+                if (child.IsExpanded && child.Items.Count > 0)
+                {
+                    list.AddRange(GetVisibleTreeViewItems(child));
+                }
+            }
+            return list;
+        }
+
+        private TreeViewItem? FindParentTreeViewItem(ItemsControl parent, TreeViewItem target)
+        {
+            foreach (var child in parent.Items.OfType<TreeViewItem>())
+            {
+                if (child.Items.Contains(target))
+                {
+                    return child;
+                }
+                var foundInChild = FindParentTreeViewItem(child, target);
+                if (foundInChild != null)
+                {
+                    return foundInChild;
+                }
+            }
+            return null;
+        }
+
+        private void ProcessTypeAheadSearch(char c, TreeViewItem? currentItem, List<TreeViewItem> visibleItems)
+        {
+            if (_typeAheadTimer == null)
+            {
+                _typeAheadTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1000) };
+                _typeAheadTimer.Tick += (_, _) =>
+                {
+                    _typeAheadBuffer = string.Empty;
+                    _typeAheadTimer.Stop();
+                };
+            }
+            _typeAheadTimer.Stop();
+            _typeAheadTimer.Start();
+
+            _typeAheadBuffer += c;
+            string query = _typeAheadBuffer.ToLowerInvariant();
+
+            if (visibleItems.Count == 0) return;
+
+            int startIndex = currentItem != null ? visibleItems.IndexOf(currentItem) : 0;
+            if (query.Length == 1 && startIndex >= 0 && startIndex < visibleItems.Count)
+            {
+                string currentName = GetNodeDisplayText(visibleItems[startIndex]).ToLowerInvariant();
+                if (currentName.StartsWith(query))
+                {
+                    startIndex = (startIndex + 1) % visibleItems.Count;
+                }
+            }
+
+            for (int i = 0; i < visibleItems.Count; i++)
+            {
+                int evalIndex = (startIndex + i) % visibleItems.Count;
+                var item = visibleItems[evalIndex];
+                string name = GetNodeDisplayText(item).ToLowerInvariant();
+
+                if (MatchesTypeAhead(name, item, query))
+                {
+                    SelectAndFocusTreeViewItem(item);
+                    break;
+                }
+            }
+        }
+
+        private bool MatchesTypeAhead(string cleanName, TreeViewItem item, string query)
+        {
+            if (cleanName.StartsWith(query)) return true;
+            if (item.Tag is ObjectExplorerNode node)
+            {
+                if (!string.IsNullOrEmpty(node.DetailName))
+                {
+                    string detail = node.DetailName.ToLowerInvariant();
+                    if (detail.StartsWith(query)) return true;
+                    var dotParts = detail.Split('.');
+                    if (dotParts.Length > 1 && dotParts[1].StartsWith(query)) return true;
+                }
+            }
+            return false;
+        }
+
+        private string GetNodeDisplayText(TreeViewItem item)
+        {
+            if (item.Tag is ObjectExplorerNode node && !string.IsNullOrWhiteSpace(node.DetailName))
+            {
+                return node.DetailName;
+            }
+
+            if (item.Header is string strHeader)
+            {
+                return StripIconPrefix(strHeader);
+            }
+
+            if (item.Header is Grid grid)
+            {
+                foreach (var child in grid.Children)
+                {
+                    if (child is TextBlock tb) return StripIconPrefix(tb.Text);
+                    if (child is StackPanel sp)
+                    {
+                        foreach (var spChild in sp.Children)
+                        {
+                            if (spChild is TextBlock spTb) return StripIconPrefix(spTb.Text);
+                        }
+                    }
+                }
+            }
+
+            return StripIconPrefix(item.Header?.ToString() ?? string.Empty);
+        }
+
+        private string StripIconPrefix(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+            int firstLetter = 0;
+            while (firstLetter < text.Length && !char.IsLetterOrDigit(text[firstLetter]))
+            {
+                firstLetter++;
+            }
+            return firstLetter < text.Length ? text.Substring(firstLetter) : text;
+        }
+
+        private char GetCharFromKey(Key key)
+        {
+            if (key >= Key.A && key <= Key.Z)
+            {
+                return (char)('a' + (key - Key.A));
+            }
+            if (key >= Key.D0 && key <= Key.D9)
+            {
+                return (char)('0' + (key - Key.D0));
+            }
+            if (key >= Key.NumPad0 && key <= Key.NumPad9)
+            {
+                return (char)('0' + (key - Key.NumPad0));
+            }
+            if (key == Key.OemMinus) return '-';
+            return '\0';
+        }
+
+        private string? GetSelectedObjectExplorerDatabase()
+        {
+            if (TreeObjectExplorer.SelectedItem is TreeViewItem item && item.Tag is ObjectExplorerNode node)
+            {
+                return node.DatabaseName;
+            }
+            return null;
+        }
 
         private void TreeObjectExplorer_RequestBringIntoView(object sender, RequestBringIntoViewEventArgs e)
         {
@@ -970,7 +1294,19 @@ namespace SSMS
                 .OrderBy(server => server.ServerName, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            _objectSearchWindow = new ObjectSearchWindow(serverOptions, connectionString) { Owner = this };
+            string? targetDatabaseName = null;
+            if (_useObjectExplorerContextForNewQuery)
+            {
+                targetDatabaseName = GetSelectedObjectExplorerDatabase();
+            }
+            if (string.IsNullOrEmpty(targetDatabaseName))
+            {
+                targetDatabaseName = (TabQueryControls.SelectedItem is TabItem tabItem && tabItem.Content is QueryTabControl activeTab)
+                    ? activeTab.DatabaseName
+                    : CboDatabases.SelectedItem?.ToString();
+            }
+
+            _objectSearchWindow = new ObjectSearchWindow(serverOptions, connectionString, targetDatabaseName) { Owner = this };
             _objectSearchWindow.OpenRequested += ObjectSearchWindow_OpenRequested;
             _objectSearchWindow.Closed += (_, _) => _objectSearchWindow = null;
             _objectSearchWindow.Show();
@@ -1345,6 +1681,25 @@ namespace SSMS
             }
         }
 
+        private async void TabQueryControls_SelectionChanged(object sender, RoutedEventArgs e)
+        {
+            if (e.Source != TabQueryControls) return;
+            _useObjectExplorerContextForNewQuery = false;
+
+            try
+            {
+                if (TabQueryControls.SelectedItem is TabItem tabItem && tabItem.Content is QueryTabControl activeTab)
+                {
+                    await activeTab.EditorReady;
+                    activeTab.FocusEditor();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error activating tab: {ex.Message}");
+            }
+        }
+
         private void FormatActiveQuery()
         {
             if (TabQueryControls.SelectedItem is TabItem tabItem && tabItem.Content is QueryTabControl activeTab)
@@ -1626,29 +1981,32 @@ namespace SSMS
             }
         }
 
-        private async Task<bool> ConfirmTabCanCloseAsync(TabItem tabItem)
+        private async Task<UnsavedChangesChoice> ConfirmTabCanCloseChoiceAsync(TabItem tabItem, bool showDontSaveAll = false)
         {
             if (tabItem.Content is not QueryTabControl queryTab || !queryTab.IsDirty)
             {
-                return true;
+                return UnsavedChangesChoice.DontSave;
             }
 
-            var dialog = new UnsavedChangesWindow(GetCleanTabHeaderText(tabItem))
+            var dialog = new UnsavedChangesWindow(GetCleanTabHeaderText(tabItem), showDontSaveAll)
             {
                 Owner = this
             };
             dialog.ShowDialog();
 
-            if (dialog.Choice == UnsavedChangesChoice.Cancel)
-            {
-                return false;
-            }
             if (dialog.Choice == UnsavedChangesChoice.Save)
             {
-                return await SaveQueryTabAsync(tabItem, saveAs: false);
+                bool saved = await SaveQueryTabAsync(tabItem, saveAs: false);
+                return saved ? UnsavedChangesChoice.Save : UnsavedChangesChoice.Cancel;
             }
 
-            return true;
+            return dialog.Choice;
+        }
+
+        private async Task<bool> ConfirmTabCanCloseAsync(TabItem tabItem)
+        {
+            var choice = await ConfirmTabCanCloseChoiceAsync(tabItem, showDontSaveAll: false);
+            return choice != UnsavedChangesChoice.Cancel;
         }
 
         private string ShowInputDialog(string title, string prompt, string defaultText)
