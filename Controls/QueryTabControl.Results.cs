@@ -269,13 +269,6 @@ namespace SSMS
 
                     dataGrid.Rows[rowIndex].Cells[columnIndex].Selected = true;
                 }
-
-                var firstSelected = rightClickSelectionSnapshot[0];
-                if (firstSelected.RowIndex >= 0 && firstSelected.RowIndex < dataGrid.RowCount &&
-                    firstSelected.ColumnIndex >= 0 && firstSelected.ColumnIndex < dataGrid.ColumnCount)
-                {
-                    dataGrid.CurrentCell = dataGrid.Rows[firstSelected.RowIndex].Cells[firstSelected.ColumnIndex];
-                }
             }
 
             void SelectRowRange(int targetRow)
@@ -304,23 +297,41 @@ namespace SSMS
 
             dataGrid.CellMouseDown += (_, e) =>
             {
-                if (e.Button == WinForms.MouseButtons.Right && e.RowIndex >= 0 && e.ColumnIndex >= 0)
+                if (e.Button == WinForms.MouseButtons.Right && e.RowIndex >= 0)
                 {
-                    var clickedCell = dataGrid.Rows[e.RowIndex].Cells[e.ColumnIndex];
-                    rightClickWasOnSelection = clickedCell.Selected;
+                    bool isRowHeader = e.ColumnIndex < 0;
+                    var checkCell = isRowHeader
+                        ? (dataGrid.Rows[e.RowIndex].Cells.Count > 0 ? dataGrid.Rows[e.RowIndex].Cells[0] : null)
+                        : dataGrid.Rows[e.RowIndex].Cells[e.ColumnIndex];
+
+                    rightClickWasOnSelection = checkCell != null && checkCell.Selected;
 
                     if (rightClickWasOnSelection)
                     {
                         // Keep the whole selection available for Copy, just like SSMS.
                         CaptureSelectionSnapshot();
-                        dataGrid.CurrentCell = clickedCell;
+                        RestoreSelectionSnapshot();
                     }
                     else
                     {
                         rightClickSelectionSnapshot = null;
                         dataGrid.ClearSelection();
-                        clickedCell.Selected = true;
-                        dataGrid.CurrentCell = clickedCell;
+                        if (isRowHeader)
+                        {
+                            foreach (WinForms.DataGridViewCell cell in dataGrid.Rows[e.RowIndex].Cells)
+                            {
+                                cell.Selected = true;
+                            }
+                            if (dataGrid.Rows[e.RowIndex].Cells.Count > 0)
+                            {
+                                dataGrid.CurrentCell = dataGrid.Rows[e.RowIndex].Cells[0];
+                            }
+                        }
+                        else if (checkCell != null)
+                        {
+                            checkCell.Selected = true;
+                            dataGrid.CurrentCell = checkCell;
+                        }
                     }
 
                     return;

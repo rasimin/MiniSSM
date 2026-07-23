@@ -20,7 +20,7 @@
                     
                     var suggestions = [];
                     var fullSql = model.getValue();
-                    var sourceContext = /\b(?:FROM|JOIN|APPLY)\s+[\[\]a-zA-Z0-9_.#]*$/i.test(textBeforeCursor);
+                    var sourceContext = /\b(?:FROM|JOIN|APPLY|INSERT(?:\s+INTO)?|INTO|UPDATE|DELETE(?:\s+FROM)?|TRUNCATE(?:\s+TABLE)?|ALTER\s+TABLE|DROP\s+TABLE|CREATE\s+TABLE|MERGE(?:\s+INTO)?|TABLE)\s+[\[\]a-zA-Z0-9_.#]*$/i.test(textBeforeCursor);
                     var cursorOffset = model.getOffsetAt(position);
                     var activeSqlInfo = getActiveSqlText(model, position);
                     var activeSql = activeSqlInfo.text;
@@ -355,18 +355,16 @@
                     });
 
                     // 5. Tables
-                    if (sourceContext || textBeforeCursor.trim().length === 0) {
-                        tables.forEach(t => {
-                            suggestions.push({
-                                label: t,
-                                kind: monaco.languages.CompletionItemKind.Class,
-                                insertText: t,
-                                detail: objectTypes[t] || "Table",
-                                sortText: "0_" + t,
-                                range: range
-                            });
+                    tables.forEach(t => {
+                        suggestions.push({
+                            label: t,
+                            kind: monaco.languages.CompletionItemKind.Class,
+                            insertText: t,
+                            detail: objectTypes[t] || "Table",
+                            sortText: (sourceContext ? "0_" : "1_") + t,
+                            range: range
                         });
-                    }
+                    });
 
                     // 6. Scalar and table-valued functions
                     if (!sourceContext) {

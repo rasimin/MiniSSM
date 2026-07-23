@@ -1,4 +1,4 @@
-﻿        // Extract tables used in the query (FROM TableName / JOIN TableName)
+        // Extract tables used in the query (FROM TableName / JOIN TableName)
         function getTablesInQuery(sqlText) {
             var tablesFound = [];
             var regex = /(?:FROM|JOIN|APPLY)\s+([#a-zA-Z0-9_\.\[\]]+)/gi;
@@ -175,7 +175,7 @@
                 addSource(alias, alias, match.index, derivedRegex.lastIndex, "Derived Table");
             }
 
-            var tableRegex = /(?:FROM|JOIN|APPLY)\s+([#a-zA-Z0-9_\.\[\]]+)(?:\s+(?:AS\s+)?(\[?[a-zA-Z_][a-zA-Z0-9_]*\]?))?/gi;
+            var tableRegex = /(?:FROM|JOIN|APPLY|INSERT(?:\s+INTO)?|INTO|UPDATE|DELETE(?:\s+FROM)?|MERGE(?:\s+INTO)?)\s+([#a-zA-Z0-9_\.\[\]]+)(?:\s+(?:AS\s+)?(\[?[a-zA-Z_][a-zA-Z0-9_]*\]?))?/gi;
             var reservedAliases = {
                 ON: true, WHERE: true, INNER: true, LEFT: true, RIGHT: true, FULL: true,
                 CROSS: true, JOIN: true, OUTER: true, APPLY: true, GROUP: true, ORDER: true,
