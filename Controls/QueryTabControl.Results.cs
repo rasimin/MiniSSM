@@ -143,6 +143,84 @@ namespace SSMS
                 });
             }
 
+            var verticalScrollBar = new System.Windows.Controls.Primitives.ScrollBar
+            {
+                Orientation = System.Windows.Controls.Orientation.Vertical,
+                Minimum = 0,
+                SmallChange = 1,
+                Width = 8
+            };
+            var horizontalScrollBar = new System.Windows.Controls.Primitives.ScrollBar
+            {
+                Orientation = System.Windows.Controls.Orientation.Horizontal,
+                Minimum = 0,
+                SmallChange = 24,
+                Height = 8
+            };
+
+            int lastHorizontalOffset = 0;
+            bool synchronizingScrollBars = false;
+            bool scrollBarUpdateScheduled = false;
+
+            void UpdateScrollBars()
+            {
+                if (synchronizingScrollBars || !dataGrid.IsHandleCreated || dataGrid.RowCount == 0)
+                {
+                    return;
+                }
+
+                synchronizingScrollBars = true;
+                try
+                {
+                    int displayedRows = Math.Max(1, dataGrid.DisplayedRowCount(false));
+                    int maximumFirstRow = Math.Max(0, dataGrid.RowCount - displayedRows);
+                    int firstRow = Math.Max(0, dataGrid.FirstDisplayedScrollingRowIndex);
+                    verticalScrollBar.Maximum = maximumFirstRow;
+                    verticalScrollBar.ViewportSize = displayedRows;
+                    verticalScrollBar.LargeChange = displayedRows;
+                    verticalScrollBar.Value = Math.Min(maximumFirstRow, firstRow);
+                    verticalScrollBar.IsEnabled = maximumFirstRow > 0;
+
+                    int totalColumnWidth = dataGrid.Columns.GetColumnsWidth(
+                        WinForms.DataGridViewElementStates.Visible);
+                    int rowHeaderWidth = dataGrid.RowHeadersVisible ? dataGrid.RowHeadersWidth : 0;
+                    int viewportWidth = Math.Max(0, dataGrid.DisplayRectangle.Width - rowHeaderWidth);
+                    int maximumHorizontalOffset = Math.Max(0, totalColumnWidth - viewportWidth);
+                    horizontalScrollBar.Maximum = maximumHorizontalOffset;
+                    horizontalScrollBar.ViewportSize = viewportWidth;
+                    horizontalScrollBar.LargeChange = Math.Max(24, viewportWidth);
+
+                    int targetOffset = Math.Clamp(lastHorizontalOffset, 0, maximumHorizontalOffset);
+                    if (dataGrid.HorizontalScrollingOffset != targetOffset)
+                    {
+                        dataGrid.HorizontalScrollingOffset = targetOffset;
+                    }
+                    horizontalScrollBar.Value = targetOffset;
+                    horizontalScrollBar.IsEnabled = maximumHorizontalOffset > 0;
+                }
+                finally
+                {
+                    synchronizingScrollBars = false;
+                }
+            }
+
+            void ScheduleScrollBarUpdate()
+            {
+                if (scrollBarUpdateScheduled)
+                {
+                    return;
+                }
+
+                scrollBarUpdateScheduled = true;
+                Dispatcher.BeginInvoke(
+                    System.Windows.Threading.DispatcherPriority.Render,
+                    new Action(() =>
+                    {
+                        scrollBarUpdateScheduled = false;
+                        UpdateScrollBars();
+                    }));
+            }
+
             dataGrid.CellFormatting += (_, e) => FormatResultCell(e);
             dataGrid.CellPainting += (_, e) => PaintRowNumber(dataGrid, e);
             dataGrid.ColumnDividerDoubleClick += (_, e) =>
@@ -153,9 +231,12 @@ namespace SSMS
                 }
 
                 e.Handled = true;
+                int savedOffset = lastHorizontalOffset;
                 dataGrid.AutoResizeColumn(
                     e.ColumnIndex,
                     WinForms.DataGridViewAutoSizeColumnMode.DisplayedCells);
+                lastHorizontalOffset = savedOffset;
+                ScheduleScrollBarUpdate();
             };
             int rowSelectionAnchor = -1;
             bool isDraggingRowSelection = false;
@@ -320,9 +401,12 @@ namespace SSMS
                 int columnIndex = dataGrid.CurrentCell?.ColumnIndex ?? -1;
                 if (columnIndex >= 0)
                 {
+                    int savedOffset = lastHorizontalOffset;
                     dataGrid.AutoResizeColumn(
                         columnIndex,
                         WinForms.DataGridViewAutoSizeColumnMode.DisplayedCells);
+                    lastHorizontalOffset = savedOffset;
+                    ScheduleScrollBarUpdate();
                 }
             });
             contextMenu.Items.Add("Widen Column (+200 px)", null, (_, _) =>
@@ -330,8 +414,11 @@ namespace SSMS
                 int columnIndex = dataGrid.CurrentCell?.ColumnIndex ?? -1;
                 if (columnIndex >= 0)
                 {
+                    int savedOffset = lastHorizontalOffset;
                     var column = dataGrid.Columns[columnIndex];
                     column.Width = Math.Min(10000, column.Width + 200);
+                    lastHorizontalOffset = savedOffset;
+                    ScheduleScrollBarUpdate();
                 }
             });
             contextMenu.Opening += (_, _) =>
@@ -356,21 +443,6 @@ namespace SSMS
                 Child = dataGrid
             };
             _resultHosts.Add(host);
-
-            var verticalScrollBar = new System.Windows.Controls.Primitives.ScrollBar
-            {
-                Orientation = System.Windows.Controls.Orientation.Vertical,
-                Minimum = 0,
-                SmallChange = 1,
-                Width = 8
-            };
-            var horizontalScrollBar = new System.Windows.Controls.Primitives.ScrollBar
-            {
-                Orientation = System.Windows.Controls.Orientation.Horizontal,
-                Minimum = 0,
-                SmallChange = 24,
-                Height = 8
-            };
 
             var container = new Grid
             {
@@ -399,66 +471,6 @@ namespace SSMS
             Grid.SetRow(scrollCorner, 1);
             container.Children.Add(scrollCorner);
 
-            bool synchronizingScrollBars = false;
-            bool scrollBarUpdateScheduled = false;
-
-            void UpdateScrollBars()
-            {
-                if (synchronizingScrollBars || !dataGrid.IsHandleCreated || dataGrid.RowCount == 0)
-                {
-                    return;
-                }
-
-                synchronizingScrollBars = true;
-                try
-                {
-                    int displayedRows = Math.Max(1, dataGrid.DisplayedRowCount(false));
-                    int maximumFirstRow = Math.Max(0, dataGrid.RowCount - displayedRows);
-                    int firstRow = Math.Max(0, dataGrid.FirstDisplayedScrollingRowIndex);
-                    verticalScrollBar.Maximum = maximumFirstRow;
-                    verticalScrollBar.ViewportSize = displayedRows;
-                    verticalScrollBar.LargeChange = displayedRows;
-                    verticalScrollBar.Value = Math.Min(maximumFirstRow, firstRow);
-                    verticalScrollBar.IsEnabled = maximumFirstRow > 0;
-
-                    int totalColumnWidth = dataGrid.Columns.GetColumnsWidth(
-                        WinForms.DataGridViewElementStates.Visible);
-                    // DisplayRectangle includes the row-header area. It cannot display
-                    // column content, so exclude it when calculating the scroll range.
-                    int rowHeaderWidth = dataGrid.RowHeadersVisible ? dataGrid.RowHeadersWidth : 0;
-                    int viewportWidth = Math.Max(0, dataGrid.DisplayRectangle.Width - rowHeaderWidth);
-                    int maximumHorizontalOffset = Math.Max(0, totalColumnWidth - viewportWidth);
-                    horizontalScrollBar.Maximum = maximumHorizontalOffset;
-                    horizontalScrollBar.ViewportSize = viewportWidth;
-                    horizontalScrollBar.LargeChange = Math.Max(24, viewportWidth);
-                    horizontalScrollBar.Value = Math.Min(
-                        maximumHorizontalOffset,
-                        Math.Max(0, dataGrid.HorizontalScrollingOffset));
-                    horizontalScrollBar.IsEnabled = maximumHorizontalOffset > 0;
-                }
-                finally
-                {
-                    synchronizingScrollBars = false;
-                }
-            }
-
-            void ScheduleScrollBarUpdate()
-            {
-                if (scrollBarUpdateScheduled)
-                {
-                    return;
-                }
-
-                scrollBarUpdateScheduled = true;
-                Dispatcher.BeginInvoke(
-                    System.Windows.Threading.DispatcherPriority.Render,
-                    new Action(() =>
-                    {
-                        scrollBarUpdateScheduled = false;
-                        UpdateScrollBars();
-                    }));
-            }
-
             verticalScrollBar.ValueChanged += (_, _) =>
             {
                 if (synchronizingScrollBars || !dataGrid.IsHandleCreated || dataGrid.RowCount == 0)
@@ -479,7 +491,9 @@ namespace SSMS
                     return;
                 }
 
-                dataGrid.HorizontalScrollingOffset = Math.Max(0, (int)Math.Round(horizontalScrollBar.Value));
+                int newOffset = Math.Max(0, (int)Math.Round(horizontalScrollBar.Value));
+                lastHorizontalOffset = newOffset;
+                dataGrid.HorizontalScrollingOffset = newOffset;
             };
 
             dataGrid.VerticalWheelScrolled += (_, delta) =>
@@ -487,10 +501,12 @@ namespace SSMS
                 if ((WinForms.Control.ModifierKeys & WinForms.Keys.Shift) == WinForms.Keys.Shift)
                 {
                     double horizontalTarget = horizontalScrollBar.Value - (delta / 120.0 * 48);
-                    horizontalScrollBar.Value = Math.Clamp(
+                    double clamped = Math.Clamp(
                         horizontalTarget,
                         horizontalScrollBar.Minimum,
                         horizontalScrollBar.Maximum);
+                    lastHorizontalOffset = (int)Math.Round(clamped);
+                    horizontalScrollBar.Value = clamped;
                     return;
                 }
 
@@ -509,15 +525,48 @@ namespace SSMS
             dataGrid.HorizontalWheelScrolled += (_, delta) =>
             {
                 double target = horizontalScrollBar.Value + (delta / 120.0 * 48);
-                horizontalScrollBar.Value = Math.Clamp(
+                double clamped = Math.Clamp(
                     target,
                     horizontalScrollBar.Minimum,
                     horizontalScrollBar.Maximum);
+                lastHorizontalOffset = (int)Math.Round(clamped);
+                horizontalScrollBar.Value = clamped;
             };
 
-            dataGrid.Scroll += (_, _) => UpdateScrollBars();
+            dataGrid.Scroll += (_, e) =>
+            {
+                if (synchronizingScrollBars) return;
+                if (e.ScrollOrientation == WinForms.ScrollOrientation.HorizontalScroll)
+                {
+                    if (dataGrid.HorizontalScrollingOffset > 0 || lastHorizontalOffset == 0)
+                    {
+                        lastHorizontalOffset = dataGrid.HorizontalScrollingOffset;
+                    }
+                }
+                UpdateScrollBars();
+            };
             dataGrid.Resize += (_, _) => ScheduleScrollBarUpdate();
-            dataGrid.ColumnWidthChanged += (_, _) => ScheduleScrollBarUpdate();
+            dataGrid.ColumnWidthChanged += (_, _) =>
+            {
+                if (synchronizingScrollBars || !dataGrid.IsHandleCreated)
+                {
+                    return;
+                }
+
+                int totalColumnWidth = dataGrid.Columns.GetColumnsWidth(
+                    WinForms.DataGridViewElementStates.Visible);
+                int rowHeaderWidth = dataGrid.RowHeadersVisible ? dataGrid.RowHeadersWidth : 0;
+                int viewportWidth = Math.Max(0, dataGrid.DisplayRectangle.Width - rowHeaderWidth);
+                int maximumHorizontalOffset = Math.Max(0, totalColumnWidth - viewportWidth);
+
+                int targetOffset = Math.Clamp(lastHorizontalOffset, 0, maximumHorizontalOffset);
+                if (dataGrid.HorizontalScrollingOffset != targetOffset)
+                {
+                    dataGrid.HorizontalScrollingOffset = targetOffset;
+                }
+
+                ScheduleScrollBarUpdate();
+            };
             dataGrid.DataBindingComplete += (_, _) => ScheduleScrollBarUpdate();
             container.Loaded += (_, _) => ScheduleScrollBarUpdate();
             container.SizeChanged += (_, _) => ScheduleScrollBarUpdate();
