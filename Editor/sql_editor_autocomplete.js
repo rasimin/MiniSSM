@@ -488,3 +488,130 @@
             return objects;
         }
 
+        function findTableColumnDetails(objectName) {
+            if (!objectName) return null;
+            var normalized = objectName.replace(/[\[\]]/g, '');
+            var details = columnDetails[normalized];
+            if (details) {
+                return details;
+            }
+
+            for (var key in columnDetails) {
+                if (key.toLowerCase() === normalized.toLowerCase() || key.toLowerCase().endsWith('.' + normalized.toLowerCase())) {
+                    return columnDetails[key];
+                }
+            }
+            return null;
+        }
+
+        function getFullTableName(tableName) {
+            if (!tableName) return tableName;
+            var normalized = tableName.replace(/[\[\]]/g, '');
+            for (var key in objectTypes) {
+                if (key.toLowerCase() === normalized.toLowerCase() || key.toLowerCase().endsWith('.' + normalized.toLowerCase())) {
+                    var parts = key.split('.');
+                    return parts.map(p => '[' + p + ']').join('.');
+                }
+            }
+            return normalized.indexOf('.') > -1
+                ? normalized.split('.').map(p => '[' + p + ']').join('.')
+                : '[dbo].[' + normalized + ']';
+        }
+
+        function getDefaultSampleValue(colName, dataType) {
+            var dt = (dataType || '').toLowerCase();
+            if (dt.indexOf('int') > -1 || dt.indexOf('bit') > -1 || dt.indexOf('tinyint') > -1 || dt.indexOf('smallint') > -1) {
+                return "0";
+            }
+            if (dt.indexOf('decimal') > -1 || dt.indexOf('numeric') > -1 || dt.indexOf('float') > -1 || dt.indexOf('money') > -1 || dt.indexOf('real') > -1) {
+                return "0.0";
+            }
+            if (dt.indexOf('datetime') > -1 || dt.indexOf('date') > -1 || dt.indexOf('time') > -1) {
+                return "GETDATE()";
+            }
+            if (dt.indexOf('uniqueidentifier') > -1) {
+                return "NEWID()";
+            }
+            return "'" + colName + "'";
+        }
+
+        function generateInsertSnippet(tableName) {
+            var details = findTableColumnDetails(tableName);
+            var cols = findColumns(tableName);
+            if (!cols || cols.length === 0) return null;
+
+            var insertCols = [];
+            var valList = [];
+            var tabIndex = 1;
+
+            cols.forEach(function(col) {
+                var info = details ? details[col] : null;
+                var dataType = info ? info.dataType : '';
+                var isIdentity = info ? info.isIdentity : false;
+
+                if (isIdentity) return;
+
+                insertCols.push("    [" + col + "]");
+
+                var defaultVal = getDefaultSampleValue(col, dataType);
+                var remark = dataType ? " /* " + dataType + " */" : "";
+                valList.push("    ${" + tabIndex + ":" + defaultVal + "}" + remark);
+                tabIndex++;
+            });
+
+            if (insertCols.length === 0) return null;
+
+            var fullTableName = getFullTableName(tableName);
+            return "INSERT INTO " + fullTableName + " (\n" +
+                insertCols.join(",\n") + "\n" +
+                ")\nVALUES (\n" +
+                valList.join(",\n") + "\n);$0";
+        }
+
+        function generateUpdateSnippet(tableName) {
+            var details = findTableColumnDetails(tableName);
+            var cols = findColumns(tableName);
+            if (!cols || cols.length === 0) return null;
+
+            var setLines = [];
+            var whereCols = [];
+            var tabIndex = 1;
+
+            cols.forEach(function(col) {
+                var info = details ? details[col] : null;
+                var dataType = info ? info.dataType : '';
+                var isIdentity = info ? info.isIdentity : false;
+                var isPrimaryKey = info ? info.isPrimaryKey : false;
+                var colLower = col.toLowerCase();
+                var isAuditCreated = colLower === 'createddate' || colLower === 'createdat' || colLower === 'createdby' || colLower === 'created_date' || colLower === 'created_at' || colLower === 'created_by';
+
+                var defaultVal = getDefaultSampleValue(col, dataType);
+                var remark = dataType ? " /* " + dataType + " */" : "";
+
+                if (isPrimaryKey || isIdentity) {
+                    whereCols.push({ col: col, val: defaultVal, dataType: dataType });
+                    setLines.push("    -- [" + col + "] = " + defaultVal + remark + " /* (Primary Key/Identity - tidak perlu update) */");
+                } else if (isAuditCreated) {
+                    setLines.push("    -- [" + col + "] = " + defaultVal + remark + " /* (Created Audit - tidak perlu update) */");
+                } else {
+                    setLines.push("    [" + col + "] = ${" + tabIndex + ":" + defaultVal + "}" + remark);
+                    tabIndex++;
+                }
+            });
+
+            if (setLines.length === 0) return null;
+
+            var fullTableName = getFullTableName(tableName);
+            var whereClause = "";
+            if (whereCols.length > 0) {
+                whereClause = "\nWHERE " + whereCols.map(function(w, idx) {
+                    return "[" + w.col + "] = ${" + (tabIndex + idx) + ":" + w.val + "}";
+                }).join(" AND ");
+            } else if (cols.length > 0) {
+                whereClause = "\nWHERE [" + cols[0] + "] = ${" + tabIndex + ":'val'}";
+            }
+
+            return "UPDATE " + fullTableName + "\nSET\n" +
+                setLines.join(",\n") +
+                whereClause + ";$0";
+        }

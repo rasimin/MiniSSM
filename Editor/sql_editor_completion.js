@@ -278,10 +278,61 @@
                             kind: monaco.languages.CompletionItemKind.Struct,
                             insertText: objectName,
                             detail: localObjects[objectName].type,
-                            sortText: (sourceContext ? "0_" : "1_") + objectName,
-                            range: range
+                                range: range
+                            });
                         });
-                    });
+                    
+                    // Check if a full table name + space has been typed after INSERT INTO or UPDATE
+                    var lineUntilCursor = lineText.substring(0, position.column - 1);
+                    var insertSpaceMatch = lineUntilCursor.match(/\bINSERT(?:\s+INTO)?\s+([#a-zA-Z0-9_\.\[\]]+)\s+$/i);
+                    if (insertSpaceMatch) {
+                        var typedTable = insertSpaceMatch[1].replace(/[\[\]]/g, '');
+                        var matchedTable = tables.find(t => t.toLowerCase() === typedTable.toLowerCase() || t.toLowerCase().endsWith('.' + typedTable.toLowerCase()));
+                        var targetTable = matchedTable || typedTable;
+                        var snippet = generateInsertSnippet(targetTable);
+                        if (snippet) {
+                            var matchStartCol = lineUntilCursor.lastIndexOf(insertSpaceMatch[0]) + 1;
+                            suggestions.push({
+                                label: "Snippet: INSERT into " + targetTable + " (All columns)",
+                                kind: monaco.languages.CompletionItemKind.Snippet,
+                                insertText: snippet,
+                                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                                detail: "Generate INSERT script template with field values and type remarks for " + targetTable,
+                                sortText: "0_0_insert_" + targetTable,
+                                range: {
+                                    startLineNumber: position.lineNumber,
+                                    endLineNumber: position.lineNumber,
+                                    startColumn: matchStartCol,
+                                    endColumn: position.column
+                                }
+                            });
+                        }
+                    }
+
+                    var updateSpaceMatch = lineUntilCursor.match(/\bUPDATE\s+([#a-zA-Z0-9_\.\[\]]+)(?:\s+SET)?\s*$/i);
+                    if (updateSpaceMatch && !insertSpaceMatch && /\bUPDATE\s+[#a-zA-Z0-9_\.\[\]]+\s+/i.test(lineUntilCursor)) {
+                        var typedUpdateTable = updateSpaceMatch[1].replace(/[\[\]]/g, '');
+                        var matchedUpdateTable = tables.find(t => t.toLowerCase() === typedUpdateTable.toLowerCase() || t.toLowerCase().endsWith('.' + typedUpdateTable.toLowerCase()));
+                        var targetUpdateTable = matchedUpdateTable || typedUpdateTable;
+                        var updateSnippet = generateUpdateSnippet(targetUpdateTable);
+                        if (updateSnippet) {
+                            var updateStartCol = lineUntilCursor.lastIndexOf(updateSpaceMatch[0]) + 1;
+                            suggestions.push({
+                                label: "Snippet: UPDATE " + targetUpdateTable + " SET (All columns)",
+                                kind: monaco.languages.CompletionItemKind.Snippet,
+                                insertText: updateSnippet,
+                                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                                detail: "Generate UPDATE script template with PK & type remarks for " + targetUpdateTable,
+                                sortText: "0_0_update_" + targetUpdateTable,
+                                range: {
+                                    startLineNumber: position.lineNumber,
+                                    endLineNumber: position.lineNumber,
+                                    startColumn: updateStartCol,
+                                    endColumn: position.column
+                                }
+                            });
+                        }
+                    }
                     
                     // 1. Snippet ssf: SELECT TOP 50 * FROM
                     suggestions.push({
