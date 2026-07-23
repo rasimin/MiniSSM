@@ -38,7 +38,20 @@ namespace SSMS
         public ConnectionWindow()
         {
             InitializeComponent();
+            ApplyDarkMode();
             LoadConnectionSettings();
+        }
+
+        private void ApplyDarkMode()
+        {
+            try
+            {
+                var helper = new System.Windows.Interop.WindowInteropHelper(this);
+                helper.EnsureHandle();
+                int darkMode = 1;
+                DwmSetWindowAttribute(helper.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
+            }
+            catch { }
         }
 
         private void LoadConnectionSettings()
@@ -113,20 +126,7 @@ namespace SSMS
             }
         }
 
-        protected override void OnSourceInitialized(EventArgs e)
-        {
-            base.OnSourceInitialized(e);
-            try
-            {
-                IntPtr hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-                int darkMode = 1; // 1 = Enable
-                DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
-            }
-            catch
-            {
-                // Ignore DWM failures on older Windows versions
-            }
-        }
+
 
         private void CboAuth_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {

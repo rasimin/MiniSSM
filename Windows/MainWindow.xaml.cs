@@ -57,6 +57,7 @@ namespace SSMS
         public MainWindow(string connectionString)
         {
             InitializeComponent();
+            ApplyDarkMode();
             _initialConnectionString = connectionString;
             ApplyToolbarOrder();
 
@@ -64,6 +65,18 @@ namespace SSMS
             TreeObjectExplorer.AddHandler(TreeViewItem.ExpandedEvent, new RoutedEventHandler(TreeItem_Expanded));
             TreeObjectExplorer.SelectedItemChanged += (_, _) => _useObjectExplorerContextForNewQuery = true;
             TreeObjectExplorer.PreviewMouseDown += (_, _) => _useObjectExplorerContextForNewQuery = true;
+        }
+
+        private void ApplyDarkMode()
+        {
+            try
+            {
+                var helper = new WindowInteropHelper(this);
+                helper.EnsureHandle();
+                int darkMode = 1; // 1 = Enable
+                DwmSetWindowAttribute(helper.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
+            }
+            catch { }
         }
 
         private void ApplyToolbarOrder()
@@ -136,12 +149,10 @@ namespace SSMS
                 IntPtr hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
                 _windowSource = HwndSource.FromHwnd(hwnd);
                 _windowSource?.AddHook(WindowMessageHook);
-                int darkMode = 1; // 1 = Enable
-                DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
             }
             catch
             {
-                // Ignore DWM failures
+                // Ignore failures
             }
         }
 

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 
 namespace SSMS
 {
@@ -27,6 +28,11 @@ namespace SSMS
         private bool _isSearching;
         private int _detailLoadVersion;
 
+        [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+
+        private const int DwmwaUseImmersiveDarkMode = 20;
+
         public string ConnectionString =>
             (ServerComboBox.SelectedItem as ObjectSearchServerOption)?.ConnectionString ??
             _initialConnectionString;
@@ -39,12 +45,30 @@ namespace SSMS
             string? initialDatabaseName = null)
         {
             InitializeComponent();
+            ApplyDarkMode();
             _servers = servers;
             _initialConnectionString = initialConnectionString;
             _initialDatabaseName = initialDatabaseName;
             Loaded += ObjectSearchWindow_Loaded;
             Closed += ObjectSearchWindow_Closed;
         }
+
+        private void ApplyDarkMode()
+        {
+            try
+            {
+                var helper = new WindowInteropHelper(this);
+                helper.EnsureHandle();
+                int darkMode = 1;
+                DwmSetWindowAttribute(helper.Handle, DwmwaUseImmersiveDarkMode, ref darkMode, sizeof(int));
+            }
+            catch
+            {
+                // Dark title bar is best effort on older Windows versions.
+            }
+        }
+
+
 
         private async void ObjectSearchWindow_Loaded(object sender, RoutedEventArgs e)
         {

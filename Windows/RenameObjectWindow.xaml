@@ -1,0 +1,162 @@
+<Window x:Class="SSMS.RenameObjectWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Rename Object" 
+        Height="360" Width="460"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        WindowStyle="None"
+        Background="#181A1F"
+        BorderBrush="#2A2D35"
+        BorderThickness="1"
+        KeyDown="Window_KeyDown">
+    
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/> <!-- Title / Header -->
+            <RowDefinition Height="*"/>    <!-- Content -->
+            <RowDefinition Height="Auto"/> <!-- Buttons -->
+        </Grid.RowDefinitions>
+
+        <!-- Header Row -->
+        <Grid Grid.Row="0" Margin="0,0,0,20" MouseDown="HeaderGrid_MouseDown" Background="Transparent">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="Rename Object" Foreground="#FFFFFF" FontSize="16" FontWeight="Bold"/>
+                <TextBlock Text="Hasilkan script SQL untuk mengubah nama objek di query editor baru." Foreground="#888C94" FontSize="11" TextWrapping="Wrap" Margin="0,5,0,0"/>
+            </StackPanel>
+            <Button Grid.Column="1" Content="✕" Width="20" Height="20" Background="Transparent" BorderThickness="0" Foreground="#888C94" FontSize="12" Click="BtnClose_Click" VerticalAlignment="Top">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="Red"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+        </Grid>
+
+        <!-- Content Row -->
+        <StackPanel Grid.Row="1">
+            <Grid Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="100"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Tipe Objek:" Foreground="#888C94" FontSize="12"/>
+                <TextBlock x:Name="TxtObjectType" Grid.Column="1" Text="Table" Foreground="#00ADB5" FontSize="12" FontWeight="Bold"/>
+            </Grid>
+
+            <Grid Margin="0,0,0,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="100"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Nama Saat Ini:" Foreground="#888C94" FontSize="12"/>
+                <TextBlock x:Name="TxtCurrentName" Grid.Column="1" Text="dbo.Customers" Foreground="#FFFFFF" FontSize="13" FontWeight="Bold" TextWrapping="Wrap"/>
+            </Grid>
+
+            <TextBlock Text="Nama Baru:" Foreground="#CCCCCC" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
+            <Grid Margin="0,0,0,6">
+                <TextBox x:Name="TxtNewName" 
+                         Background="#25272F" 
+                         Foreground="#FFFFFF" 
+                         BorderBrush="#3B3F4B" 
+                         BorderThickness="1" 
+                         Padding="8,10" 
+                         FontSize="13"
+                         VerticalContentAlignment="Center"
+                         TextChanged="TxtNewName_TextChanged">
+                    <TextBox.Resources>
+                        <Style TargetType="Border">
+                            <Setter Property="CornerRadius" Value="4"/>
+                        </Style>
+                    </TextBox.Resources>
+                </TextBox>
+                <TextBlock x:Name="TxtPlaceholder" 
+                           Text="Masukkan nama baru..." 
+                           Foreground="#555860" 
+                           IsHitTestVisible="False" 
+                           VerticalAlignment="Center" 
+                           Margin="10,0,0,0" 
+                           FontSize="13"
+                           Visibility="Visible"/>
+            </Grid>
+            
+            <TextBlock x:Name="TxtHelperNote" Text="Catatan: Cukup masukkan nama objek baru (tanpa nama skema)." Foreground="#888C94" FontSize="11" TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <!-- Buttons Row -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,15,0,0">
+            <Button x:Name="BtnCancel" Content="Batal" Width="80" Height="36" Click="BtnClose_Click" Margin="0,0,10,0">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Background" Value="#25272F"/>
+                        <Setter Property="Foreground" Value="#FFFFFF"/>
+                        <Setter Property="BorderBrush" Value="#3B3F4B"/>
+                        <Setter Property="BorderThickness" Value="1"/>
+                        <Setter Property="Cursor" Value="Hand"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#31343F"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+            
+            <Button x:Name="BtnGenerate" Content="⚙ Generate Script" Width="140" Height="36" Click="BtnGenerate_Click" IsEnabled="False">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Background" Value="#00ADB5"/>
+                        <Setter Property="Foreground" Value="#101115"/>
+                        <Setter Property="BorderThickness" Value="0"/>
+                        <Setter Property="FontWeight" Value="SemiBold"/>
+                        <Setter Property="Cursor" Value="Hand"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="border" Background="{TemplateBinding Background}" CornerRadius="4">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#00C4CE"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Background" Value="#25272F"/>
+                                <Setter Property="Foreground" Value="#555860"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+        </StackPanel>
+    </Grid>
+</Window>

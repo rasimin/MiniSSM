@@ -14,26 +14,27 @@ namespace SSMS
         public StartupWindow()
         {
             InitializeComponent();
+            ApplyDarkMode();
         }
 
-        public void SetStatus(string message)
+        private void ApplyDarkMode()
         {
-            StatusText.Text = message;
-        }
-
-        protected override void OnSourceInitialized(EventArgs e)
-        {
-            base.OnSourceInitialized(e);
             try
             {
-                IntPtr hwnd = new WindowInteropHelper(this).Handle;
+                var helper = new WindowInteropHelper(this);
+                helper.EnsureHandle();
                 int darkMode = 1;
-                DwmSetWindowAttribute(hwnd, DwmwaUseImmersiveDarkMode, ref darkMode, sizeof(int));
+                DwmSetWindowAttribute(helper.Handle, DwmwaUseImmersiveDarkMode, ref darkMode, sizeof(int));
             }
             catch
             {
                 // Dark title-bar support is best effort on older Windows versions.
             }
+        }
+
+        public void SetStatus(string message)
+        {
+            StatusText.Text = message;
         }
     }
 }

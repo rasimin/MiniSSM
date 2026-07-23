@@ -1,7 +1,7 @@
-﻿        function registerSqlCompletionProvider() {
+        function registerSqlCompletionProvider() {
             // Register custom completion item provider for sql
             monaco.languages.registerCompletionItemProvider('sql', {
-                triggerCharacters: ['.', ' '],
+                triggerCharacters: ['.'],
                 provideCompletionItems: function (model, position) {
                     if (!metadataLoaded) {
                         window.chrome.webview.postMessage({ action: 'requestMetadata' });

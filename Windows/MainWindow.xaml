@@ -20,6 +20,7 @@
 
         <!-- Dark Theme Styles -->
         <Style x:Key="ToolbarButton" TargetType="Button">
+            <Setter Property="Focusable" Value="False"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="#CCCCCC"/>
             <Setter Property="BorderBrush" Value="Transparent"/>

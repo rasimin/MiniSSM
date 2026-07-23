@@ -403,6 +403,10 @@ namespace SSMS
                             var refreshItem = new MenuItem { Header = "Refresh" };
                             refreshItem.Click += async (s, ev) => await RefreshObjectExplorerNodeAsync(dbItem);
                             contextMenu.Items.Add(refreshItem);
+                            contextMenu.Items.Add(new Separator());
+                            var renameDbItem = new MenuItem { Header = "Rename..." };
+                            renameDbItem.Click += (s, ev) => ShowRenameDialog(connStr, db, "Database", db);
+                            contextMenu.Items.Add(renameDbItem);
                             dbItem.ContextMenu = contextMenu;
 
                             item.Items.Add(dbItem);
@@ -585,6 +589,7 @@ namespace SSMS
                                 Header = $"{icon} {col.ColumnName} ({col.DataType}{pkSuffix})",
                                 Tag = new ObjectExplorerNode { NodeType = "Column", ConnectionString = connStr, DatabaseName = dbName, DetailName = col.ColumnName }
                             };
+                            colItem.ContextMenu = CreateObjectContextMenu(connStr, dbName, "Column", col.ColumnName, detailName);
                             item.Items.Add(colItem);
                         }
                     }
@@ -600,6 +605,7 @@ namespace SSMS
                                 Header = $"🔖 {index.IndexName} ({index.IndexType}{uniqueSuffix}{pkSuffix})",
                                 Tag = new ObjectExplorerNode { NodeType = "Index", ConnectionString = connStr, DatabaseName = dbName, DetailName = index.IndexName }
                             };
+                            indexItem.ContextMenu = CreateObjectContextMenu(connStr, dbName, "Index", index.IndexName, detailName);
                             item.Items.Add(indexItem);
                         }
                     }

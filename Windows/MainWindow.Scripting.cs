@@ -18,86 +18,95 @@ namespace SSMS
 {
     public partial class MainWindow : Window
     {
-        private ContextMenu CreateObjectContextMenu(string connectionString, string databaseName, string objectType, string objectName)
+        private ContextMenu CreateObjectContextMenu(string connectionString, string databaseName, string objectType, string objectName, string? parentName = null)
         {
             var menu = new ContextMenu();
 
-            var newQueryItem = new MenuItem { Header = "New Query" };
-            newQueryItem.Click += (s, e) => CreateNewQueryTab(connectionString, databaseName);
-            menu.Items.Add(newQueryItem);
-
-            if (objectType == "Table" || objectType == "View")
+            if (objectType != "Column" && objectType != "Index")
             {
-                var selectTopItem = new MenuItem { Header = "Select Top 200" };
-                selectTopItem.Click += (s, e) =>
+                var newQueryItem = new MenuItem { Header = "New Query" };
+                newQueryItem.Click += (s, e) => CreateNewQueryTab(connectionString, databaseName);
+                menu.Items.Add(newQueryItem);
+
+                if (objectType == "Table" || objectType == "View")
                 {
-                    string safeName = objectName;
-                    var parts = objectName.Split('.');
-                    if (parts.Length == 2)
+                    var selectTopItem = new MenuItem { Header = "Select Top 200" };
+                    selectTopItem.Click += (s, e) =>
                     {
-                        safeName = $"[{parts[0]}].[{parts[1]}]";
-                    }
-                    else
-                    {
-                        safeName = $"[{objectName}]";
-                    }
-                    string sql = $"SELECT TOP 200 * FROM {safeName};";
-                    CreateNewQueryTab(connectionString, databaseName, sql, $"{objectName} (Top 200)", autoExecute: true);
-                };
-                menu.Items.Add(selectTopItem);
+                        string safeName = objectName;
+                        var parts = objectName.Split('.');
+                        if (parts.Length == 2)
+                        {
+                            safeName = $"[{parts[0]}].[{parts[1]}]";
+                        }
+                        else
+                        {
+                            safeName = $"[{objectName}]";
+                        }
+                        string sql = $"SELECT TOP 200 * FROM {safeName};";
+                        CreateNewQueryTab(connectionString, databaseName, sql, $"{objectName} (Top 200)", autoExecute: true);
+                    };
+                    menu.Items.Add(selectTopItem);
+                }
+
+                var scriptAsMenu = new MenuItem { Header = "Script Object as" };
+
+                var createToMenu = new MenuItem { Header = "CREATE To" };
+                var createNewQuery = new MenuItem { Header = "New Query Editor Window" };
+                createNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "CREATE");
+                createToMenu.Items.Add(createNewQuery);
+                scriptAsMenu.Items.Add(createToMenu);
+
+                if (objectType == "Table")
+                {
+                    var insertToMenu = new MenuItem { Header = "INSERT To" };
+                    var insertNewQuery = new MenuItem { Header = "New Query Editor Window (Standard)" };
+                    insertNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "INSERT");
+                    insertToMenu.Items.Add(insertNewQuery);
+
+                    var insertVarsNewQuery = new MenuItem { Header = "New Query Editor Window (with Variables)" };
+                    insertVarsNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "INSERT_VARS");
+                    insertToMenu.Items.Add(insertVarsNewQuery);
+
+                    var insertDataNewQuery = new MenuItem { Header = "New Query Editor Window (with Data)" };
+                    insertDataNewQuery.Click += (s, e) => ShowInsertWithDataDialog(connectionString, databaseName, objectName);
+                    insertToMenu.Items.Add(insertDataNewQuery);
+
+                    scriptAsMenu.Items.Add(insertToMenu);
+
+                    var updateToMenu = new MenuItem { Header = "UPDATE To" };
+                    var updateNewQuery = new MenuItem { Header = "New Query Editor Window" };
+                    updateNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "UPDATE");
+                    updateToMenu.Items.Add(updateNewQuery);
+                    scriptAsMenu.Items.Add(updateToMenu);
+
+                    var deleteToMenu = new MenuItem { Header = "DELETE To" };
+                    var deleteNewQuery = new MenuItem { Header = "New Query Editor Window" };
+                    deleteNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "DELETE");
+                    deleteToMenu.Items.Add(deleteNewQuery);
+                    scriptAsMenu.Items.Add(deleteToMenu);
+                }
+
+                var alterToMenu = new MenuItem { Header = "ALTER To" };
+                var alterNewQuery = new MenuItem { Header = "New Query Editor Window" };
+                alterNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "ALTER");
+                alterToMenu.Items.Add(alterNewQuery);
+                scriptAsMenu.Items.Add(alterToMenu);
+
+                var dropToMenu = new MenuItem { Header = "DROP To" };
+                var dropNewQuery = new MenuItem { Header = "New Query Editor Window" };
+                dropNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "DROP");
+                dropToMenu.Items.Add(dropNewQuery);
+                scriptAsMenu.Items.Add(dropToMenu);
+
+                menu.Items.Add(scriptAsMenu);
+
+                menu.Items.Add(new Separator());
             }
 
-            var scriptAsMenu = new MenuItem { Header = "Script Object as" };
-
-            var createToMenu = new MenuItem { Header = "CREATE To" };
-            var createNewQuery = new MenuItem { Header = "New Query Editor Window" };
-            createNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "CREATE");
-            createToMenu.Items.Add(createNewQuery);
-            scriptAsMenu.Items.Add(createToMenu);
-
-            if (objectType == "Table")
-            {
-                var insertToMenu = new MenuItem { Header = "INSERT To" };
-                var insertNewQuery = new MenuItem { Header = "New Query Editor Window (Standard)" };
-                insertNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "INSERT");
-                insertToMenu.Items.Add(insertNewQuery);
-
-                var insertVarsNewQuery = new MenuItem { Header = "New Query Editor Window (with Variables)" };
-                insertVarsNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "INSERT_VARS");
-                insertToMenu.Items.Add(insertVarsNewQuery);
-
-                var insertDataNewQuery = new MenuItem { Header = "New Query Editor Window (with Data)" };
-                insertDataNewQuery.Click += (s, e) => ShowInsertWithDataDialog(connectionString, databaseName, objectName);
-                insertToMenu.Items.Add(insertDataNewQuery);
-
-                scriptAsMenu.Items.Add(insertToMenu);
-
-                var updateToMenu = new MenuItem { Header = "UPDATE To" };
-                var updateNewQuery = new MenuItem { Header = "New Query Editor Window" };
-                updateNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "UPDATE");
-                updateToMenu.Items.Add(updateNewQuery);
-                scriptAsMenu.Items.Add(updateToMenu);
-
-                var deleteToMenu = new MenuItem { Header = "DELETE To" };
-                var deleteNewQuery = new MenuItem { Header = "New Query Editor Window" };
-                deleteNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "DELETE");
-                deleteToMenu.Items.Add(deleteNewQuery);
-                scriptAsMenu.Items.Add(deleteToMenu);
-            }
-
-            var alterToMenu = new MenuItem { Header = "ALTER To" };
-            var alterNewQuery = new MenuItem { Header = "New Query Editor Window" };
-            alterNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "ALTER");
-            alterToMenu.Items.Add(alterNewQuery);
-            scriptAsMenu.Items.Add(alterToMenu);
-
-            var dropToMenu = new MenuItem { Header = "DROP To" };
-            var dropNewQuery = new MenuItem { Header = "New Query Editor Window" };
-            dropNewQuery.Click += async (s, e) => await GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "DROP");
-            dropToMenu.Items.Add(dropNewQuery);
-            scriptAsMenu.Items.Add(dropToMenu);
-
-            menu.Items.Add(scriptAsMenu);
+            var renameItem = new MenuItem { Header = "Rename..." };
+            renameItem.Click += (s, e) => ShowRenameDialog(connectionString, databaseName, objectType, objectName, parentName);
+            menu.Items.Add(renameItem);
 
             return menu;
         }
@@ -315,6 +324,16 @@ namespace SSMS
             if (dialog.ShowDialog() == true && dialog.IsGenerated)
             {
                 CreateNewQueryTab(connectionString, databaseName, dialog.GeneratedSql, $"{tableName}_InsertData.sql");
+            }
+        }
+
+        private void ShowRenameDialog(string connectionString, string databaseName, string objectType, string objectName, string? parentName = null)
+        {
+            var dialog = new RenameObjectWindow(objectType, objectName, databaseName, parentName);
+            dialog.Owner = this;
+            if (dialog.ShowDialog() == true && dialog.IsGenerated && !string.IsNullOrEmpty(dialog.GeneratedSql))
+            {
+                CreateNewQueryTab(connectionString, databaseName, dialog.GeneratedSql, $"Rename_{objectName}.sql");
             }
         }
 

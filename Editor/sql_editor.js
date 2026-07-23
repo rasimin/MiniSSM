@@ -1,4 +1,4 @@
-﻿        require(['vs/editor/editor.main'], function () {
+        require(['vs/editor/editor.main'], function () {
             registerSqlCompletionProvider();
             registerSqlHoverProvider();
 
@@ -10,6 +10,8 @@
                 automaticLayout: true,
                 fontSize: 14,
                 fontFamily: 'Consolas, Courier New, monospace',
+                acceptSuggestionOnEnter: 'smart',
+                wordBasedSuggestions: false,
                 minimap: { enabled: false },
                 scrollbar: {
                     verticalScrollbarSize: 6,

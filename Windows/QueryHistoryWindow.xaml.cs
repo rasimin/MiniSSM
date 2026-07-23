@@ -17,23 +17,26 @@ namespace SSMS
         public QueryHistoryWindow()
         {
             InitializeComponent();
+            ApplyDarkMode();
             Loaded += async (_, _) => await RefreshHistoryAsync();
         }
 
-        protected override void OnSourceInitialized(EventArgs e)
+        private void ApplyDarkMode()
         {
-            base.OnSourceInitialized(e);
             try
             {
-                IntPtr handle = new WindowInteropHelper(this).Handle;
+                var helper = new WindowInteropHelper(this);
+                helper.EnsureHandle();
                 int darkMode = 1;
-                DwmSetWindowAttribute(handle, DwmwaUseImmersiveDarkMode, ref darkMode, sizeof(int));
+                DwmSetWindowAttribute(helper.Handle, DwmwaUseImmersiveDarkMode, ref darkMode, sizeof(int));
             }
             catch
             {
                 // Dark title bar is best effort on older Windows versions.
             }
         }
+
+
 
         private async System.Threading.Tasks.Task RefreshHistoryAsync()
         {
@@ -54,13 +57,20 @@ namespace SSMS
                 DateTimeOffset? fromUtc = ToUtcBoundary(FromDatePicker.SelectedDate, addOneDay: false);
                 DateTimeOffset? beforeUtc = ToUtcBoundary(ToDatePicker.SelectedDate, addOneDay: true);
                 CountText.Text = "Loading...";
+                LoadingOverlay.Visibility = Visibility.Visible;
+                HistoryGrid.Visibility = Visibility.Collapsed;
+
                 var entries = await QueryHistoryService.GetLatestAsync(
                     300,
                     fromUtc,
                     beforeUtc,
                     DatabaseFilterTextBox.Text,
                     SqlFilterTextBox.Text);
+                
                 HistoryGrid.ItemsSource = entries;
+                LoadingOverlay.Visibility = Visibility.Collapsed;
+                HistoryGrid.Visibility = Visibility.Visible;
+                
                 CountText.Text = $"{entries.Count} matching entries (maximum 300)";
                 if (entries.Count > 0)
                 {
@@ -69,6 +79,8 @@ namespace SSMS
             }
             catch (Exception ex)
             {
+                LoadingOverlay.Visibility = Visibility.Collapsed;
+                HistoryGrid.Visibility = Visibility.Visible;
                 AppLogger.Error(ex, "Failed to load query execution history.");
                 CountText.Text = "Failed to load history";
                 MessageBox.Show(
