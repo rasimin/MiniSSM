@@ -137,7 +137,7 @@ Hal penting:
 - Ikon jam `ToolbarQueryHistory` membuka satu instance `QueryHistoryWindow`; Open in New Query mencari koneksi server yang masih aktif dan membuat tab dirty baru pada database dari record history.
 - Query History mengambil maksimum 300 record yang cocok langsung dari SQLite; rentang tanggal memakai hari lokal secara inklusif, sedangkan database dan isi SQL memakai pencarian substring literal.
 - `Window_KeyDown` menangani shortcut seperti `F5`, `F8`, `Ctrl+N`, `Ctrl+S`, `Ctrl+O`, `Ctrl+K`, `Ctrl+Shift+K`.
-- Urutan default toolbar mengikuti: Connect, Disconnect, Object Explorer, New Query, Save, Database, Execute, Comment, Uncomment, Save As, Open, Query History, Insert Script, lalu Query Tools; item tetap dapat di-drag untuk reorder.
+- Urutan default toolbar mengikuti: Connect, Disconnect, Object Explorer, Database, Execute, New Query, Comment, Uncomment, Save, Save As, Open, Query History, Insert Script, lalu Query Tools; item tetap dapat di-drag untuk reorder.
 - `MainWindow` meneruskan pesan native `WM_MOUSEHWHEEL` dari gesture dua jari touchpad ke `ScrollViewer` horizontal di bawah pointer.
 - `RunEditorCommand(...)` menjalankan fungsi JavaScript di Monaco.
 - Formatter Monaco memformat selection atau seluruh dokumen sebagai satu undo step dan menjaga string, quoted identifier, comment, serta separator `GO`.
@@ -227,6 +227,8 @@ Perintah dasar:
 dotnet restore
 dotnet build
 ```
+
+Build juga dapat dijalankan dari root project melalui `build.bat`. Tanpa argumen script memakai konfigurasi `Debug`; gunakan `build.bat Release` untuk konfigurasi Release.
 
 Publish Release ke folder yang dikonfigurasi pada profile:
 
