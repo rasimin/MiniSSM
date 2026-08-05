@@ -26,7 +26,7 @@ namespace SSMS
     public partial class QueryTabControl : UserControl
     {
 
-        private async Task ShowObjectDefinitionTabAsync(string objectName, string objectType)
+        public async Task ShowObjectDefinitionTabAsync(string objectName, string objectType)
         {
             var schemaTab = CreateSchemaTab(objectName, objectType);
             schemaTab.Content = new Grid
@@ -191,7 +191,8 @@ namespace SSMS
 
         public async Task CacheAndRefreshAutocompleteAsync()
         {
-            if (!IsWebViewInitialized || _isDisposed || !_metadataRequested) return;
+            if (_isDisposed) return;
+            _metadataRequested = true;
 
             try
             {
@@ -222,7 +223,10 @@ namespace SSMS
                     payload = payload
                 };
                 string messagePayload = JsonSerializer.Serialize(messageObj);
-                SqlEditorWebView.CoreWebView2.PostWebMessageAsJson(messagePayload);
+                if (MainWindow.Instance?.SharedSqlEditorWebView.CoreWebView2 is { } coreWebView)
+                {
+                    coreWebView.PostWebMessageAsJson(messagePayload);
+                }
             }
             catch (Exception ex)
             {
@@ -242,14 +246,14 @@ namespace SSMS
             await CacheAndRefreshAutocompleteAsync();
         }
 
-        private void RequestAutocompleteMetadata()
+        public void RequestAutocompleteMetadata()
         {
             if (_metadataRequested || _isDisposed) return;
             _metadataRequested = true;
             _ = CacheAndRefreshAutocompleteAsync();
         }
 
-        private async Task LoadCrossDatabaseMetadataAsync(string databaseName)
+        public async Task LoadCrossDatabaseMetadataAsync(string databaseName)
         {
             try
             {
@@ -287,8 +291,11 @@ namespace SSMS
                 var payload = new { columns, objectTypes, scalarFunctions, tableFunctions };
                 string jsonDatabase = JsonSerializer.Serialize(databaseName);
                 string jsonPayload = JsonSerializer.Serialize(payload);
-                await SqlEditorWebView.ExecuteScriptAsync(
-                    $"updateDatabaseMetadata({jsonDatabase}, {jsonPayload});");
+                if (MainWindow.Instance?.SharedSqlEditorWebView is { } webView)
+                {
+                    await webView.ExecuteScriptAsync(
+                        $"updateDatabaseMetadata({jsonDatabase}, {jsonPayload});");
+                }
             }
             catch (Exception ex)
             {

@@ -13,11 +13,14 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Microsoft.Data.SqlClient;
+using Microsoft.Web.WebView2.Core;
 
 namespace SSMS
 {
     public partial class MainWindow : Window
     {
+        public static MainWindow? Instance { get; private set; }
+
         private readonly string _initialConnectionString;
         private readonly TaskCompletionSource<bool> _startupCompletion =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -25,7 +28,6 @@ namespace SSMS
 
         public Task StartupCompletion => _startupCompletion.Task;
 
-        // Cache databases list per server connection string to make tab switching instant
         private readonly Dictionary<string, List<string>> _serverDatabasesCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _folderFilters = new(StringComparer.OrdinalIgnoreCase);
         private TabItem? _draggedTab;
@@ -44,6 +46,11 @@ namespace SSMS
         private QueryHistoryWindow? _queryHistoryWindow;
         private ObjectSearchWindow? _objectSearchWindow;
 
+        private bool _isSharedWebViewInitialized;
+        private readonly TaskCompletionSource<bool> _sharedWebViewReadyCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task SharedWebViewReady => _sharedWebViewReadyCompletion.Task;
+        private QueryTabControl? _currentAttachedTab;
+
         private static readonly Duration ReorderAnimationDuration = new(TimeSpan.FromMilliseconds(320));
         private const string QueryTabDragHandleTag = "QueryTabDragHandle";
 
@@ -56,12 +63,12 @@ namespace SSMS
 
         public MainWindow(string connectionString)
         {
+            Instance = this;
             InitializeComponent();
             ApplyDarkMode();
             _initialConnectionString = connectionString;
             ApplyToolbarOrder();
 
-            // Connect TreeView expanded event handler
             TreeObjectExplorer.AddHandler(TreeViewItem.ExpandedEvent, new RoutedEventHandler(TreeItem_Expanded));
             TreeObjectExplorer.SelectedItemChanged += (_, _) => _useObjectExplorerContextForNewQuery = true;
             TreeObjectExplorer.PreviewMouseDown += (_, _) => _useObjectExplorerContextForNewQuery = true;
@@ -73,10 +80,150 @@ namespace SSMS
             {
                 var helper = new WindowInteropHelper(this);
                 helper.EnsureHandle();
-                int darkMode = 1; // 1 = Enable
+                int darkMode = 1;
                 DwmSetWindowAttribute(helper.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
             }
             catch { }
+        }
+
+        private async Task InitializeSharedWebViewAsync()
+        {
+            if (_isSharedWebViewInitialized) return;
+            _isSharedWebViewInitialized = true;
+
+            try
+            {
+                var env = await QueryTabControl.GetSharedEnvironmentAsync();
+                await SharedSqlEditorWebView.EnsureCoreWebView2Async(env);
+                SharedSqlEditorWebView.DefaultBackgroundColor = System.Drawing.Color.FromArgb(30, 30, 30);
+
+                string editorDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Editor");
+                string htmlPath = Path.Combine(editorDirectory, "sql_editor.html");
+                SharedSqlEditorWebView.WebMessageReceived += SharedSqlEditorWebView_WebMessageReceived;
+                SharedSqlEditorWebView.Source = new Uri(htmlPath);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error(ex, "Failed to initialize Shared Monaco SQL Editor WebView2");
+                _sharedWebViewReadyCompletion.TrySetResult(false);
+            }
+        }
+
+        private void SharedSqlEditorWebView_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+        {
+            try
+            {
+                string json = e.WebMessageAsJson;
+                using var doc = JsonDocument.Parse(json);
+                if (!doc.RootElement.TryGetProperty("action", out var actionProp))
+                {
+                    return;
+                }
+
+                string action = actionProp.GetString() ?? string.Empty;
+                string? msgTabId = doc.RootElement.TryGetProperty("tabId", out var tProp) ? tProp.GetString() : null;
+
+                QueryTabControl? targetTab = null;
+                if (!string.IsNullOrEmpty(msgTabId))
+                {
+                    targetTab = TabQueryControls.Items.OfType<TabItem>()
+                        .Select(t => t.Content as QueryTabControl)
+                        .FirstOrDefault(q => q != null && q.TabId == msgTabId);
+                }
+                targetTab ??= (TabQueryControls.SelectedItem as TabItem)?.Content as QueryTabControl;
+
+                if (action == "editorReady")
+                {
+                    _sharedWebViewReadyCompletion.TrySetResult(true);
+                    if (_currentAttachedTab != null)
+                    {
+                        _ = AttachSharedWebViewToTabAsync(_currentAttachedTab);
+                    }
+                }
+                else if (action == "execute")
+                {
+                    targetTab?.ExecuteQuery();
+                }
+                else if (action == "newQuery")
+                {
+                    CreateNewQueryFromCurrentContext();
+                }
+                else if (action == "editorFocused")
+                {
+                    targetTab?.NotifyEditorFocused();
+                }
+                else if (action == "contentChanged")
+                {
+                    targetTab?.ScheduleDirtyCheck();
+                }
+                else if (action == "requestMetadata")
+                {
+                    targetTab?.RequestAutocompleteMetadata();
+                }
+                else if (action == "loadDatabaseMetadata" && doc.RootElement.TryGetProperty("databaseName", out var dbProp))
+                {
+                    string? dbName = dbProp.GetString();
+                    if (!string.IsNullOrWhiteSpace(dbName) && targetTab != null)
+                    {
+                        _ = targetTab.LoadCrossDatabaseMetadataAsync(dbName);
+                    }
+                }
+                else if (action == "viewObjectDefinition" &&
+                         doc.RootElement.TryGetProperty("objectName", out var objProp) &&
+                         doc.RootElement.TryGetProperty("objectType", out var typeProp))
+                {
+                    string? objName = objProp.GetString();
+                    string? objType = typeProp.GetString();
+                    if (!string.IsNullOrWhiteSpace(objName) && !string.IsNullOrWhiteSpace(objType) && targetTab != null)
+                    {
+                        _ = targetTab.ShowObjectDefinitionTabAsync(objName, objType);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error(ex, "Error handling shared webview message");
+            }
+        }
+
+        public async Task AttachSharedWebViewToTabAsync(QueryTabControl targetTab)
+        {
+            if (targetTab == null) return;
+            await SharedWebViewReady;
+
+            if (SharedSqlEditorWebView.Parent is Grid oldParentGrid)
+            {
+                oldParentGrid.Children.Remove(SharedSqlEditorWebView);
+            }
+
+            _currentAttachedTab = targetTab;
+            targetTab.EditorHostGrid.Children.Add(SharedSqlEditorWebView);
+            SharedSqlEditorWebView.Visibility = Visibility.Visible;
+            targetTab.EditorLoadingPanel.Visibility = Visibility.Collapsed;
+            targetTab.IsWebViewInitialized = true;
+            await targetTab.CompleteEditorInitializationAsync();
+
+            await SharedSqlEditorWebView.ExecuteScriptAsync($"switchTabModel('{targetTab.TabId}');");
+            SharedSqlEditorWebView.Focus();
+            _ = targetTab.CacheAndRefreshAutocompleteAsync();
+        }
+
+        public void DetachSharedWebViewFromTab(QueryTabControl tab)
+        {
+            if (_currentAttachedTab == tab)
+            {
+                if (SharedSqlEditorWebView.Parent is Grid parentGrid)
+                {
+                    parentGrid.Children.Remove(SharedSqlEditorWebView);
+                }
+                SharedWebViewHost.Children.Add(SharedSqlEditorWebView);
+                SharedSqlEditorWebView.Visibility = Visibility.Collapsed;
+                _currentAttachedTab = null;
+            }
+            if (_isSharedWebViewInitialized)
+            {
+                _ = SharedSqlEditorWebView.ExecuteScriptAsync($"disposeTabModel('{tab.TabId}');");
+            }
         }
 
         private void ApplyToolbarOrder()
@@ -144,23 +291,8 @@ namespace SSMS
         protected override void OnSourceInitialized(EventArgs e)
         {
             base.OnSourceInitialized(e);
-            try
-            {
-                IntPtr hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-                _windowSource = HwndSource.FromHwnd(hwnd);
-                _windowSource?.AddHook(WindowMessageHook);
-            }
-            catch
-            {
-                // Ignore failures
-            }
-        }
-
-        protected override void OnClosed(EventArgs e)
-        {
-            _windowSource?.RemoveHook(WindowMessageHook);
-            _windowSource = null;
-            base.OnClosed(e);
+            _windowSource = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
+            _windowSource?.AddHook(WindowMessageHook);
         }
 
         protected override async void OnClosing(System.ComponentModel.CancelEventArgs e)
@@ -172,7 +304,6 @@ namespace SSMS
             }
 
             e.Cancel = true;
-            base.OnClosing(e);
             if (_isCloseConfirmationInProgress)
             {
                 return;
@@ -259,13 +390,9 @@ namespace SSMS
         {
             try
             {
-                // 0. Initialize keep-alive WebView to ensure Chromium engine never shuts down
-                _ = KeepAliveWebView.EnsureCoreWebView2Async(await QueryTabControl.GetSharedEnvironmentAsync());
-
-                // 1. Add the initial server to Object Explorer
+                await InitializeSharedWebViewAsync();
                 await AddServerToExplorerAsync(_initialConnectionString);
 
-                // 2. Open the first query tab
                 var builder = new SqlConnectionStringBuilder(_initialConnectionString);
                 string initialDb = string.IsNullOrEmpty(builder.InitialCatalog) ? "master" : builder.InitialCatalog;
                 QueryTabControl firstTab = CreateNewQueryTab(_initialConnectionString, initialDb);
@@ -282,7 +409,6 @@ namespace SSMS
             }
         }
 
-
         public void UpdateStatusText(string text)
         {
             TxtStatusTime.Text = text;
@@ -298,7 +424,5 @@ namespace SSMS
             TxtStatusRows.Text = $"{rows} rows";
             TxtStatusColumns.Text = $"{cols} columns";
         }
-
-
     }
 }

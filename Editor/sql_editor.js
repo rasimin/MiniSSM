@@ -23,22 +23,23 @@
             editor.onDidChangeModelContent(function() {
                 if (!suppressChangeNotification) {
                     window.chrome.webview.postMessage({
-                        action: 'contentChanged'
+                        action: 'contentChanged',
+                        tabId: activeTabId
                     });
                 }
             });
 
             editor.onDidFocusEditorText(function() {
-                window.chrome.webview.postMessage({ action: 'editorFocused' });
+                window.chrome.webview.postMessage({ action: 'editorFocused', tabId: activeTabId });
             });
 
             // Send signal to C# on keydown inside Monaco for F5
             editor.addCommand(monaco.KeyCode.F5, function() {
-                window.chrome.webview.postMessage({ action: 'execute' });
+                window.chrome.webview.postMessage({ action: 'execute', tabId: activeTabId });
             });
 
             editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyN, function() {
-                window.chrome.webview.postMessage({ action: 'newQuery' });
+                window.chrome.webview.postMessage({ action: 'newQuery', tabId: activeTabId });
             });
 
             // WebView2 can consume Ctrl+Space before Monaco's default keybinding runs.
@@ -53,4 +54,5 @@
 
             window.chrome.webview.postMessage({ action: 'editorReady' });
         });
+
 

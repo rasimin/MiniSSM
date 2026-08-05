@@ -33,12 +33,13 @@ namespace SSMS
 
     public partial class QueryTabControl : UserControl
     {
+        public string TabId { get; } = Guid.NewGuid().ToString("N");
         public string ConnectionString { get; set; }
         public string DatabaseName { get; set; }
         public string InitialSql { get; set; } = string.Empty;
         public string? FilePath { get; set; }
         public bool AutoExecute { get; set; } = false;
-        public bool IsWebViewInitialized { get; private set; } = false;
+        public bool IsWebViewInitialized { get; set; } = false;
         public bool IsDirty { get; private set; }
         public int TotalResultRows { get; private set; } = 0;
         public int TotalResultColumns { get; private set; } = 0;
@@ -100,7 +101,6 @@ namespace SSMS
         public QueryTabControl(string connectionString, string databaseName)
         {
             InitializeComponent();
-            SqlEditorWebView.DefaultBackgroundColor = Drawing.Color.FromArgb(255, 30, 30, 30);
             ConnectionString = connectionString;
             DatabaseName = databaseName;
 
@@ -160,19 +160,13 @@ namespace SSMS
             ResultsRow.Height = new GridLength(resultsHeight);
         }
 
-        private async void QueryTabControl_Loaded(object sender, RoutedEventArgs e)
+        private void QueryTabControl_Loaded(object sender, RoutedEventArgs e)
         {
             if (_webViewInitializationStarted) return;
             _webViewInitializationStarted = true;
-            await InitializeWebViewAsync();
         }
 
-
-
-
-
-
-        private void ScheduleDirtyCheck()
+        public void ScheduleDirtyCheck()
         {
             _dirtyDebounceSource?.Cancel();
             _dirtyDebounceSource?.Dispose();
@@ -187,8 +181,7 @@ namespace SSMS
             {
                 await Task.Delay(250, source.Token);
                 if (_isDisposed || !IsWebViewInitialized) return;
-                string resultJson = await SqlEditorWebView.ExecuteScriptAsync("getQueryText()");
-                string currentText = JsonSerializer.Deserialize<string>(resultJson) ?? string.Empty;
+                string currentText = await GetQueryTextAsync();
                 SetDirty(!string.Equals(currentText, _savedSqlText, StringComparison.Ordinal));
             }
             catch (OperationCanceledException) { }
@@ -205,11 +198,13 @@ namespace SSMS
             _queryCancellationSource?.Cancel();
             DisposeDisplayedResults();
             Loaded -= QueryTabControl_Loaded;
-            SqlEditorWebView.WebMessageReceived -= SqlEditorWebView_WebMessageReceived;
-            SqlEditorWebView.CoreWebView2?.Stop();
-            SqlEditorWebView.Dispose();
             DirtyStateChanged = null;
         }
+
+
+
+
+
 
         public void MarkSaved(string sqlText)
         {

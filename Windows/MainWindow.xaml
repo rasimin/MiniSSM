@@ -713,7 +713,9 @@
             </Grid>
         </Border>
 
-        <!-- Dummy WebView2 to keep Chromium processes alive -->
-        <wv2:WebView2 x:Name="KeepAliveWebView" Visibility="Collapsed" Width="0" Height="0" />
+        <!-- Shared WebView2 Instance for Monaco Editor -->
+        <Grid x:Name="SharedWebViewHost" Visibility="Collapsed">
+            <wv2:WebView2 x:Name="SharedSqlEditorWebView" Margin="0" AllowExternalDrop="False"/>
+        </Grid>
     </Grid>
 </Window>

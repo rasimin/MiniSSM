@@ -1,27 +1,91 @@
-﻿        // C# callable functions:
+        // C# callable functions for Multi-Model Monaco Editor:
         var suppressChangeNotification = false;
 
-        function getQueryText() {
-            if (editor) {
-                var selection = editor.getSelection();
-                var selectedText = editor.getModel().getValueInRange(selection);
-                if (selectedText && selectedText.trim().length > 0) {
-                    return selectedText;
-                }
-                return editor.getValue();
+        function createTabModel(tabId, initialText) {
+            if (!tabId) return;
+            if (!tabModels.has(tabId)) {
+                var uri = monaco.Uri.parse("inmemory://model/" + tabId + ".sql");
+                var model = monaco.editor.getModel(uri) || monaco.editor.createModel(initialText || '', 'sql', uri);
+                tabModels.set(tabId, model);
+
+                model.onDidChangeContent(function() {
+                    if (!suppressChangeNotification) {
+                        window.chrome.webview.postMessage({
+                            action: 'contentChanged',
+                            tabId: tabId
+                        });
+                    }
+                });
             }
-            return '';
         }
 
-        function getAllQueryText() {
-            return editor ? editor.getValue() : '';
+        function switchTabModel(tabId) {
+            if (!editor || !tabId) return;
+
+            if (activeTabId && activeTabId !== tabId && tabModels.has(activeTabId)) {
+                var currentViewState = editor.saveViewState();
+                if (currentViewState) {
+                    tabViewStates.set(activeTabId, currentViewState);
+                }
+            }
+
+            if (!tabModels.has(tabId)) {
+                createTabModel(tabId, '');
+            }
+
+            activeTabId = tabId;
+            var model = tabModels.get(tabId);
+            suppressChangeNotification = true;
+            try {
+                editor.setModel(model);
+                var viewState = tabViewStates.get(tabId);
+                if (viewState) {
+                    editor.restoreViewState(viewState);
+                }
+                editor.focus();
+            } finally {
+                suppressChangeNotification = false;
+            }
         }
 
-        function setQueryText(text) {
-            if (editor) {
+        function disposeTabModel(tabId) {
+            if (!tabId) return;
+            if (tabModels.has(tabId)) {
+                var model = tabModels.get(tabId);
+                model.dispose();
+                tabModels.delete(tabId);
+                tabViewStates.delete(tabId);
+                if (activeTabId === tabId) {
+                    activeTabId = null;
+                }
+            }
+        }
+
+        function getQueryText(tabId) {
+            var targetModel = (tabId && tabModels.has(tabId)) ? tabModels.get(tabId) : (editor ? editor.getModel() : null);
+            if (editor && (!tabId || tabId === activeTabId)) {
+                var selection = editor.getSelection();
+                if (selection) {
+                    var selectedText = editor.getModel().getValueInRange(selection);
+                    if (selectedText && selectedText.trim().length > 0) {
+                        return selectedText;
+                    }
+                }
+            }
+            return targetModel ? targetModel.getValue() : '';
+        }
+
+        function getAllQueryText(tabId) {
+            var targetModel = (tabId && tabModels.has(tabId)) ? tabModels.get(tabId) : (editor ? editor.getModel() : null);
+            return targetModel ? targetModel.getValue() : '';
+        }
+
+        function setQueryText(text, tabId) {
+            var targetModel = (tabId && tabModels.has(tabId)) ? tabModels.get(tabId) : (editor ? editor.getModel() : null);
+            if (targetModel) {
                 suppressChangeNotification = true;
                 try {
-                    editor.setValue(text);
+                    targetModel.setValue(text || '');
                 } finally {
                     suppressChangeNotification = false;
                 }
@@ -118,8 +182,7 @@
             activeDatabase = meta.activeDatabase || '';
             metadataLoaded = true;
             tables = Object.keys(tableColumns);
-            
-            // Extract unique schemas from keys (e.g. "dbo" from "dbo.customers")
+
             var schemaSet = new Set();
             tables.forEach(t => {
                 if (t.indexOf('.') > -1) {
@@ -133,6 +196,17 @@
             });
             schemas = Array.from(schemaSet);
         }
-    
 
-window.chrome.webview.addEventListener('message', function (e) { if (e.data && e.data.action === 'updateMetadata') { updateMetadata(e.data.payload); } });
+        window.chrome.webview.addEventListener('message', function (e) {
+            if (!e.data) return;
+            if (e.data.action === 'updateMetadata') {
+                updateMetadata(e.data.payload);
+            } else if (e.data.action === 'createTabModel') {
+                createTabModel(e.data.tabId, e.data.initialText);
+            } else if (e.data.action === 'switchTabModel') {
+                switchTabModel(e.data.tabId);
+            } else if (e.data.action === 'disposeTabModel') {
+                disposeTabModel(e.data.tabId);
+            }
+        });
+

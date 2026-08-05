@@ -33,8 +33,7 @@ namespace SSMS
             string sqlQuery = "";
             try
             {
-                string resultJson = await SqlEditorWebView.ExecuteScriptAsync("getQueryText()");
-                sqlQuery = JsonSerializer.Deserialize<string>(resultJson) ?? "";
+                sqlQuery = await GetQueryTextAsync();
             }
             catch (Exception ex)
             {

@@ -128,7 +128,15 @@ namespace SSMS
 
             TabQueryControls.Items.Insert(0, tabItem);
             TabQueryControls.SelectedItem = tabItem;
+            _ = RegisterTabModelInSharedWebViewAsync(queryTabControl);
             return queryTabControl;
+        }
+
+        private async Task RegisterTabModelInSharedWebViewAsync(QueryTabControl tab)
+        {
+            await SharedWebViewReady;
+            await SharedSqlEditorWebView.ExecuteScriptAsync(
+                $"createTabModel('{tab.TabId}', {JsonSerializer.Serialize(tab.InitialSql ?? "")});");
         }
 
         private void RenameTab(TabItem tabItem)
@@ -163,6 +171,7 @@ namespace SSMS
             AppLogger.Info($"Closing query tab: {GetTabHeaderText(tabItem)}");
             if (tabItem.Content is QueryTabControl queryTab)
             {
+                DetachSharedWebViewFromTab(queryTab);
                 queryTab.DisposeResources();
             }
             TabQueryControls.Items.Remove(tabItem);
@@ -281,6 +290,7 @@ namespace SSMS
             {
                 if (TabQueryControls.SelectedItem is TabItem tabItem && tabItem.Content is QueryTabControl activeTab)
                 {
+                    await AttachSharedWebViewToTabAsync(activeTab);
                     var builder = new SqlConnectionStringBuilder(activeTab.ConnectionString);
                     string serverName = builder.DataSource;
 
@@ -290,7 +300,6 @@ namespace SSMS
                     await SyncDatabaseContextAsync(activeTab);
 
                     UpdateStatusRowsAndColumns(activeTab.TotalResultRows, activeTab.TotalResultColumns);
-                    activeTab.FocusEditor();
                 }
             }
             catch (Exception ex)
@@ -364,7 +373,7 @@ namespace SSMS
             {
                 try
                 {
-                    await activeTab.SqlEditorWebView.ExecuteScriptAsync(script);
+                    await SharedSqlEditorWebView.ExecuteScriptAsync(script);
                 }
                 catch (Exception ex)
                 {
@@ -499,8 +508,7 @@ namespace SSMS
 
             try
             {
-                string resultJson = await queryTab.SqlEditorWebView.ExecuteScriptAsync("getAllQueryText()");
-                string sqlQuery = JsonSerializer.Deserialize<string>(resultJson) ?? "";
+                string sqlQuery = await queryTab.GetAllQueryTextAsync();
                 File.WriteAllText(targetPath, sqlQuery);
                 queryTab.FilePath = targetPath;
 
