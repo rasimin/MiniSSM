@@ -519,7 +519,7 @@
                             insertText: snip.insertText,
                             insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
                             detail: snip.detail,
-                            sortText: "0_0_redgate_" + snip.label,
+                            sortText: (sourceContext ? "8_redgate_" : "0_0_redgate_") + snip.label,
                             range: range
                         };
                         if (snip.command) {
@@ -595,7 +595,7 @@
                             kind: monaco.languages.CompletionItemKind.Class,
                             insertText: t,
                             detail: objectTypes[t] || "Table",
-                            sortText: (sourceContext ? "0_" : "1_") + t,
+                            sortText: (sourceContext ? "0_0_table_" : "1_table_") + t,
                             range: range
                         });
                     });
