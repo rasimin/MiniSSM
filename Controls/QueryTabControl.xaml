@@ -139,8 +139,10 @@
                     <Grid x:Name="ResultsGridContainer" Background="#1E1E1E"/>
                 </TabItem>
                 <TabItem Header="Messages">
-                    <TextBox x:Name="TxtMessages" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" 
-                             Background="#1E1E1E" Foreground="#CCCCCC" BorderThickness="0" FontFamily="Consolas" FontSize="13" IsReadOnly="True" Padding="15"/>
+                    <RichTextBox x:Name="TxtMessages" VerticalScrollBarVisibility="Auto" 
+                                 Background="#1E1E1E" Foreground="#D4D4D4" BorderThickness="0" 
+                                 FontFamily="Consolas" FontSize="13" IsReadOnly="True" Padding="15"
+                                 IsDocumentEnabled="True"/>
                 </TabItem>
             </TabControl>
 

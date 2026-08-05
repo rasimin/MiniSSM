@@ -51,7 +51,7 @@ namespace SSMS
             // Clear UI previous records
             DisposeDisplayedResults();
             ClearExecutionPlanTabs();
-            TxtMessages.Text = "";
+            ClearQueryMessages();
             var cancellationSource = new CancellationTokenSource();
             _queryCancellationSource = cancellationSource;
             LoadingMessageText.Text = mode switch
@@ -66,7 +66,7 @@ namespace SSMS
             LoadingOverlay.Visibility = Visibility.Visible;
             TabResults.SelectedIndex = 1;
 
-            var messageProgress = new Progress<string>(AppendLiveQueryMessage);
+            var messageProgress = new Progress<string>(msg => AppendLiveQueryMessage(msg));
 
             var mainWindow = Window.GetWindow(this) as MainWindow;
             mainWindow?.UpdateStatusText(LoadingMessageText.Text);
@@ -95,7 +95,7 @@ namespace SSMS
                 {
                     TotalResultRows = 0;
                     TotalResultColumns = 0;
-                    AppendLiveQueryMessage(result.Message);
+                    AppendLiveQueryMessage(result.Message, isError: true);
                     TabResults.SelectedIndex = 1;
                     mainWindow?.UpdateStatusText("Query cancelled.");
                     mainWindow?.UpdateStatusTime($"Cancelled: {result.ExecutionTime.TotalMilliseconds:F2} ms");
@@ -114,7 +114,7 @@ namespace SSMS
                         await CacheAndRefreshAutocompleteAsync();
                     }
 
-                    TxtMessages.Text = result.Message;
+                    SetQueryMessages(result.Message);
                     if (result.DataTables != null && result.DataTables.Count > 0)
                     {
                         TotalResultRows = 0;
@@ -163,7 +163,7 @@ namespace SSMS
                 {
                     TotalResultRows = 0;
                     TotalResultColumns = 0;
-                    AppendLiveQueryMessage(result.Message);
+                    SetQueryMessages(result.Message, isError: true);
                     TabResults.SelectedIndex = 1; // Select Messages Textbox Tab
                     mainWindow?.UpdateStatusTime($"Error: {result.ExecutionTime.TotalMilliseconds:F2} ms");
                     mainWindow?.UpdateStatusRowsAndColumns(0, 0);
@@ -185,7 +185,7 @@ namespace SSMS
                 TotalResultRows = 0;
                 TotalResultColumns = 0;
                 AppLogger.Error(ex, "ExecuteQuery failed");
-                AppendLiveQueryMessage($"Unexpected query execution error: {ex.Message}");
+                SetQueryMessages($"Unexpected query execution error: {ex.Message}", isError: true);
                 TabResults.SelectedIndex = 1;
                 mainWindow?.UpdateStatusTime("Error");
                 mainWindow?.UpdateStatusRowsAndColumns(0, 0);
@@ -204,20 +204,68 @@ namespace SSMS
             }
         }
 
-        private void AppendLiveQueryMessage(string message)
+        private static readonly System.Windows.Media.Brush MessageRedBrush = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#F87171")!;
+        private static readonly System.Windows.Media.Brush MessageGreenBrush = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#4ADE80")!;
+        private static readonly System.Windows.Media.Brush MessageWhiteBrush = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#D4D4D4")!;
+
+        private static System.Windows.Media.Brush ClassifyMessageLineColor(string line)
+        {
+            string trimmed = line.Trim();
+            if (string.IsNullOrEmpty(trimmed)) return MessageWhiteBrush;
+
+            if (trimmed.StartsWith("Msg ", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("Msg-", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("Error", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("Unexpected query execution error", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("Level ", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Contains("Invalid object name", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Contains("Incorrect syntax", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Contains("Execution Canceled", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Contains("Query execution cancelled", StringComparison.OrdinalIgnoreCase))
+            {
+                return MessageRedBrush;
+            }
+
+            if (trimmed.Contains("row affected", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Contains("rows affected", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Contains("completed successfully", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Contains("Syntax check passed", StringComparison.OrdinalIgnoreCase))
+            {
+                return MessageGreenBrush;
+            }
+
+            return MessageWhiteBrush;
+        }
+
+        private void ClearQueryMessages()
+        {
+            TxtMessages.Document.Blocks.Clear();
+        }
+
+        private void SetQueryMessages(string message, bool isError = false)
+        {
+            TxtMessages.Document.Blocks.Clear();
+            AppendLiveQueryMessage(message, isError);
+        }
+
+        private void AppendLiveQueryMessage(string message, bool isError = false)
         {
             if (string.IsNullOrEmpty(message))
             {
                 return;
             }
 
-            if (TxtMessages.Text.Length > 0 && !TxtMessages.Text.EndsWith(Environment.NewLine, StringComparison.Ordinal))
+            string[] lines = message.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+            foreach (var line in lines)
             {
-                TxtMessages.AppendText(Environment.NewLine);
+                var brush = isError ? MessageRedBrush : ClassifyMessageLineColor(line);
+                var paragraph = new System.Windows.Documents.Paragraph(new System.Windows.Documents.Run(line))
+                {
+                    Margin = new Thickness(0, 0, 0, 2),
+                    Foreground = brush
+                };
+                TxtMessages.Document.Blocks.Add(paragraph);
             }
-
-            TxtMessages.AppendText(message.TrimEnd('\r', '\n'));
-            TxtMessages.AppendText(Environment.NewLine);
             TxtMessages.ScrollToEnd();
         }
 

@@ -890,6 +890,14 @@ namespace SSMS
             }
         }
 
+        private static DependencyObject? GetParentDependencyObject(DependencyObject? current)
+        {
+            if (current == null) return null;
+            return current is Visual
+                ? VisualTreeHelper.GetParent(current)
+                : LogicalTreeHelper.GetParent(current);
+        }
+
         private bool IsQueryTabDragHandle(DependencyObject? source)
         {
             while (source != null)
@@ -902,7 +910,7 @@ namespace SSMS
                 {
                     return false;
                 }
-                source = VisualTreeHelper.GetParent(source);
+                source = GetParentDependencyObject(source);
             }
             return false;
         }
@@ -911,7 +919,7 @@ namespace SSMS
         {
             while (source != null)
             {
-                if (source is Button || source is TextBox || source is ComboBox || source is MenuItem)
+                if (source is Button || source is TextBox || source is RichTextBox || source is ComboBox || source is MenuItem)
                 {
                     return true;
                 }
@@ -919,7 +927,7 @@ namespace SSMS
                 {
                     return false;
                 }
-                source = VisualTreeHelper.GetParent(source);
+                source = GetParentDependencyObject(source);
             }
             return false;
         }
@@ -1097,17 +1105,16 @@ namespace SSMS
             });
         }
 
-        private static T? FindAncestor<T>(DependencyObject current) where T : DependencyObject
+        private static T? FindAncestor<T>(DependencyObject? current) where T : DependencyObject
         {
-            do
+            while (current != null)
             {
                 if (current is T ancestor)
                 {
                     return ancestor;
                 }
-                current = System.Windows.Media.VisualTreeHelper.GetParent(current);
+                current = GetParentDependencyObject(current);
             }
-            while (current != null);
             return null;
         }
 

@@ -23,7 +23,7 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 | `App.xaml.cs` | Startup aplikasi. Biasanya membuka `ConnectionWindow`, lalu `MainWindow` jika koneksi sukses. |
 | `Windows\ConnectionWindow.xaml`, `Windows\ConnectionWindow.xaml.cs` | Dialog koneksi SQL Server, build connection string, test/connect, dan simpan history koneksi ke `connection_settings.json`. |
 | `Windows\MainWindow.xaml`, `Windows\MainWindow.xaml.cs` | Layout utama dan orkestrasi aplikasi: toolbar, Object Explorer, tab query, context menu, shortcut, open/save script, dan script object. Berisi single shared instance WebView2 (`SharedSqlEditorWebView`). |
-| `Controls\QueryTabControl.xaml`, `Controls\QueryTabControl.xaml.cs` | Layout dan logic satu tab query: host tempat menempel WebView2 shared (`EditorHostGrid`), splitter, Results/Messages tab, eksekusi query, result grid, dan cache autocomplete metadata. |
+| `Controls\QueryTabControl.xaml`, `Controls\QueryTabControl.xaml.cs` | Layout dan logic satu tab query: WebView2 editor, splitter, Results/Messages tab (dengan pesan berwarna: Merah untuk error, Hijau untuk sukses/rows affected, Putih untuk info/PRINT), eksekusi query, result grid, dan cache autocomplete metadata. |
 | `Services\DatabaseHelper.cs` | Semua akses SQL Server: metadata database/object, eksekusi query, generate script. |
 | `Utilities\SqlBatchSplitter.cs` | Memecah script pada separator `GO`/`GO n` tanpa memecah `GO` di string atau comment; dipakai semua mode eksekusi. |
 | `Models\ObjectExplorerNode.cs` | Model data `Tag` untuk node TreeView Object Explorer. |
