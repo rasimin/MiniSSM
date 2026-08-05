@@ -142,7 +142,8 @@
                     <RichTextBox x:Name="TxtMessages" VerticalScrollBarVisibility="Auto" 
                                  Background="#1E1E1E" Foreground="#D4D4D4" BorderThickness="0" 
                                  FontFamily="Consolas" FontSize="13" IsReadOnly="True" Padding="15"
-                                 IsDocumentEnabled="True"/>
+                                 IsDocumentEnabled="True"
+                                 PreviewMouseLeftButtonDown="TxtMessages_PreviewMouseLeftButtonDown"/>
                 </TabItem>
             </TabControl>
 

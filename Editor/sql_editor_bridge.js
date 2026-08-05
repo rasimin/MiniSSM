@@ -197,6 +197,15 @@
             schemas = Array.from(schemaSet);
         }
 
+        function gotoLine(lineNumber) {
+            if (!editor) return;
+            var lineNum = parseInt(lineNumber, 10);
+            if (isNaN(lineNum) || lineNum < 1) return;
+            editor.setPosition({ lineNumber: lineNum, column: 1 });
+            editor.revealLineInCenter(lineNum);
+            editor.focus();
+        }
+
         window.chrome.webview.addEventListener('message', function (e) {
             if (!e.data) return;
             if (e.data.action === 'updateMetadata') {
@@ -207,6 +216,29 @@
                 switchTabModel(e.data.tabId);
             } else if (e.data.action === 'disposeTabModel') {
                 disposeTabModel(e.data.tabId);
+            } else if (e.data.action === 'gotoLine') {
+                gotoLine(e.data.lineNumber);
+            } else if (e.data.action === 'replaceCurrentLineWithScript') {
+                if (!editor) return;
+                var script = e.data.script;
+                if (!script) return;
+
+                var position = editor.getPosition();
+                var model = editor.getModel();
+                if (!position || !model) return;
+
+                var lineNumber = position.lineNumber;
+                var lineRange = new monaco.Range(lineNumber, 1, lineNumber, model.getLineMaxColumn(lineNumber));
+
+                editor.executeEdits('fetchObjectScript', [{
+                    range: lineRange,
+                    text: script,
+                    forceMoveMarkers: true
+                }]);
+
+                editor.setPosition({ lineNumber: lineNumber, column: 1 });
+                editor.revealLineInCenter(lineNumber);
+                editor.focus();
             }
         });
 

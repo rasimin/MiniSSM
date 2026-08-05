@@ -20,6 +20,7 @@ namespace SSMS
             var result = new QueryResult();
             var dbConnString = BuildConnectionString(connectionString, databaseName);
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            int currentBatchStartLine = 1;
 
             try
             {
@@ -66,6 +67,7 @@ namespace SSMS
                         foreach (SqlBatch batch in batches)
                         {
                             batchNumber++;
+                            currentBatchStartLine = batch.StartLineNumber;
                             for (int repeat = 0; repeat < batch.RepeatCount; repeat++)
                             {
                                 cancellationToken.ThrowIfCancellationRequested();
@@ -125,12 +127,28 @@ namespace SSMS
                 result.ExecutionTime = stopwatch.Elapsed;
                 result.Message = "Query cancelled by user.";
             }
+            catch (SqlException sqlEx)
+            {
+                stopwatch.Stop();
+                result.IsSuccess = false;
+                result.ExecutionTime = stopwatch.Elapsed;
+
+                var sb = new System.Text.StringBuilder();
+                foreach (SqlError error in sqlEx.Errors)
+                {
+                    int absLine = Math.Max(1, currentBatchStartLine + error.LineNumber - 1);
+                    sb.AppendLine($"Msg {error.Number}, Level {error.Class}, State {error.State}, Line {absLine}");
+                    sb.AppendLine(error.Message);
+                }
+
+                result.Message = sb.Length > 0 ? sb.ToString().TrimEnd() : sqlEx.Message;
+            }
             catch (Exception ex)
             {
                 stopwatch.Stop();
                 result.IsSuccess = false;
                 result.ExecutionTime = stopwatch.Elapsed;
-                result.Message = $"Msg {ex.HResult}, Level, State\n{ex.Message}";
+                result.Message = $"Msg {ex.HResult}, Level 16, State 1\n{ex.Message}";
             }
 
             return result;

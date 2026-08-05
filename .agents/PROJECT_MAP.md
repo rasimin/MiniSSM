@@ -11,7 +11,7 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 - SQL client library: `Microsoft.Data.SqlClient`.
 - Query history lokal: `Microsoft.Data.Sqlite`, disimpan di `%LocalAppData%\MiniSSMS\Data\query-history.db`.
 - Editor SQL: Single Shared WebView2 instance dengan Monaco Editor multi-model architecture (`createTabModel`, `switchTabModel`, `disposeTabModel`).
-- File host editor: `Editor\sql_editor.html`; style host ada di `Editor\sql_editor.css`; state global & registry model ada di `Editor\sql_editor_state.js`; katalog keyword/function T-SQL ada di `Editor\sql_editor_catalog.js`; helper autocomplete/parser ada di `Editor\sql_editor_autocomplete.js`; provider completion ada di `Editor\sql_editor_completion.js`; hover ada di `Editor\sql_editor_hover.js`; formatter ada di `Editor\sql_editor_formatter.js`; bridge C# multi-model (`createTabModel`, `switchTabModel`, `disposeTabModel`) ada di `Editor\sql_editor_bridge.js`; bootstrap Monaco ada di `Editor\sql_editor.js`; semuanya disalin ke output lewat `SSMS.csproj`.
+- File host editor: `Editor\sql_editor.html`; style host ada di `Editor\sql_editor.css`; state global & registry model ada di `Editor\sql_editor_state.js`; katalog keyword/function T-SQL ada di `Editor\sql_editor_catalog.js`; helper autocomplete/parser ada di `Editor\sql_editor_autocomplete.js`; provider completion & Redgate SQL Prompt snippets (`cp`, `ap`, `ct`, `at`, `cv`, `av`, `cf`, `af`, `dp`, `dv`, `dfn`, `dt`, dll dengan auto-fetch definisi script objek existing saat Enter) ada di `Editor\sql_editor_completion.js`; hover ada di `Editor\sql_editor_hover.js`; formatter ada di `Editor\sql_editor_formatter.js`; bridge C# multi-model (`createTabModel`, `switchTabModel`, `disposeTabModel`) ada di `Editor\sql_editor_bridge.js`; bootstrap Monaco ada di `Editor\sql_editor.js`; semuanya disalin ke output lewat `SSMS.csproj`.
 
 ## File Utama
 
@@ -23,7 +23,7 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 | `App.xaml.cs` | Startup aplikasi. Biasanya membuka `ConnectionWindow`, lalu `MainWindow` jika koneksi sukses. |
 | `Windows\ConnectionWindow.xaml`, `Windows\ConnectionWindow.xaml.cs` | Dialog koneksi SQL Server, build connection string, test/connect, dan simpan history koneksi ke `connection_settings.json`. |
 | `Windows\MainWindow.xaml`, `Windows\MainWindow.xaml.cs` | Layout utama dan orkestrasi aplikasi: toolbar, Object Explorer, tab query, context menu, shortcut, open/save script, dan script object. Berisi single shared instance WebView2 (`SharedSqlEditorWebView`). |
-| `Controls\QueryTabControl.xaml`, `Controls\QueryTabControl.xaml.cs` | Layout dan logic satu tab query: WebView2 editor, splitter, Results/Messages tab (dengan pesan berwarna: Merah untuk error, Hijau untuk sukses/rows affected, Putih untuk info/PRINT), eksekusi query, result grid, dan cache autocomplete metadata. |
+| `Controls\QueryTabControl.xaml`, `Controls\QueryTabControl.xaml.cs` | Layout dan logic satu tab query: WebView2 editor, splitter, Results/Messages tab (dengan pesan berwarna & double-click error jump ke baris Monaco Editor), eksekusi query, result grid, dan cache autocomplete metadata. |
 | `Services\DatabaseHelper.cs` | Semua akses SQL Server: metadata database/object, eksekusi query, generate script. |
 | `Utilities\SqlBatchSplitter.cs` | Memecah script pada separator `GO`/`GO n` tanpa memecah `GO` di string atau comment; dipakai semua mode eksekusi. |
 | `Models\ObjectExplorerNode.cs` | Model data `Tag` untuk node TreeView Object Explorer. |

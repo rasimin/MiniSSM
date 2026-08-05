@@ -80,6 +80,19 @@ namespace SSMS
             }
         }
 
+        public async void GotoLine(int lineNumber)
+        {
+            if (MainWindow.Instance?.SharedSqlEditorWebView is { } webView)
+            {
+                try
+                {
+                    webView.Focus();
+                    await webView.ExecuteScriptAsync($"gotoLine({lineNumber});");
+                }
+                catch { }
+            }
+        }
+
         public void NotifyEditorFocused()
         {
             EditorActivated?.Invoke(this, EventArgs.Empty);
@@ -102,6 +115,52 @@ namespace SSMS
             }
 
             _editorReadyCompletion.TrySetResult(true);
+        }
+
+        public async Task FetchObjectScriptAndReplaceAsync(string objectName, string statementType)
+        {
+            if (string.IsNullOrWhiteSpace(objectName)) return;
+
+            string dbName = DatabaseName;
+            string connStr = ConnectionString;
+
+            try
+            {
+                string script = await DatabaseHelper.GetObjectDefinitionAsync(connStr, dbName, objectName);
+                if (string.IsNullOrWhiteSpace(script))
+                {
+                    try
+                    {
+                        script = await DatabaseHelper.GenerateTableCreateScriptAsync(connStr, dbName, objectName);
+                    }
+                    catch { }
+                }
+
+                if (string.IsNullOrWhiteSpace(script)) return;
+
+                if (statementType.Equals("ALTER", StringComparison.OrdinalIgnoreCase))
+                {
+                    var alterRegex = new System.Text.RegularExpressions.Regex(
+                        @"\bCREATE\s+(PROCEDURE|PROC|VIEW|FUNCTION|TRIGGER)\b",
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    script = alterRegex.Replace(script, "ALTER $1", 1);
+                }
+
+                if (MainWindow.Instance?.SharedSqlEditorWebView is { } webView)
+                {
+                    var msg = new
+                    {
+                        action = "replaceCurrentLineWithScript",
+                        tabId = TabId,
+                        script = script
+                    };
+                    webView.CoreWebView2?.PostWebMessageAsJson(JsonSerializer.Serialize(msg));
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error(ex, $"Failed to fetch object script for {objectName}");
+            }
         }
     }
 }

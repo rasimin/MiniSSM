@@ -237,6 +237,10 @@ namespace SSMS
             return MessageWhiteBrush;
         }
 
+        private static readonly System.Text.RegularExpressions.Regex LineNumberRegex = new(
+            @"\bLine\s+(\d+)\b",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
         private void ClearQueryMessages()
         {
             TxtMessages.Document.Blocks.Clear();
@@ -256,17 +260,95 @@ namespace SSMS
             }
 
             string[] lines = message.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+            int lastExtractedLineNumber = -1;
+
             foreach (var line in lines)
             {
                 var brush = isError ? MessageRedBrush : ClassifyMessageLineColor(line);
-                var paragraph = new System.Windows.Documents.Paragraph(new System.Windows.Documents.Run(line))
+                
+                int lineNum = -1;
+                System.Text.RegularExpressions.Match match = LineNumberRegex.Match(line);
+                if (match.Success && int.TryParse(match.Groups[1].Value, out int parsedLine))
+                {
+                    lineNum = parsedLine;
+                    lastExtractedLineNumber = parsedLine;
+                }
+                else if (isError || brush == MessageRedBrush)
+                {
+                    lineNum = lastExtractedLineNumber;
+                }
+
+                var run = new System.Windows.Documents.Run(line);
+
+                var paragraph = new System.Windows.Documents.Paragraph(run)
                 {
                     Margin = new Thickness(0, 0, 0, 2),
                     Foreground = brush
                 };
+
+                if (lineNum > 0)
+                {
+                    paragraph.Tag = lineNum;
+                }
+
                 TxtMessages.Document.Blocks.Add(paragraph);
             }
             TxtMessages.ScrollToEnd();
+        }
+
+        private void TxtMessages_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (e.ClickCount >= 2)
+            {
+                int targetLine = ExtractLineNumberFromClick(e.GetPosition(TxtMessages));
+                if (targetLine > 0)
+                {
+                    GotoLine(targetLine);
+                    e.Handled = true;
+                }
+            }
+        }
+
+        private int ExtractLineNumberFromClick(Point position)
+        {
+            var textPosition = TxtMessages.GetPositionFromPoint(position, true);
+            if (textPosition == null) return -1;
+
+            var paragraph = textPosition.Paragraph;
+            if (paragraph != null)
+            {
+                if (paragraph.Tag is int tagLine && tagLine > 0)
+                {
+                    return tagLine;
+                }
+
+                string paraText = new System.Windows.Documents.TextRange(paragraph.ContentStart, paragraph.ContentEnd).Text;
+                System.Text.RegularExpressions.Match match = LineNumberRegex.Match(paraText);
+                if (match.Success && int.TryParse(match.Groups[1].Value, out int lineNum))
+                {
+                    return lineNum;
+                }
+            }
+
+            foreach (var block in TxtMessages.Document.Blocks)
+            {
+                if (block is System.Windows.Documents.Paragraph p)
+                {
+                    var range = new System.Windows.Documents.TextRange(p.ContentStart, p.ContentEnd);
+                    if (range.Contains(textPosition))
+                    {
+                        if (p.Tag is int pTag && pTag > 0) return pTag;
+                        string pText = range.Text;
+                        System.Text.RegularExpressions.Match m = LineNumberRegex.Match(pText);
+                        if (m.Success && int.TryParse(m.Groups[1].Value, out int lNum))
+                        {
+                            return lNum;
+                        }
+                    }
+                }
+            }
+
+            return -1;
         }
 
         private void CancelQueryButton_Click(object sender, RoutedEventArgs e)

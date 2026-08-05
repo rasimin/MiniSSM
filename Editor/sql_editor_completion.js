@@ -1,4 +1,17 @@
         function registerSqlCompletionProvider() {
+            if (monaco.editor.registerCommand) {
+                try {
+                    monaco.editor.registerCommand("fetchObjectScriptCommand", function (accessor, objectName, statementType) {
+                        window.chrome.webview.postMessage({
+                            action: 'fetchObjectScript',
+                            tabId: activeTabId,
+                            objectName: objectName,
+                            statementType: statementType || 'ALTER'
+                        });
+                    });
+                } catch (e) { }
+            }
+
             // Register custom completion item provider for sql
             monaco.languages.registerCompletionItemProvider('sql', {
                 triggerCharacters: ['.'],
@@ -60,10 +73,15 @@
                         }
                     }
 
-                    // After EXEC/EXECUTE, suggest stored procedures instead of tables/columns.
-                    var execMatch = textBeforeCursor.match(/\bEXEC(?:UTE)?\s+([a-zA-Z0-9_.]*)$/i);
-                    if (execMatch) {
-                        var procedureToken = execMatch[1];
+                    var isAlterProc = /\bALTER\s+PROCEDURE\s+[a-zA-Z0-9_.]*$/i.test(textBeforeCursor);
+                    var isAlterView = /\bALTER\s+VIEW\s+[a-zA-Z0-9_.]*$/i.test(textBeforeCursor);
+                    var isAlterFunc = /\bALTER\s+FUNCTION\s+[a-zA-Z0-9_.]*$/i.test(textBeforeCursor);
+                    var isAlterTable = /\bALTER\s+TABLE\s+[a-zA-Z0-9_.]*$/i.test(textBeforeCursor);
+
+                    // 1. After EXEC/EXECUTE or ALTER/CREATE/DROP PROCEDURE, suggest stored procedures
+                    var procMatch = textBeforeCursor.match(/\b(?:EXEC|EXECUTE|ALTER\s+PROCEDURE|CREATE\s+PROCEDURE|DROP\s+PROCEDURE)\s+([a-zA-Z0-9_.]*)$/i);
+                    if (procMatch) {
+                        var procedureToken = procMatch[1];
                         var schemaPrefix = procedureToken.indexOf('.') > -1
                             ? procedureToken.substring(0, procedureToken.lastIndexOf('.') + 1)
                             : '';
@@ -77,14 +95,121 @@
                                 ? procedureName.substring(procedureName.lastIndexOf('.') + 1)
                                 : procedureName;
 
-                            suggestions.push({
+                            var item = {
                                 label: procedureName,
                                 kind: monaco.languages.CompletionItemKind.Function,
                                 insertText: insertName,
                                 detail: "Stored Procedure",
                                 sortText: "0_" + procedureName,
                                 range: range
-                            });
+                            };
+                            if (isAlterProc) {
+                                item.command = {
+                                    id: "fetchObjectScriptCommand",
+                                    title: "Fetch Script",
+                                    arguments: [procedureName, "ALTER"]
+                                };
+                            }
+                            suggestions.push(item);
+                        });
+
+                        return { suggestions: suggestions };
+                    }
+
+                    // 2. After ALTER VIEW / CREATE VIEW / DROP VIEW
+                    var viewMatch = textBeforeCursor.match(/\b(?:ALTER\s+VIEW|CREATE\s+VIEW|DROP\s+VIEW)\s+([a-zA-Z0-9_.]*)$/i);
+                    if (viewMatch) {
+                        var viewToken = viewMatch[1];
+                        var schemaPrefix = viewToken.indexOf('.') > -1
+                            ? viewToken.substring(0, viewToken.lastIndexOf('.') + 1)
+                            : '';
+
+                        tables.forEach(t => {
+                            if ((objectTypes[t] || '').toLowerCase().includes('view')) {
+                                if (schemaPrefix && !t.toLowerCase().startsWith(schemaPrefix.toLowerCase())) return;
+                                var insertName = schemaPrefix ? t.substring(t.lastIndexOf('.') + 1) : t;
+                                var item = {
+                                    label: t,
+                                    kind: monaco.languages.CompletionItemKind.Interface,
+                                    insertText: insertName,
+                                    detail: "View",
+                                    sortText: "0_" + t,
+                                    range: range
+                                };
+                                if (isAlterView) {
+                                    item.command = {
+                                        id: "fetchObjectScriptCommand",
+                                        title: "Fetch Script",
+                                        arguments: [t, "ALTER"]
+                                    };
+                                }
+                                suggestions.push(item);
+                            }
+                        });
+
+                        return { suggestions: suggestions };
+                    }
+
+                    // 3. After ALTER FUNCTION / CREATE FUNCTION / DROP FUNCTION
+                    var funcMatch = textBeforeCursor.match(/\b(?:ALTER\s+FUNCTION|CREATE\s+FUNCTION|DROP\s+FUNCTION)\s+([a-zA-Z0-9_.]*)$/i);
+                    if (funcMatch) {
+                        var funcToken = funcMatch[1];
+                        var schemaPrefix = funcToken.indexOf('.') > -1
+                            ? funcToken.substring(0, funcToken.lastIndexOf('.') + 1)
+                            : '';
+
+                        var allFuncs = scalarFunctions.concat(tableFunctions);
+                        allFuncs.forEach(functionName => {
+                            if (schemaPrefix && !functionName.toLowerCase().startsWith(schemaPrefix.toLowerCase())) return;
+                            var insertName = schemaPrefix ? functionName.substring(functionName.lastIndexOf('.') + 1) : functionName;
+                            var item = {
+                                label: functionName,
+                                kind: monaco.languages.CompletionItemKind.Function,
+                                insertText: insertName,
+                                detail: "Function",
+                                sortText: "0_" + functionName,
+                                range: range
+                            };
+                            if (isAlterFunc) {
+                                item.command = {
+                                    id: "fetchObjectScriptCommand",
+                                    title: "Fetch Script",
+                                    arguments: [functionName, "ALTER"]
+                                };
+                            }
+                            suggestions.push(item);
+                        });
+
+                        return { suggestions: suggestions };
+                    }
+
+                    // 4. After ALTER TABLE / DROP TABLE / TRUNCATE TABLE
+                    var tableMatch = textBeforeCursor.match(/\b(?:ALTER\s+TABLE|DROP\s+TABLE|TRUNCATE\s+TABLE)\s+([a-zA-Z0-9_.]*)$/i);
+                    if (tableMatch) {
+                        var tableToken = tableMatch[1];
+                        var schemaPrefix = tableToken.indexOf('.') > -1
+                            ? tableToken.substring(0, tableToken.lastIndexOf('.') + 1)
+                            : '';
+
+                        tables.forEach(t => {
+                            if (schemaPrefix && !t.toLowerCase().startsWith(schemaPrefix.toLowerCase())) return;
+                            var insertName = schemaPrefix ? t.substring(t.lastIndexOf('.') + 1) : t;
+                            var item = {
+                                label: t,
+                                kind: monaco.languages.CompletionItemKind.Class,
+                                insertText: insertName,
+                                detail: objectTypes[t] || "Table",
+                                sortText: "0_" + t,
+                                range: range
+                            };
+                            if (isAlterTable) {
+                                item.command = {
+                                    id: "fetchObjectScriptCommand",
+                                    title: "Fetch Script",
+                                    arguments: [t, "ALTER"]
+                                };
+                            }
+                            suggestions.push(item);
                         });
 
                         return { suggestions: suggestions };
@@ -334,15 +459,73 @@
                         }
                     }
                     
-                    // 1. Snippet ssf: SELECT TOP 50 * FROM
-                    suggestions.push({
-                        label: "ssf",
-                        kind: monaco.languages.CompletionItemKind.Snippet,
-                        insertText: "SELECT TOP 50 * FROM $0",
-                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                        detail: "Snippet: SELECT TOP 50 * FROM",
-                        sortText: "8_ssf",
-                        range: range
+                    // Redgate SQL Prompt Snippets
+                    var redgateSnippets = [
+                        // ALTER Snippets (insert statement and trigger object autocomplete)
+                        { label: "ap", insertText: "ALTER PROCEDURE ", detail: "Redgate Snippet: ALTER PROCEDURE (Suggest Stored Procedures)", command: { id: "editor.action.triggerSuggest", title: "Trigger Suggest" } },
+                        { label: "av", insertText: "ALTER VIEW ", detail: "Redgate Snippet: ALTER VIEW (Suggest Views)", command: { id: "editor.action.triggerSuggest", title: "Trigger Suggest" } },
+                        { label: "af", insertText: "ALTER FUNCTION ", detail: "Redgate Snippet: ALTER FUNCTION (Suggest Functions)", command: { id: "editor.action.triggerSuggest", title: "Trigger Suggest" } },
+                        { label: "at", insertText: "ALTER TABLE ", detail: "Redgate Snippet: ALTER TABLE (Suggest Tables)", command: { id: "editor.action.triggerSuggest", title: "Trigger Suggest" } },
+
+                        // DROP Snippets (insert statement and trigger object autocomplete)
+                        { label: "dp", insertText: "DROP PROCEDURE ", detail: "Redgate Snippet: DROP PROCEDURE (Suggest Stored Procedures)", command: { id: "editor.action.triggerSuggest", title: "Trigger Suggest" } },
+                        { label: "dv", insertText: "DROP VIEW ", detail: "Redgate Snippet: DROP VIEW (Suggest Views)", command: { id: "editor.action.triggerSuggest", title: "Trigger Suggest" } },
+                        { label: "dfn", insertText: "DROP FUNCTION ", detail: "Redgate Snippet: DROP FUNCTION (Suggest Functions)", command: { id: "editor.action.triggerSuggest", title: "Trigger Suggest" } },
+                        { label: "dt", insertText: "DROP TABLE ", detail: "Redgate Snippet: DROP TABLE (Suggest Tables)", command: { id: "editor.action.triggerSuggest", title: "Trigger Suggest" } },
+
+                        // CREATE Snippets
+                        { label: "cp", insertText: "CREATE PROCEDURE ${1:dbo.sp_name}\nAS\nBEGIN\n\tSET NOCOUNT ON;\n\t$0\nEND\nGO", detail: "Redgate Snippet: CREATE PROCEDURE" },
+                        { label: "ct", insertText: "CREATE TABLE ${1:dbo.TableName} (\n\t${2:ID} INT IDENTITY(1,1) NOT NULL PRIMARY KEY,\n\t${3:ColumnName} VARCHAR(50) NULL\n);$0", detail: "Redgate Snippet: CREATE TABLE" },
+                        { label: "cv", insertText: "CREATE VIEW ${1:dbo.ViewName}\nAS\nSELECT ${2:*}\nFROM ${3:dbo.TableName};$0", detail: "Redgate Snippet: CREATE VIEW" },
+                        { label: "cf", insertText: "CREATE FUNCTION ${1:dbo.FunctionName} (\n\t@${2:Param1} INT\n)\nRETURNS ${3:INT}\nAS\nBEGIN\n\tRETURN ${4:0};\nEND\nGO", detail: "Redgate Snippet: CREATE FUNCTION" },
+
+                        // DML Snippets
+                        { label: "ssf", insertText: "SELECT TOP 50 * FROM $0", detail: "Redgate Snippet: SELECT TOP 50 * FROM" },
+                        { label: "sf", insertText: "SELECT * FROM $0", detail: "Redgate Snippet: SELECT * FROM" },
+                        { label: "se", insertText: "SELECT $0", detail: "Redgate Snippet: SELECT" },
+                        { label: "ii", insertText: "INSERT INTO $0", detail: "Redgate Snippet: INSERT INTO" },
+                        { label: "ud", insertText: "UPDATE ${1:TableName} SET ${2:ColumnName} = ${3:Value} WHERE ${4:Condition};$0", detail: "Redgate Snippet: UPDATE" },
+                        { label: "df", insertText: "DELETE FROM ${1:TableName} WHERE ${2:Condition};$0", detail: "Redgate Snippet: DELETE FROM" },
+
+                        // Join Snippets
+                        { label: "ij", insertText: "INNER JOIN ${1:TableName} ON ${2:Condition}$0", detail: "Redgate Snippet: INNER JOIN" },
+                        { label: "lj", insertText: "LEFT JOIN ${1:TableName} ON ${2:Condition}$0", detail: "Redgate Snippet: LEFT JOIN" },
+                        { label: "rj", insertText: "RIGHT JOIN ${1:TableName} ON ${2:Condition}$0", detail: "Redgate Snippet: RIGHT JOIN" },
+                        { label: "fj", insertText: "FULL OUTER JOIN ${1:TableName} ON ${2:Condition}$0", detail: "Redgate Snippet: FULL OUTER JOIN" },
+                        { label: "cj", insertText: "CROSS JOIN ${1:TableName}$0", detail: "Redgate Snippet: CROSS JOIN" },
+                        { label: "ca", insertText: "CROSS APPLY ${1:FunctionOrSubquery}$0", detail: "Redgate Snippet: CROSS APPLY" },
+                        { label: "oa", insertText: "OUTER APPLY ${1:FunctionOrSubquery}$0", detail: "Redgate Snippet: OUTER APPLY" },
+
+                        // Control & Hints
+                        { label: "wh", insertText: "WHERE $0", detail: "Redgate Snippet: WHERE" },
+                        { label: "ob", insertText: "ORDER BY $0", detail: "Redgate Snippet: ORDER BY" },
+                        { label: "gb", insertText: "GROUP BY $0", detail: "Redgate Snippet: GROUP BY" },
+                        { label: "nolock", insertText: "WITH (NOLOCK)$0", detail: "Redgate Snippet: WITH (NOLOCK)" },
+                        { label: "n", insertText: "WITH (NOLOCK)$0", detail: "Redgate Snippet: WITH (NOLOCK)" },
+                        { label: "te", insertText: "TRUNCATE TABLE ${1:dbo.TableName};$0", detail: "Redgate Snippet: TRUNCATE TABLE" },
+
+                        // Transactions & Control Flow
+                        { label: "bt", insertText: "BEGIN TRANSACTION;$0", detail: "Redgate Snippet: BEGIN TRANSACTION" },
+                        { label: "cmt", insertText: "COMMIT TRANSACTION;$0", detail: "Redgate Snippet: COMMIT TRANSACTION" },
+                        { label: "rbt", insertText: "ROLLBACK TRANSACTION;$0", detail: "Redgate Snippet: ROLLBACK TRANSACTION" },
+                        { label: "tc", insertText: "BEGIN TRY\n\t$0\nEND TRY\nBEGIN CATCH\n\tSELECT ERROR_NUMBER() AS ErrorNumber, ERROR_MESSAGE() AS ErrorMessage;\nEND CATCH", detail: "Redgate Snippet: TRY CATCH Block" },
+                        { label: "iff", insertText: "IF ${1:Condition}\nBEGIN\n\t$0\nEND", detail: "Redgate Snippet: IF BEGIN END" }
+                    ];
+
+                    redgateSnippets.forEach(function(snip) {
+                        var item = {
+                            label: snip.label,
+                            kind: monaco.languages.CompletionItemKind.Snippet,
+                            insertText: snip.insertText,
+                            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                            detail: snip.detail,
+                            sortText: "0_0_redgate_" + snip.label,
+                            range: range
+                        };
+                        if (snip.command) {
+                            item.command = snip.command;
+                        }
+                        suggestions.push(item);
                     });
 
                     // 2. Columns of tables present in the current query (Smart Autocomplete like Redgate)

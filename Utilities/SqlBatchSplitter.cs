@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 
 namespace SSMS
 {
-    public sealed record SqlBatch(string Text, int RepeatCount);
+    public sealed record SqlBatch(string Text, int RepeatCount, int StartLineNumber = 1);
 
     public static class SqlBatchSplitter
     {
@@ -22,6 +22,9 @@ namespace SSMS
 
             using var reader = new System.IO.StringReader(sql ?? string.Empty);
             string? line;
+            int lineNumber = 1;
+            int batchStartLine = 1;
+
             while ((line = reader.ReadLine()) != null)
             {
                 if (!inBlockComment && !inString)
@@ -29,16 +32,24 @@ namespace SSMS
                     Match match = GoLinePattern.Match(line);
                     if (match.Success)
                     {
-                        AddBatch(batches, current, ParseRepeatCount(match.Groups[1].Value));
+                        AddBatch(batches, current, ParseRepeatCount(match.Groups[1].Value), batchStartLine);
+                        lineNumber++;
+                        batchStartLine = lineNumber;
                         continue;
                     }
                 }
 
+                if (current.Length == 0)
+                {
+                    batchStartLine = lineNumber;
+                }
+
                 current.AppendLine(line);
                 UpdateLexicalState(line, ref inBlockComment, ref inString);
+                lineNumber++;
             }
 
-            AddBatch(batches, current, 1);
+            AddBatch(batches, current, 1, batchStartLine);
             return batches;
         }
 
@@ -57,13 +68,13 @@ namespace SSMS
             return count;
         }
 
-        private static void AddBatch(List<SqlBatch> batches, StringBuilder current, int repeatCount)
+        private static void AddBatch(List<SqlBatch> batches, StringBuilder current, int repeatCount, int startLineNumber)
         {
             string text = current.ToString().Trim();
             current.Clear();
             if (text.Length > 0)
             {
-                batches.Add(new SqlBatch(text, repeatCount));
+                batches.Add(new SqlBatch(text, repeatCount, startLineNumber));
             }
         }
 

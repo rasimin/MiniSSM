@@ -168,6 +168,15 @@ namespace SSMS
                         _ = targetTab.LoadCrossDatabaseMetadataAsync(dbName);
                     }
                 }
+                else if (action == "fetchObjectScript" && doc.RootElement.TryGetProperty("objectName", out var fetchObjProp))
+                {
+                    string? objName = fetchObjProp.GetString();
+                    string statementType = doc.RootElement.TryGetProperty("statementType", out var stProp) ? (stProp.GetString() ?? "ALTER") : "ALTER";
+                    if (!string.IsNullOrWhiteSpace(objName) && targetTab != null)
+                    {
+                        _ = targetTab.FetchObjectScriptAndReplaceAsync(objName, statementType);
+                    }
+                }
                 else if (action == "viewObjectDefinition" &&
                          doc.RootElement.TryGetProperty("objectName", out var objProp) &&
                          doc.RootElement.TryGetProperty("objectType", out var typeProp))
