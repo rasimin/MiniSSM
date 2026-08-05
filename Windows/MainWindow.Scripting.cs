@@ -186,16 +186,9 @@ namespace SSMS
                             }
                             else
                             {
-                                sb.Append($"    NULL /* {columns[i].ColumnName} ({columns[i].DataType}) */");
-                            }
-
-                            if (i < columns.Count - 1)
-                            {
-                                sb.AppendLine(",");
-                            }
-                            else
-                            {
-                                sb.AppendLine();
+                                string comma = (i < columns.Count - 1) ? "," : " ";
+                                string dataType = string.IsNullOrEmpty(columns[i].DataType) ? "" : $" ({columns[i].DataType})";
+                                sb.AppendLine($"    NULL{comma} -- {columns[i].ColumnName}{dataType}");
                             }
                         }
                         sb.AppendLine(");");

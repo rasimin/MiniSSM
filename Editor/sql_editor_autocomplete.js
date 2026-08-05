@@ -532,7 +532,7 @@
             if (dt.indexOf('uniqueidentifier') > -1) {
                 return "NEWID()";
             }
-            return "'" + colName + "'";
+            return "NULL";
         }
 
         function generateInsertSnippet(tableName) {
@@ -541,31 +541,37 @@
             if (!cols || cols.length === 0) return null;
 
             var insertCols = [];
-            var valList = [];
-            var tabIndex = 1;
+            var filteredCols = [];
 
             cols.forEach(function(col) {
                 var info = details ? details[col] : null;
-                var dataType = info ? info.dataType : '';
                 var isIdentity = info ? info.isIdentity : false;
-
                 if (isIdentity) return;
-
                 insertCols.push("    [" + col + "]");
-
-                var defaultVal = getDefaultSampleValue(col, dataType);
-                var remark = dataType ? " /* " + dataType + " */" : "";
-                valList.push("    ${" + tabIndex + ":" + defaultVal + "}" + remark);
-                tabIndex++;
+                filteredCols.push({ name: col, info: info });
             });
 
             if (insertCols.length === 0) return null;
+
+            var valList = [];
+            var total = filteredCols.length;
+
+            filteredCols.forEach(function(item, idx) {
+                var col = item.name;
+                var info = item.info;
+                var dataType = info ? info.dataType : '';
+                var defaultVal = getDefaultSampleValue(col, dataType);
+                var tabIndex = idx + 1;
+                var comma = (idx < total - 1) ? "," : " ";
+                var remark = " -- " + col + (dataType ? " (" + dataType + ")" : "");
+                valList.push("    ${" + tabIndex + ":" + defaultVal + "}" + comma + remark);
+            });
 
             var fullTableName = getFullTableName(tableName);
             return "INSERT INTO " + fullTableName + " (\n" +
                 insertCols.join(",\n") + "\n" +
                 ")\nVALUES (\n" +
-                valList.join(",\n") + "\n);$0";
+                valList.join("\n") + "\n);$0";
         }
 
         function generateUpdateSnippet(tableName) {

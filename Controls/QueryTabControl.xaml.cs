@@ -698,18 +698,65 @@ namespace SSMS
 
         private static void CopyGridToClipboard(WinForms.DataGridView grid, bool includeHeaders)
         {
-            var originalMode = grid.ClipboardCopyMode;
-            grid.ClipboardCopyMode = includeHeaders
-                ? WinForms.DataGridViewClipboardCopyMode.EnableAlwaysIncludeHeaderText
-                : WinForms.DataGridViewClipboardCopyMode.EnableWithoutHeaderText;
+            if (grid == null || grid.SelectedCells.Count == 0) return;
 
-            var clipboardContent = grid.GetClipboardContent();
-            if (clipboardContent != null)
+            var selectedCells = grid.SelectedCells
+                .Cast<WinForms.DataGridViewCell>()
+                .Where(c => c.ColumnIndex >= 0 && c.RowIndex >= 0)
+                .ToList();
+
+            if (selectedCells.Count == 0) return;
+
+            var rowGroups = selectedCells
+                .GroupBy(c => c.RowIndex)
+                .OrderBy(g => g.Key)
+                .ToList();
+
+            var selectedColIndices = selectedCells
+                .Select(c => c.ColumnIndex)
+                .Distinct()
+                .OrderBy(i => i)
+                .ToList();
+
+            var sb = new System.Text.StringBuilder();
+
+            if (includeHeaders)
             {
-                WinForms.Clipboard.SetDataObject(clipboardContent, true);
+                var headerNames = selectedColIndices
+                    .Select(colIdx => FormatCellForClipboard(grid.Columns[colIdx].HeaderText));
+                sb.AppendLine(string.Join("\t", headerNames));
             }
 
-            grid.ClipboardCopyMode = originalMode;
+            foreach (var group in rowGroups)
+            {
+                var cellMap = group.ToDictionary(c => c.ColumnIndex, c => c.Value);
+                var rowValues = selectedColIndices.Select(colIdx =>
+                {
+                    if (cellMap.TryGetValue(colIdx, out var val))
+                    {
+                        return FormatCellForClipboard(val);
+                    }
+                    return string.Empty;
+                });
+                sb.AppendLine(string.Join("\t", rowValues));
+            }
+
+            string clipboardText = sb.ToString();
+            if (!string.IsNullOrEmpty(clipboardText))
+            {
+                WinForms.Clipboard.SetText(clipboardText);
+            }
+        }
+
+        private static string FormatCellForClipboard(object? val)
+        {
+            if (val == null || val == DBNull.Value) return string.Empty;
+            string str = val.ToString() ?? string.Empty;
+            if (str.Contains('\t') || str.Contains('\n') || str.Contains('\r') || str.Contains('"'))
+            {
+                str = "\"" + str.Replace("\"", "\"\"") + "\"";
+            }
+            return str;
         }
 
 

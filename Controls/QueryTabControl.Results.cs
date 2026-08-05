@@ -392,6 +392,15 @@ namespace SSMS
                 }
             };
 
+            dataGrid.KeyDown += (sender, e) =>
+            {
+                if (e.Control && e.KeyCode == WinForms.Keys.C)
+                {
+                    CopyGridToClipboard(dataGrid, e.Shift);
+                    e.Handled = true;
+                }
+            };
+
             var contextMenu = new WinForms.ContextMenuStrip
             {
                 BackColor = Drawing.Color.FromArgb(30, 30, 30),
