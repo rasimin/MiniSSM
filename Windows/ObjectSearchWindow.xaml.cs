@@ -330,11 +330,38 @@ namespace SSMS
             }
         }
 
+        private void HeaderGrid_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.LeftButton == MouseButtonState.Pressed)
+            {
+                DragMove();
+            }
+        }
+
+        private void BtnMaximize_Click(object sender, RoutedEventArgs e)
+        {
+            WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+        }
+
+        private void BtnClose_Click(object sender, RoutedEventArgs e)
+        {
+            Close();
+        }
+
+        private void Window_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Escape)
+            {
+                Close();
+            }
+        }
+
         private void OpenSelectedResult()
         {
             if (ResultsGrid.SelectedItem is DatabaseObjectSearchResult result)
             {
                 OpenRequested?.Invoke(this, result);
+                Close();
             }
         }
 
