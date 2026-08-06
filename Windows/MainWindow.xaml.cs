@@ -272,8 +272,6 @@ namespace SSMS
         {
             Border[] defaultItems =
             {
-                ToolbarConnect,
-                ToolbarDisconnect,
                 ToolbarObjectExplorer,
                 ToolbarDatabase,
                 ToolbarExecute,
