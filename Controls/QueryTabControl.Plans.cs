@@ -20,6 +20,7 @@ using ICSharpCode.AvalonEdit.Highlighting.Xshd;
 using Microsoft.Web.WebView2.Core;
 using Drawing = System.Drawing;
 using WinForms = System.Windows.Forms;
+using SSMS.Utilities;
 
 namespace SSMS
 {
@@ -78,18 +79,19 @@ namespace SSMS
             }
         }
 
-        private void SaveExecutionPlan(string planXml, int planNumber)
+        private async void SaveExecutionPlan(string planXml, int planNumber)
         {
-            var dialog = new Microsoft.Win32.SaveFileDialog
+            var (result, filePath) = await FileDialogHelper.ShowSaveFileDialogAsync(
+                filter: "SQL Server Execution Plan (*.sqlplan)|*.sqlplan|XML File (*.xml)|*.xml",
+                defaultExt: ".sqlplan",
+                title: "Save Execution Plan",
+                defaultFileName: $"ExecutionPlan_{planNumber}.sqlplan",
+                initialDirectory: null,
+                ownerWindow: Window.GetWindow(this));
+
+            if (result && !string.IsNullOrEmpty(filePath))
             {
-                Title = "Save Execution Plan",
-                Filter = "SQL Server Execution Plan (*.sqlplan)|*.sqlplan|XML File (*.xml)|*.xml",
-                FileName = $"ExecutionPlan_{planNumber}.sqlplan",
-                AddExtension = true
-            };
-            if (dialog.ShowDialog() == true)
-            {
-                File.WriteAllText(dialog.FileName, planXml, System.Text.Encoding.UTF8);
+                File.WriteAllText(filePath, planXml, System.Text.Encoding.UTF8);
             }
         }
 

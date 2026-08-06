@@ -45,6 +45,7 @@ namespace SSMS
         private bool _isCloseConfirmationInProgress;
         private QueryHistoryWindow? _queryHistoryWindow;
         private ObjectSearchWindow? _objectSearchWindow;
+        private string? _lastSaveOrOpenFolder;
 
         private bool _isSharedWebViewInitialized;
         private readonly TaskCompletionSource<bool> _sharedWebViewReadyCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);

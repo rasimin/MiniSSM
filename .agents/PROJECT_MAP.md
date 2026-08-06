@@ -26,6 +26,7 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 | `Controls\QueryTabControl.xaml`, `Controls\QueryTabControl.xaml.cs` | Layout dan logic satu tab query: WebView2 editor, splitter, Results/Messages tab (dengan pesan berwarna & double-click error jump ke baris Monaco Editor), eksekusi query, result grid, dan cache autocomplete metadata. |
 | `Services\DatabaseHelper.cs` | Semua akses SQL Server: metadata database/object, eksekusi query, generate script. |
 | `Utilities\SqlBatchSplitter.cs` | Memecah script pada separator `GO`/`GO n` tanpa memecah `GO` di string atau comment; dipakai semua mode eksekusi. |
+| `Utilities\FileDialogHelper.cs` | Utility untuk menjalankan OpenFileDialog / SaveFileDialog pada dedicated background STA thread agar tidak memblokir UI thread dan WebView2 saat navigasi folder. |
 | `Models\ObjectExplorerNode.cs` | Model data `Tag` untuk node TreeView Object Explorer. |
 | `Services\AppLogger.cs` | Logger file sederhana untuk error global dan event penting seperti create/close tab. Log tersimpan di `logs\minissms-YYYYMMDD.log` dalam output app. |
 | `Models\AppSettings.cs` | Model serta load/save parameter aplikasi dari `appsettings.json`. |

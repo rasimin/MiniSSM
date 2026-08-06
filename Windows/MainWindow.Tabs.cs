@@ -13,6 +13,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Microsoft.Data.SqlClient;
+using SSMS.Utilities;
 
 namespace SSMS
 {
@@ -382,22 +383,32 @@ namespace SSMS
             }
         }
 
-        private void OpenSqlFile()
+        private async void OpenSqlFile()
         {
-            var openFileDialog = new Microsoft.Win32.OpenFileDialog
-            {
-                Filter = "SQL Files (*.sql)|*.sql|All Files (*.*)|*.*",
-                DefaultExt = ".sql",
-                Title = "Open SQL Query",
-                Multiselect = true
-            };
+            string? initialDir = (!string.IsNullOrEmpty(_lastSaveOrOpenFolder) && Directory.Exists(_lastSaveOrOpenFolder))
+                ? _lastSaveOrOpenFolder
+                : null;
 
-            if (openFileDialog.ShowDialog() != true)
+            var (result, fileNames) = await FileDialogHelper.ShowOpenFileDialogAsync(
+                filter: "SQL Files (*.sql)|*.sql|All Files (*.*)|*.*",
+                defaultExt: ".sql",
+                title: "Open SQL Query",
+                multiselect: true,
+                initialDirectory: initialDir,
+                ownerWindow: this);
+
+            if (!result || fileNames.Length == 0)
             {
                 return;
             }
 
-            OpenSqlFiles(openFileDialog.FileNames);
+            string? folder = Path.GetDirectoryName(fileNames[0]);
+            if (!string.IsNullOrEmpty(folder))
+            {
+                _lastSaveOrOpenFolder = folder;
+            }
+
+            OpenSqlFiles(fileNames);
         }
 
         private void Window_PreviewDragOver(object sender, DragEventArgs e)
@@ -489,21 +500,30 @@ namespace SSMS
                     defaultFileName = defaultFileName.Replace(invalidCharacter, '_');
                 }
 
-                var saveFileDialog = new Microsoft.Win32.SaveFileDialog
+                string? initialDir = null;
+                if (!string.IsNullOrEmpty(queryTab.FilePath))
                 {
-                    Filter = "SQL Files (*.sql)|*.sql|All Files (*.*)|*.*",
-                    DefaultExt = ".sql",
-                    AddExtension = true,
-                    Title = saveAs ? "Save SQL Query As" : "Save SQL Query",
-                    FileName = defaultFileName
-                };
+                    initialDir = Path.GetDirectoryName(queryTab.FilePath);
+                }
+                else if (!string.IsNullOrEmpty(_lastSaveOrOpenFolder) && Directory.Exists(_lastSaveOrOpenFolder))
+                {
+                    initialDir = _lastSaveOrOpenFolder;
+                }
 
-                if (saveFileDialog.ShowDialog() != true)
+                var (result, selectedPath) = await FileDialogHelper.ShowSaveFileDialogAsync(
+                    filter: "SQL Files (*.sql)|*.sql|All Files (*.*)|*.*",
+                    defaultExt: ".sql",
+                    title: saveAs ? "Save SQL Query As" : "Save SQL Query",
+                    defaultFileName: defaultFileName,
+                    initialDirectory: initialDir,
+                    ownerWindow: this);
+
+                if (!result || string.IsNullOrEmpty(selectedPath))
                 {
                     return false;
                 }
 
-                targetPath = saveFileDialog.FileName;
+                targetPath = selectedPath;
             }
 
             try
@@ -511,6 +531,12 @@ namespace SSMS
                 string sqlQuery = await queryTab.GetAllQueryTextAsync();
                 File.WriteAllText(targetPath, sqlQuery);
                 queryTab.FilePath = targetPath;
+
+                string? savedFolder = Path.GetDirectoryName(targetPath);
+                if (!string.IsNullOrEmpty(savedFolder))
+                {
+                    _lastSaveOrOpenFolder = savedFolder;
+                }
 
                 if (tabItem.Header is StackPanel headerPanel && headerPanel.Children[0] is TextBlock textBlock)
                 {

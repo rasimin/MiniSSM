@@ -20,6 +20,7 @@ using ICSharpCode.AvalonEdit.Highlighting.Xshd;
 using Microsoft.Web.WebView2.Core;
 using Drawing = System.Drawing;
 using WinForms = System.Windows.Forms;
+using SSMS.Utilities;
 
 namespace SSMS
 {
@@ -633,7 +634,7 @@ namespace SSMS
             _resultHosts.Clear();
         }
 
-        private void ExportResultTable(DataTable table, int resultIndex, ResultExportFormat format)
+        private async void ExportResultTable(DataTable table, int resultIndex, ResultExportFormat format)
         {
             try
             {
@@ -654,38 +655,38 @@ namespace SSMS
                     _ => "All Files (*.*)|*.*"
                 };
 
-                var dialog = new Microsoft.Win32.SaveFileDialog
-                {
-                    Title = $"Export Result Set {resultIndex + 1}",
-                    FileName = $"QueryResult_{resultIndex + 1}.{extension}",
-                    DefaultExt = extension,
-                    Filter = filter,
-                    AddExtension = true
-                };
-                if (dialog.ShowDialog() != true) return;
+                var (result, filePath) = await FileDialogHelper.ShowSaveFileDialogAsync(
+                    filter: filter,
+                    defaultExt: extension,
+                    title: $"Export Result Set {resultIndex + 1}",
+                    defaultFileName: $"QueryResult_{resultIndex + 1}.{extension}",
+                    initialDirectory: null,
+                    ownerWindow: Window.GetWindow(this));
+
+                if (!result || string.IsNullOrEmpty(filePath)) return;
 
                 switch (format)
                 {
                     case ResultExportFormat.Csv:
-                        File.WriteAllText(dialog.FileName, BuildDelimitedText(table, ','), new System.Text.UTF8Encoding(true));
+                        File.WriteAllText(filePath, BuildDelimitedText(table, ','), new System.Text.UTF8Encoding(true));
                         break;
                     case ResultExportFormat.Tsv:
-                        File.WriteAllText(dialog.FileName, BuildDelimitedText(table, '\t'), new System.Text.UTF8Encoding(true));
+                        File.WriteAllText(filePath, BuildDelimitedText(table, '\t'), new System.Text.UTF8Encoding(true));
                         break;
                     case ResultExportFormat.Json:
-                        File.WriteAllText(dialog.FileName, BuildJson(table), new System.Text.UTF8Encoding(false));
+                        File.WriteAllText(filePath, BuildJson(table), new System.Text.UTF8Encoding(false));
                         break;
                     case ResultExportFormat.Xml:
                         DataTable xmlTable = table.Copy();
                         xmlTable.TableName = $"ResultSet{resultIndex + 1}";
-                        xmlTable.WriteXml(dialog.FileName, XmlWriteMode.WriteSchema);
+                        xmlTable.WriteXml(filePath, XmlWriteMode.WriteSchema);
                         xmlTable.Dispose();
                         break;
                 }
-
+                
                 if (Window.GetWindow(this) is MainWindow mainWindow)
                 {
-                    mainWindow.UpdateStatusText($"Result set {resultIndex + 1} exported to {Path.GetFileName(dialog.FileName)}");
+                    mainWindow.UpdateStatusText($"Result set {resultIndex + 1} exported to {Path.GetFileName(filePath)}");
                 }
             }
             catch (Exception ex)
