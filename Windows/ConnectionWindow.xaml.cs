@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 
 namespace SSMS
 {
@@ -16,6 +17,14 @@ namespace SSMS
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
 
         private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+
+        private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.LeftButton == MouseButtonState.Pressed)
+            {
+                DragMove();
+            }
+        }
 
         private static readonly string SettingsFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "connection_settings.json");
 
@@ -169,11 +178,12 @@ namespace SSMS
             TxtStatus.Text = "";
             BtnConnect.IsEnabled = false;
             BtnTest.IsEnabled = false;
+            if (ConnProgressBar != null) ConnProgressBar.Visibility = Visibility.Visible;
 
             try
             {
                 string connString = BuildConnectionString();
-                TxtStatus.Foreground = System.Windows.Media.Brushes.LightBlue;
+                TxtStatus.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x8C, 0xDC, 0xFE));
                 TxtStatus.Text = "Connecting...";
 
                 await Task.Run(() => DatabaseHelper.TestConnectionAsync(connString));
@@ -221,6 +231,7 @@ namespace SSMS
             {
                 BtnConnect.IsEnabled = true;
                 BtnTest.IsEnabled = true;
+                if (ConnProgressBar != null) ConnProgressBar.Visibility = Visibility.Collapsed;
             }
         }
 
@@ -229,16 +240,17 @@ namespace SSMS
             TxtStatus.Text = "";
             BtnConnect.IsEnabled = false;
             BtnTest.IsEnabled = false;
+            if (ConnProgressBar != null) ConnProgressBar.Visibility = Visibility.Visible;
 
             try
             {
                 string connString = BuildConnectionString();
-                TxtStatus.Foreground = System.Windows.Media.Brushes.LightBlue;
+                TxtStatus.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x8C, 0xDC, 0xFE));
                 TxtStatus.Text = "Testing connection...";
 
                 await Task.Run(() => DatabaseHelper.TestConnectionAsync(connString));
 
-                TxtStatus.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x8B, 0xF4, 0x8B)); // light green
+                TxtStatus.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x4E, 0xC9, 0xB0)); // VS Code success green
                 TxtStatus.Text = "Test connection succeeded.";
             }
             catch (Exception ex)
@@ -250,6 +262,7 @@ namespace SSMS
             {
                 BtnConnect.IsEnabled = true;
                 BtnTest.IsEnabled = true;
+                if (ConnProgressBar != null) ConnProgressBar.Visibility = Visibility.Collapsed;
             }
         }
 
