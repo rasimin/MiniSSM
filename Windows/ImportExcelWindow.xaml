@@ -94,6 +94,80 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- Custom Dark Primary Button Style (for BtnImport) -->
+        <Style x:Key="DarkPrimaryButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#007ACC"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#007ACC"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" 
+                                Background="{TemplateBinding Background}" 
+                                BorderBrush="{TemplateBinding BorderBrush}" 
+                                BorderThickness="{TemplateBinding BorderThickness}" 
+                                CornerRadius="3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#1C8BD6"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="#1C8BD6"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#005999"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="#005999"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Background" Value="#1C212A"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="#2A2D35"/>
+                                <Setter Property="Foreground" Value="#555860"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Custom Dark Secondary Button Style (for BtnBrowse, BtnReset, BtnCancel) -->
+        <Style x:Key="DarkSecondaryButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#252830"/>
+            <Setter Property="Foreground" Value="#D0D0D0"/>
+            <Setter Property="BorderBrush" Value="#3F4350"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" 
+                                Background="{TemplateBinding Background}" 
+                                BorderBrush="{TemplateBinding BorderBrush}" 
+                                BorderThickness="{TemplateBinding BorderThickness}" 
+                                CornerRadius="3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#323642"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="#505565"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#1C1E24"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Background" Value="#181A1F"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="#2A2D35"/>
+                                <Setter Property="Foreground" Value="#555860"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Grid Margin="20">
@@ -188,8 +262,8 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="File Excel:" Foreground="#888C94" FontSize="12" VerticalAlignment="Center"/>
                 <TextBox Grid.Column="1" x:Name="TxtFilePath" IsReadOnly="True" Background="#111317" Foreground="#CCCCCC" BorderBrush="#2A2D35" Padding="8,5" FontSize="12"/>
-                <Button Grid.Column="2" x:Name="BtnBrowse" Content="Browse..." Margin="8,0,0,0" Padding="12,5" Background="#252830" Foreground="#FFFFFF" BorderBrush="#3F4350" FontSize="12" Click="BtnBrowse_Click"/>
-                <Button Grid.Column="3" x:Name="BtnReset" Content="↺ Reset" Margin="6,0,0,0" Padding="10,5" Background="#252830" Foreground="#FF8C00" BorderBrush="#3F4350" FontSize="12" Click="BtnReset_Click" IsEnabled="False"/>
+                <Button Grid.Column="2" x:Name="BtnBrowse" Content="Browse..." Style="{StaticResource DarkSecondaryButtonStyle}" Margin="8,0,0,0" Padding="12,5" FontSize="12" Click="BtnBrowse_Click"/>
+                <Button Grid.Column="3" x:Name="BtnReset" Content="↺ Reset" Style="{StaticResource DarkSecondaryButtonStyle}" Foreground="#FF8C00" Margin="6,0,0,0" Padding="10,5" FontSize="12" Click="BtnReset_Click" IsEnabled="False"/>
             </Grid>
 
             <!-- Row 2: Sheet & Target Table -->
@@ -251,8 +325,8 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <Button Grid.Column="1" x:Name="BtnImport" Content="⚡ Import Data" Width="120" Height="32" Background="#007ACC" Foreground="#FFFFFF" FontWeight="Bold" BorderThickness="0" Click="BtnImport_Click" IsEnabled="False"/>
-            <Button Grid.Column="3" x:Name="BtnCancel" Content="Batal" Width="90" Height="32" Background="#252830" Foreground="#CCCCCC" BorderBrush="#3F4350" Click="BtnCancel_Click"/>
+            <Button Grid.Column="1" x:Name="BtnImport" Content="⚡ Import Data" Style="{StaticResource DarkPrimaryButtonStyle}" Width="120" Height="32" Click="BtnImport_Click" IsEnabled="False"/>
+            <Button Grid.Column="3" x:Name="BtnCancel" Content="Batal" Style="{StaticResource DarkSecondaryButtonStyle}" Width="90" Height="32" Click="BtnCancel_Click"/>
         </Grid>
     </Grid>
 </Window>

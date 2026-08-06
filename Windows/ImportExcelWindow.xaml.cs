@@ -109,7 +109,7 @@ namespace SSMS
             catch (Exception ex)
             {
                 AppLogger.Error(ex, "Error browsing Excel file");
-                MessageBox.Show($"Terjadi kesalahan saat memilih file Excel: {ex.Message}", "Error Browse", MessageBoxButton.OK, MessageBoxImage.Error);
+                DarkMessageBoxWindow.Show(this, $"Terjadi kesalahan saat memilih file Excel: {ex.Message}", "Error Browse", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -174,14 +174,14 @@ namespace SSMS
                 }
                 else
                 {
-                    MessageBox.Show("Engine/Provider Excel tidak mendukung file ini atau format tidak valid.", "Engine Tidak Mendukung", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    DarkMessageBoxWindow.Show(this, "Engine/Provider Excel tidak mendukung file ini atau format tidak valid.", "Engine Tidak Mendukung", MessageBoxButton.OK, MessageBoxImage.Warning);
                     TxtStatus.Text = "File Excel kosong atau tidak dapat dibaca.";
                 }
             }
             catch (Exception ex)
             {
                 AppLogger.Error(ex, $"Failed to load Excel file: {filePath}");
-                MessageBox.Show($"Engine/Provider Excel tidak mendukung file ini atau format tidak valid.\n\nDetail Error: {ex.Message}", "Engine tidak mendukung", MessageBoxButton.OK, MessageBoxImage.Warning);
+                DarkMessageBoxWindow.Show(this, $"Engine/Provider Excel tidak mendukung file ini atau format tidak valid.\n\nDetail Error: {ex.Message}", "Engine Tidak Mendukung", MessageBoxButton.OK, MessageBoxImage.Warning);
                 TxtStatus.Text = "Gagal membaca file Excel.";
             }
             finally
@@ -329,7 +329,7 @@ namespace SSMS
             string tableName = TxtTableName.Text.Trim();
             if (string.IsNullOrWhiteSpace(tableName))
             {
-                MessageBox.Show("Silakan masukkan nama tabel yang valid.", "Nama Tabel Kosong", MessageBoxButton.OK, MessageBoxImage.Warning);
+                DarkMessageBoxWindow.Show(this, "Silakan masukkan nama tabel yang valid.", "Nama Tabel Kosong", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
@@ -395,7 +395,7 @@ namespace SSMS
                 ImportedTableName = tableName;
 
                 TxtStatus.Text = "Import berhasil!";
-                MessageBox.Show($"Berhasil mengimpor {dataToImport.Rows.Count} baris data ke tabel [{tableName}] pada database '{_databaseName}'.", "Import Sukses", MessageBoxButton.OK, MessageBoxImage.Information);
+                DarkMessageBoxWindow.Show(this, $"Berhasil mengimpor {dataToImport.Rows.Count} baris data ke tabel [{tableName}] pada database '{_databaseName}'.", "Import Sukses", MessageBoxButton.OK, MessageBoxImage.Information);
                 DialogResult = true;
                 Close();
             }
@@ -414,7 +414,7 @@ namespace SSMS
                 }
 
                 AppLogger.Error(ex, $"Failed to import Excel to table [{tableName}]");
-                MessageBox.Show($"Gagal mengimpor data ke database: {ex.Message}", "Error Import", MessageBoxButton.OK, MessageBoxImage.Error);
+                DarkMessageBoxWindow.Show(this, $"Gagal mengimpor data ke database: {ex.Message}", "Error Import", MessageBoxButton.OK, MessageBoxImage.Error);
                 TxtStatus.Text = "Proses import gagal.";
             }
             finally
