@@ -87,6 +87,38 @@ namespace SSMS
             catch { }
         }
 
+        private void BtnTitleMinimize_Click(object sender, RoutedEventArgs e)
+        {
+            WindowState = WindowState.Minimized;
+        }
+
+        private void BtnTitleMaximize_Click(object sender, RoutedEventArgs e)
+        {
+            if (WindowState == WindowState.Maximized)
+            {
+                WindowState = WindowState.Normal;
+                if (BtnTitleMaximize != null) BtnTitleMaximize.Content = "🗖";
+            }
+            else
+            {
+                WindowState = WindowState.Maximized;
+                if (BtnTitleMaximize != null) BtnTitleMaximize.Content = "🗗";
+            }
+        }
+
+        private void BtnTitleClose_Click(object sender, RoutedEventArgs e)
+        {
+            Close();
+        }
+
+        private void Window_StateChanged(object sender, EventArgs e)
+        {
+            if (BtnTitleMaximize != null)
+            {
+                BtnTitleMaximize.Content = (WindowState == WindowState.Maximized) ? "🗗" : "🗖";
+            }
+        }
+
         private async Task InitializeSharedWebViewAsync()
         {
             if (_isSharedWebViewInitialized) return;
