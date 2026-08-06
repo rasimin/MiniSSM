@@ -220,7 +220,7 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Column="0" Text="Max Preview Baris:" Foreground="#888C94" FontSize="12" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="0" Text="Max Sample Baris:" Foreground="#888C94" FontSize="12" VerticalAlignment="Center" ToolTip="Batas jumlah baris yang dianalisa tipe datanya dan ditampilkan pada preview"/>
                 <TextBox Grid.Column="1" x:Name="TxtMaxRows" Text="100" Background="#111317" Foreground="#FFFFFF" BorderBrush="#2A2D35" Padding="6,4" FontSize="12" HorizontalContentAlignment="Center" TextChanged="TxtMaxRows_TextChanged"/>
                 <CheckBox Grid.Column="3" x:Name="ChkFirstRowHeader" Content="Baris pertama adalah Nama Kolom (Header)" IsChecked="True" Foreground="#D0D0D0" FontSize="12" VerticalAlignment="Center" Click="ChkFirstRowHeader_Click"/>
             </Grid>

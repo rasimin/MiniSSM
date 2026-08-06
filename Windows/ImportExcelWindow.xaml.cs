@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -84,7 +85,7 @@ namespace SSMS
             if (TxtPreviewHeader != null)
             {
                 int rows = GetMaxPreviewRows();
-                TxtPreviewHeader.Text = $"Preview Data & Kolom Terdeteksi (Max {rows} Baris):";
+                TxtPreviewHeader.Text = $"Preview Data & Kolom Terdeteksi (Max {rows} Sample Baris):";
             }
         }
 
@@ -125,7 +126,7 @@ namespace SSMS
             BtnReset.IsEnabled = false;
             BtnImport.IsEnabled = false;
 
-            TxtStatus.Text = "Form direset. Silakan atur Max Preview Baris lalu pilih file Excel.";
+            TxtStatus.Text = "Form direset. Silakan atur Max Sample Baris lalu pilih file Excel.";
         }
 
         private async Task LoadExcelFileAsync(string filePath)
@@ -228,7 +229,7 @@ namespace SSMS
                 bool hasHeaders = ChkFirstRowHeader.IsChecked == true;
                 int maxRows = GetMaxPreviewRows();
 
-                TxtPreviewHeader.Text = $"Preview Data & Kolom Terdeteksi (Max {maxRows} Baris):";
+                TxtPreviewHeader.Text = $"Preview Data & Kolom Terdeteksi (Max {maxRows} Sample Baris):";
 
                 DataTable previewTable = ProcessExcelData(rawTable, hasHeaders, maxRows: maxRows);
                 GridPreview.ItemsSource = previewTable.DefaultView;
@@ -242,6 +243,15 @@ namespace SSMS
                 TxtStatus.Text = $"Error preview: {ex.Message}";
                 BtnImport.IsEnabled = false;
             }
+        }
+
+        private static bool IsRowCompletelyEmpty(DataRow row, int totalCols)
+        {
+            for (int c = 0; c < totalCols; c++)
+            {
+                if (!IsNullValue(row[c])) return false;
+            }
+            return true;
         }
 
         private DataTable ProcessExcelData(DataTable rawTable, bool hasHeaders, int maxRows = -1)
@@ -286,25 +296,27 @@ namespace SSMS
                 resultTable.Columns.Add(uniqueHeader, typeof(string));
             }
 
-            // Populate Rows
-            int endRow = maxRows > 0 ? Math.Min(rawTable.Rows.Count, startRowIndex + maxRows) : rawTable.Rows.Count;
+            // Populate Rows - skipping completely empty rows
+            int endRow = rawTable.Rows.Count;
+            int rowCounter = 0;
             for (int r = startRowIndex; r < endRow; r++)
             {
+                DataRow rawRow = rawTable.Rows[r];
+                if (IsRowCompletelyEmpty(rawRow, totalCols))
+                {
+                    continue; // Skip blank / space-only rows
+                }
+
                 DataRow newRow = resultTable.NewRow();
                 for (int c = 0; c < totalCols; c++)
                 {
-                    object? val = rawTable.Rows[r][c];
-                    if (val == DBNull.Value || val == null)
-                    {
-                        newRow[c] = DBNull.Value;
-                    }
-                    else
-                    {
-                        string strVal = val.ToString()?.Trim() ?? "";
-                        newRow[c] = string.IsNullOrEmpty(strVal) ? DBNull.Value : strVal;
-                    }
+                    object? val = rawRow[c];
+                    newRow[c] = IsNullValue(val) ? DBNull.Value : val?.ToString()?.Trim();
                 }
                 resultTable.Rows.Add(newRow);
+                rowCounter++;
+
+                if (maxRows > 0 && rowCounter >= maxRows) break;
             }
 
             return resultTable;
@@ -344,12 +356,13 @@ namespace SSMS
             {
                 DataTable rawTable = _excelDataSet.Tables[CmbSheet.SelectedIndex]!;
                 bool hasHeaders = ChkFirstRowHeader.IsChecked == true;
+                int maxSamples = GetMaxPreviewRows();
 
-                // Process full data
+                // Process full data (filtering empty rows)
                 DataTable dataToImport = await Task.Run(() => ProcessExcelData(rawTable, hasHeaders, maxRows: -1));
 
-                // 1. Create SQL Table
-                string createTableSql = BuildCreateTableScript(tableName, dataToImport);
+                // 1. Create SQL Table (analyzing up to maxSamples non-empty rows)
+                string createTableSql = BuildCreateTableScript(tableName, dataToImport, maxSamples);
                 await using (var connection = new SqlConnection(dbConnString))
                 {
                     await connection.OpenAsync();
@@ -415,7 +428,7 @@ namespace SSMS
             }
         }
 
-        private string BuildCreateTableScript(string tableName, DataTable dataTable)
+        private string BuildCreateTableScript(string tableName, DataTable dataTable, int maxSamples)
         {
             var sb = new StringBuilder();
             sb.AppendLine($"CREATE TABLE [{tableName}] (");
@@ -423,7 +436,7 @@ namespace SSMS
             for (int i = 0; i < dataTable.Columns.Count; i++)
             {
                 DataColumn col = dataTable.Columns[i];
-                string colSqlType = DetectSqlColumnType(dataTable, col.ColumnName);
+                string colSqlType = DetectSqlColumnType(dataTable, col.ColumnName, maxSamples);
 
                 sb.Append($"    [{col.ColumnName}] {colSqlType}");
                 if (i < dataTable.Columns.Count - 1)
@@ -440,7 +453,21 @@ namespace SSMS
             return sb.ToString();
         }
 
-        private string DetectSqlColumnType(DataTable dataTable, string columnName)
+        private static bool IsNullValue(object? val)
+        {
+            if (val == null || val == DBNull.Value) return true;
+            string str = val.ToString()?.Trim() ?? "";
+            if (string.IsNullOrEmpty(str)) return true;
+
+            return string.Equals(str, "NULL", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(str, "null", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(str, "#N/A", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(str, "N/A", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(str, "NaN", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(str, "-", StringComparison.Ordinal);
+        }
+
+        private string DetectSqlColumnType(DataTable dataTable, string columnName, int maxSamples)
         {
             bool isInt = true;
             bool isFloat = true;
@@ -453,26 +480,29 @@ namespace SSMS
             foreach (DataRow row in dataTable.Rows)
             {
                 object cellVal = row[columnName];
-                if (cellVal == DBNull.Value || cellVal == null) continue;
+                if (IsNullValue(cellVal)) continue;
 
                 string val = cellVal.ToString()?.Trim() ?? "";
-                if (string.IsNullOrEmpty(val)) continue;
+                if (IsNullValue(val)) continue;
 
                 samples++;
                 maxLen = Math.Max(maxLen, val.Length);
 
-                // Check if value has leading zeroes (e.g., "000000238642") -> must be NVARCHAR to preserve format!
+                // Code/Reference check: Values starting with '0' (like "000000238642") must remain NVARCHAR to preserve format!
                 if (val.Length > 1 && val[0] == '0' && !val.StartsWith("0.", StringComparison.Ordinal))
                 {
                     hasLeadingZero = true;
                 }
 
-                if (!int.TryParse(val, out _)) isInt = false;
-                if (!double.TryParse(val, out _)) isFloat = false;
-                if (!DateTime.TryParse(val, out _)) isDateTime = false;
+                // Strip thousand-separator commas like 1,548,763.63 for numeric parsing
+                string cleanNum = val.Replace(",", "");
+
+                if (!int.TryParse(cleanNum, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)) isInt = false;
+                if (!double.TryParse(cleanNum, NumberStyles.Any, CultureInfo.InvariantCulture, out _)) isFloat = false;
+                if (!DateTime.TryParse(val, CultureInfo.InvariantCulture, DateTimeStyles.None, out _)) isDateTime = false;
                 if (!bool.TryParse(val, out _)) isBool = false;
 
-                if (samples >= 200) break;
+                if (maxSamples > 0 && samples >= maxSamples) break;
             }
 
             if (samples == 0) return "NVARCHAR(255) NULL";
