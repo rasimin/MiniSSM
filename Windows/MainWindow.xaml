@@ -614,7 +614,7 @@
                             PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
-                            <Button Style="{StaticResource ExecuteButton}" Content="▶" Click="BtnExecute_Click" Margin="5,0" ToolTip="Execute Query (F5)"/>
+                            <Button Style="{StaticResource ExecuteButton}" Content="▶ Execute" Click="BtnExecute_Click" Margin="5,0" ToolTip="Execute Query (F5)"/>
                         </StackPanel>
                     </Border>
                     
@@ -706,7 +706,7 @@
                             PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
-                            <Button Style="{StaticResource ToolbarButton}" Content="📄" Click="BtnNewQuery_Click" ToolTip="New Query Tab (Ctrl+N)"/>
+                            <Button Style="{StaticResource ToolbarButton}" Content="📄 New Query" Click="BtnNewQuery_Click" ToolTip="New Query Tab (Ctrl+N)"/>
                         </StackPanel>
                     </Border>
 
