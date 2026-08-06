@@ -73,6 +73,19 @@
                         }
                     }
 
+                    // 0. Check if user is typing after ON (e.g. "FROM TTransaction a INNER JOIN TCustomer b ON ")
+                    var onMatch = textBeforeCursor.match(/\b(?:JOIN|APPLY)\s+([#a-zA-Z0-9_\.\[\]]+)(?:\s+(?:AS\s+)?([a-zA-Z0-9_]+))?\s+ON\s*([a-zA-Z0-9_\.]*)$/i);
+                    if (onMatch) {
+                        var joinedObj = onMatch[1].replace(/[\[\]]/g, '');
+                        var joinedAlias = onMatch[2] ? onMatch[2].replace(/[\[\]]/g, '') : generateTableAlias(joinedObj);
+
+                        var onSuggestions = getOnConditionSuggestions(joinedObj, joinedAlias, querySources, range);
+                        if (onSuggestions && onSuggestions.length > 0) {
+                            onSuggestions.forEach(s => suggestions.push(s));
+                        }
+                        return { suggestions: suggestions };
+                    }
+
                     var isAlterProc = /\bALTER\s+PROCEDURE\s+[a-zA-Z0-9_.]*$/i.test(textBeforeCursor);
                     var isAlterView = /\bALTER\s+VIEW\s+[a-zA-Z0-9_.]*$/i.test(textBeforeCursor);
                     var isAlterFunc = /\bALTER\s+FUNCTION\s+[a-zA-Z0-9_.]*$/i.test(textBeforeCursor);
@@ -588,14 +601,16 @@
                         });
                     });
 
-                    // 5. Tables
+                    // 5. Tables Completion (Pure table names)
                     tables.forEach(t => {
+                        var shortName = t.indexOf('.') > -1 ? t.split('.')[1] : t;
                         suggestions.push({
                             label: t,
+                            filterText: t + " " + shortName,
                             kind: monaco.languages.CompletionItemKind.Class,
                             insertText: t,
                             detail: objectTypes[t] || "Table",
-                            sortText: (sourceContext ? "0_0_table_" : "1_table_") + t,
+                            sortText: (sourceContext ? "0_0_table_" : "1_table_") + shortName,
                             range: range
                         });
                     });

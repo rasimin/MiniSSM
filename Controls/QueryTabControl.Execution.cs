@@ -48,6 +48,14 @@ namespace SSMS
                 return;
             }
 
+            if (mode is QueryExecutionMode.Execute or QueryExecutionMode.ActualPlan)
+            {
+                if (!ConfirmUnsafeExecution(sqlQuery))
+                {
+                    return;
+                }
+            }
+
             // Clear UI previous records
             DisposeDisplayedResults();
             ClearExecutionPlanTabs();
@@ -367,6 +375,54 @@ namespace SSMS
                 mainWindow.UpdateStatusText("Cancelling query...");
             }
             cancellationSource.Cancel();
+        }
+
+        private bool ConfirmUnsafeExecution(string sqlQuery)
+        {
+            var batches = SqlBatchSplitter.Split(sqlQuery);
+            var dangerousStatements = new List<string>();
+
+            foreach (var batch in batches)
+            {
+                string cleaned = CleanSqlForSafetyCheck(batch.Text);
+                var statements = System.Text.RegularExpressions.Regex.Split(cleaned, @";\s*");
+                foreach (var stmt in statements)
+                {
+                    string trimmed = stmt.Trim();
+                    if (string.IsNullOrWhiteSpace(trimmed)) continue;
+
+                    bool isUpdate = System.Text.RegularExpressions.Regex.IsMatch(trimmed, @"\bUPDATE\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    bool isDelete = System.Text.RegularExpressions.Regex.IsMatch(trimmed, @"\bDELETE\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    bool hasWhere = System.Text.RegularExpressions.Regex.IsMatch(trimmed, @"\bWHERE\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+                    if ((isUpdate || isDelete) && !hasWhere)
+                    {
+                        string snippet = batch.Text.Length > 150 ? batch.Text[..147] + "..." : batch.Text;
+                        dangerousStatements.Add(snippet);
+                    }
+                }
+            }
+
+            if (dangerousStatements.Count > 0)
+            {
+                var dialog = new UnsafeExecutionWindow(dangerousStatements.Take(3).ToList())
+                {
+                    Owner = Window.GetWindow(this)
+                };
+                bool? result = dialog.ShowDialog();
+                return result == true && dialog.ProceedWithExecution;
+            }
+
+            return true;
+        }
+
+        private static string CleanSqlForSafetyCheck(string sql)
+        {
+            if (string.IsNullOrWhiteSpace(sql)) return string.Empty;
+            string cleaned = System.Text.RegularExpressions.Regex.Replace(sql, @"'(?:''|[^'])*'", " '' ");
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"--[^\r\n]*", " ");
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"/\*[\s\S]*?\*/", " ");
+            return cleaned;
         }
     }
 }

@@ -1,8 +1,28 @@
-﻿html, body, #container {
+html, body, #container {
     width: 100%;
     height: 100%;
     margin: 0;
     padding: 0;
     overflow: hidden;
     background-color: #1e1e1e;
+}
+
+/* Widen Monaco suggest autocomplete popup box so expressions aren't cut off */
+.monaco-editor .suggest-widget {
+    width: 680px !important;
+    min-width: 600px !important;
+}
+
+.monaco-editor .suggest-widget .tree .monaco-list-row .contents {
+    width: 100% !important;
+    max-width: none !important;
+}
+
+.monaco-editor .suggest-widget .monaco-list-row .label-name {
+    max-width: none !important;
+}
+
+.monaco-editor .suggest-widget .monaco-list-row .details-label {
+    opacity: 0.75;
+    margin-left: 12px !important;
 }

@@ -202,7 +202,17 @@ namespace SSMS
                     _ => new Lazy<Task<AutocompleteMetadata>>(
                         () => LoadAutocompleteMetadataAsync(ConnectionString, DatabaseName),
                         LazyThreadSafetyMode.ExecutionAndPublication));
-                var metadata = await lazyMetadata.Value;
+                AutocompleteMetadata metadata;
+                try
+                {
+                    metadata = await lazyMetadata.Value;
+                }
+                catch
+                {
+                    SharedMetadataCache.TryRemove(cacheKey, out _);
+                    throw;
+                }
+
                 if (_isDisposed) return;
 
                 var payload = new
@@ -214,6 +224,7 @@ namespace SSMS
                     scalarFunctions = metadata.ScalarFunctions,
                     tableFunctions = metadata.TableFunctions,
                     routineParameters = metadata.RoutineParameters,
+                    foreignKeys = metadata.ForeignKeys,
                     databases = metadata.Databases,
                     activeDatabase = DatabaseName
                 };
@@ -230,6 +241,8 @@ namespace SSMS
             }
             catch (Exception ex)
             {
+                string cacheKey = $"{ConnectionString}\u001f{DatabaseName}";
+                SharedMetadataCache.TryRemove(cacheKey, out _);
                 AppLogger.Error(ex, $"Failed to load autocomplete metadata for database '{DatabaseName}'");
             }
         }

@@ -79,17 +79,26 @@ namespace SSMS
         private readonly List<DataTable> _resultTables = new();
         private readonly List<WindowsFormsHost> _resultHosts = new();
 
-        private sealed class AutocompleteMetadata
-        {
-            public Dictionary<string, List<string>> Columns { get; init; } = new(StringComparer.OrdinalIgnoreCase);
-            public Dictionary<string, string> ObjectTypes { get; init; } = new(StringComparer.OrdinalIgnoreCase);
-            public Dictionary<string, Dictionary<string, SqlColumnAutocompleteInfo>> ColumnDetails { get; init; } = new(StringComparer.OrdinalIgnoreCase);
-            public List<string> StoredProcedures { get; init; } = new();
-            public List<string> ScalarFunctions { get; init; } = new();
-            public List<string> TableFunctions { get; init; } = new();
-            public Dictionary<string, List<string>> RoutineParameters { get; init; } = new(StringComparer.OrdinalIgnoreCase);
-            public List<string> Databases { get; init; } = new();
-        }
+    public sealed class SqlForeignKeyInfo
+    {
+        public string ParentTable { get; init; } = string.Empty;
+        public string ParentColumn { get; init; } = string.Empty;
+        public string ReferencedTable { get; init; } = string.Empty;
+        public string ReferencedColumn { get; init; } = string.Empty;
+    }
+
+    private sealed class AutocompleteMetadata
+    {
+        public Dictionary<string, List<string>> Columns { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string> ObjectTypes { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, Dictionary<string, SqlColumnAutocompleteInfo>> ColumnDetails { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+        public List<string> StoredProcedures { get; init; } = new();
+        public List<string> ScalarFunctions { get; init; } = new();
+        public List<string> TableFunctions { get; init; } = new();
+        public Dictionary<string, List<string>> RoutineParameters { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+        public List<SqlForeignKeyInfo> ForeignKeys { get; init; } = new();
+        public List<string> Databases { get; init; } = new();
+    }
 
         private static Task<CoreWebView2Environment> CreateSharedEnvironmentAsync()
         {
@@ -614,6 +623,43 @@ namespace SSMS
                     }
             }
 
+            var foreignKeys = new List<SqlForeignKeyInfo>();
+            try
+            {
+                using var fkConnection = new Microsoft.Data.SqlClient.SqlConnection(dbConnString);
+                await fkConnection.OpenAsync();
+                const string fkQuery = @"
+                    SELECT 
+                        parent_schema.name + '.' + parent_obj.name AS ParentTable,
+                        parent_col.name AS ParentColumn,
+                        ref_schema.name + '.' + ref_obj.name AS ReferencedTable,
+                        ref_col.name AS ReferencedColumn
+                    FROM sys.foreign_keys fk
+                    JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
+                    JOIN sys.objects parent_obj ON fkc.parent_object_id = parent_obj.object_id
+                    JOIN sys.schemas parent_schema ON parent_obj.schema_id = parent_schema.schema_id
+                    JOIN sys.columns parent_col ON fkc.parent_object_id = parent_col.object_id AND fkc.parent_column_id = parent_col.column_id
+                    JOIN sys.objects ref_obj ON fkc.referenced_object_id = ref_obj.object_id
+                    JOIN sys.schemas ref_schema ON ref_obj.schema_id = ref_schema.schema_id
+                    JOIN sys.columns ref_col ON fkc.referenced_object_id = ref_col.object_id AND fkc.referenced_column_id = ref_col.column_id;";
+                using var fkCommand = new Microsoft.Data.SqlClient.SqlCommand(fkQuery, fkConnection);
+                using var fkReader = await fkCommand.ExecuteReaderAsync();
+                while (await fkReader.ReadAsync())
+                {
+                    foreignKeys.Add(new SqlForeignKeyInfo
+                    {
+                        ParentTable = fkReader.GetString(0),
+                        ParentColumn = fkReader.GetString(1),
+                        ReferencedTable = fkReader.GetString(2),
+                        ReferencedColumn = fkReader.GetString(3)
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error(ex, "Failed to load foreign keys for autocomplete metadata");
+            }
+
             return new AutocompleteMetadata
             {
                 Columns = tableColumns,
@@ -623,6 +669,7 @@ namespace SSMS
                 ScalarFunctions = scalarFunctions,
                 TableFunctions = tableFunctions,
                 RoutineParameters = parameters,
+                ForeignKeys = foreignKeys,
                 Databases = await DatabaseHelper.GetDatabasesAsync(connectionString)
             };
         }

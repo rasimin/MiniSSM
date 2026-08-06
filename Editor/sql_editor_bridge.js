@@ -169,6 +169,9 @@
             });
         }
 
+        var normalizedColumnCache = {};
+        var normalizedColumnMapCache = {};
+
         function updateMetadata(meta) {
             meta = meta || {};
             tableColumns = meta.columns || {};
@@ -178,10 +181,50 @@
             scalarFunctions = meta.scalarFunctions || [];
             tableFunctions = meta.tableFunctions || [];
             routineParameters = meta.routineParameters || {};
+            foreignKeys = meta.foreignKeys || [];
             databases = meta.databases || [];
             activeDatabase = meta.activeDatabase || '';
             metadataLoaded = true;
-            tables = Object.keys(tableColumns);
+
+            normalizedColumnCache = {};
+            normalizedColumnMapCache = {};
+
+            for (var k in tableColumns) {
+                var cols = tableColumns[k];
+                var clean = k.toLowerCase().replace(/[\[\]]/g, '');
+                normalizedColumnCache[clean] = cols;
+                if (clean.indexOf('.') > -1) {
+                    var shortK = clean.split('.')[1];
+                    if (!normalizedColumnCache[shortK]) {
+                        normalizedColumnCache[shortK] = cols;
+                    }
+                }
+
+                var colMap = new Map();
+                if (cols && cols.length > 0) {
+                    cols.forEach(c => colMap.set(c.toLowerCase(), c));
+                }
+                normalizedColumnMapCache[clean] = colMap;
+                if (clean.indexOf('.') > -1) {
+                    var shortK = clean.split('.')[1];
+                    if (!normalizedColumnMapCache[shortK]) {
+                        normalizedColumnMapCache[shortK] = colMap;
+                    }
+                }
+            }
+
+            var uniqueTables = new Set();
+            for (var tbl in tableColumns) {
+                if (tbl.indexOf('.') > -1) {
+                    uniqueTables.add(tbl);
+                } else {
+                    var hasSchemaVersion = Object.keys(tableColumns).some(other => other.indexOf('.') > -1 && other.endsWith('.' + tbl));
+                    if (!hasSchemaVersion) {
+                        uniqueTables.add(tbl);
+                    }
+                }
+            }
+            tables = Array.from(uniqueTables);
 
             var schemaSet = new Set();
             tables.forEach(t => {

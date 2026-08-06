@@ -13,6 +13,7 @@
         var objectTypes = {};
         var columnDetails = {};
         var routineParameters = {};
+        var foreignKeys = [];
         var databases = [];
         var activeDatabase = '';
         var databaseMetadata = {};

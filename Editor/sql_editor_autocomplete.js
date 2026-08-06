@@ -288,26 +288,18 @@
         }
 
         function findColumns(objectName) {
-            var normalized = objectName.replace(/[\[\]]/g, '');
-            var columns = tableColumns[normalized];
-            if (columns) {
-                return columns;
+            if (!objectName) return null;
+            var normalized = objectName.toLowerCase().replace(/[\[\]]/g, '');
+            if (typeof normalizedColumnCache !== 'undefined' && normalizedColumnCache[normalized]) {
+                return normalizedColumnCache[normalized];
             }
-
-            for (var key in tableColumns) {
-                if (key.toLowerCase().endsWith('.' + normalized.toLowerCase())) {
-                    return tableColumns[key];
+            if (normalized.indexOf('.') > -1) {
+                var shortName = normalized.split('.')[1];
+                if (typeof normalizedColumnCache !== 'undefined' && normalizedColumnCache[shortName]) {
+                    return normalizedColumnCache[shortName];
                 }
             }
-
-            var parts = normalized.split('.');
-            if (parts.length >= 3) {
-                var databaseName = parts[parts.length - 3].toLowerCase();
-                var schemaObject = parts.slice(-2).join('.');
-                var metadata = databaseMetadata[databaseName];
-                return metadata && metadata.columns ? metadata.columns[schemaObject] : null;
-            }
-            return null;
+            return tableColumns[objectName] || null;
         }
 
         function getSqlTokenAtPosition(model, position) {
@@ -620,4 +612,240 @@
             return "UPDATE " + fullTableName + "\nSET\n" +
                 setLines.join(",\n") +
                 whereClause + ";$0";
+        }
+
+        function generateTableAlias(tableName) {
+            if (!tableName) return 't';
+            var clean = tableName.replace(/^.*\.|\W/g, '');
+            if (!clean) return 't';
+            var capitals = clean.match(/[A-Z]/g);
+            if (capitals && capitals.length > 1) {
+                return capitals.join('').toLowerCase();
+            }
+            if (clean.includes('_')) {
+                return clean.split('_').map(p => p[0]).join('').toLowerCase();
+            }
+            return clean.substring(0, Math.min(2, clean.length)).toLowerCase();
+        }
+
+        function isTableMatch(tableA, tableB) {
+            if (!tableA || !tableB) return false;
+            var a = tableA.toLowerCase().replace(/[\[\]]/g, '');
+            var b = tableB.toLowerCase().replace(/[\[\]]/g, '');
+            var shortA = a.indexOf('.') > -1 ? a.split('.')[1] : a;
+            var shortB = b.indexOf('.') > -1 ? b.split('.')[1] : b;
+            return a === b || shortA === shortB;
+        }
+
+        function getAutoJoinSuggestions(t, querySources, range) {
+            var joinSuggestions = [];
+            if (!querySources || querySources.length === 0) {
+                return joinSuggestions;
+            }
+
+            var cleanT = t.toLowerCase();
+            var shortT = cleanT.indexOf('.') > -1 ? cleanT.split('.')[1] : cleanT;
+            var aliasT = generateTableAlias(shortT);
+
+            var ignoredCommonCols = new Set([
+                'createddate', 'createdat', 'createdby', 'created_date', 'created_at', 'created_by',
+                'updateddate', 'updatedat', 'updatedby', 'updated_date', 'updated_at', 'updated_by',
+                'modifieddate', 'modifiedat', 'modifiedby', 'modified_date', 'modified_at', 'modified_by',
+                'isactive', 'is_active', 'status', 'rowguid', 'timestamp', 'description', 'notes', 'remarks', 'version'
+            ]);
+
+            var colsT = findColumns(t) || [];
+
+            querySources.forEach(source => {
+                var sourceAlias = source.qualifier || source.objectName;
+                if (isTableMatch(source.objectName, t) || isTableMatch(sourceAlias, aliasT)) return;
+
+                var colsSource = findColumns(source.objectName) || [];
+
+                // 1. Check explicit Foreign Keys (Constraint FK-PK)
+                if (foreignKeys && foreignKeys.length > 0) {
+                    foreignKeys.forEach(fk => {
+                        var isParentT = isTableMatch(fk.ParentTable, t);
+                        var isRefS = isTableMatch(fk.ReferencedTable, source.objectName);
+                        var isRefT = isTableMatch(fk.ReferencedTable, t);
+                        var isParentS = isTableMatch(fk.ParentTable, source.objectName);
+
+                        if (isParentT && isRefS) {
+                            var joinClause = t + " " + aliasT + " ON " + aliasT + "." + fk.ParentColumn + " = " + sourceAlias + "." + fk.ReferencedColumn;
+                            joinSuggestions.push({
+                                label: joinClause,
+                                filterText: joinClause + " " + fk.ParentColumn + " " + fk.ReferencedColumn,
+                                kind: monaco.languages.CompletionItemKind.Snippet,
+                                insertText: joinClause,
+                                detail: "Smart JOIN (FK Constraint)",
+                                sortText: "0_0_autojoin_" + t,
+                                range: range
+                            });
+                        } else if (isRefT && isParentS) {
+                            var joinClause = t + " " + aliasT + " ON " + aliasT + "." + fk.ReferencedColumn + " = " + sourceAlias + "." + fk.ParentColumn;
+                            joinSuggestions.push({
+                                label: joinClause,
+                                filterText: joinClause + " " + fk.ReferencedColumn + " " + fk.ParentColumn,
+                                kind: monaco.languages.CompletionItemKind.Snippet,
+                                insertText: joinClause,
+                                detail: "Smart JOIN (FK Constraint)",
+                                sortText: "0_0_autojoin_" + t,
+                                range: range
+                            });
+                        }
+                    });
+                }
+
+                // 2. Check matching column names (Identical column names even without FK constraints)
+                var sourceColMap = new Map();
+                colsSource.forEach(c => sourceColMap.set(c.toLowerCase(), c));
+
+                colsT.forEach(colT => {
+                    var lowerColT = colT.toLowerCase();
+                    if (ignoredCommonCols.has(lowerColT)) return;
+
+                    var matchingSourceCol = sourceColMap.get(lowerColT);
+                    if (matchingSourceCol) {
+                        var isIdCol = lowerColT.endsWith('id') || lowerColT.includes('_id') || lowerColT.endsWith('code') || lowerColT.endsWith('no') || lowerColT.endsWith('key') || lowerColT.startsWith('kd_') || lowerColT.startsWith('no_');
+                        var checkSnippet = aliasT + "." + colT + " = " + sourceAlias + "." + matchingSourceCol;
+                        var alreadyAdded = joinSuggestions.some(s => s.insertText && s.insertText.includes(checkSnippet));
+                        
+                        if (!alreadyAdded) {
+                            var joinClause = t + " " + aliasT + " ON " + aliasT + "." + colT + " = " + sourceAlias + "." + matchingSourceCol;
+                            joinSuggestions.push({
+                                label: joinClause,
+                                filterText: joinClause + " " + colT + " " + matchingSourceCol,
+                                kind: monaco.languages.CompletionItemKind.Snippet,
+                                insertText: joinClause,
+                                detail: "Smart JOIN (Matching Column)",
+                                sortText: (isIdCol ? "0_1_autojoin_" : "0_2_autojoin_") + t,
+                                range: range
+                            });
+                        }
+                    }
+                });
+            });
+
+            return joinSuggestions;
+        }
+
+        function getOnConditionSuggestions(joinedObj, joinedAlias, querySources, range) {
+            var suggestions = [];
+            if (!querySources || querySources.length === 0) return suggestions;
+
+            var joinedCols = findColumns(joinedObj);
+            if (!joinedCols || joinedCols.length === 0) return suggestions;
+
+            var ignoredCommonCols = new Set([
+                'createddate', 'createdat', 'createdby', 'created_date', 'created_at', 'created_by',
+                'updateddate', 'updatedat', 'updatedby', 'updated_date', 'updated_at', 'updated_by',
+                'modifieddate', 'modifiedat', 'modifiedby', 'modified_date', 'modified_at', 'modified_by',
+                'isactive', 'is_active', 'status', 'rowguid', 'timestamp', 'description', 'notes', 'remarks', 'version'
+            ]);
+
+            var joinedColMap = new Map();
+            joinedCols.forEach(c => joinedColMap.set(c.toLowerCase(), c));
+
+            querySources.forEach(source => {
+                var sourceAlias = source.qualifier || source.objectName;
+                if (isTableMatch(source.objectName, joinedObj) || isTableMatch(sourceAlias, joinedAlias)) {
+                    return;
+                }
+
+                var sourceCols = findColumns(source.objectName);
+                if (!sourceCols || sourceCols.length === 0) return;
+
+                // 1. FK Constraints
+                if (foreignKeys && foreignKeys.length > 0) {
+                    foreignKeys.forEach(fk => {
+                        var isParentJ = isTableMatch(fk.ParentTable, joinedObj);
+                        var isRefS = isTableMatch(fk.ReferencedTable, source.objectName);
+                        var isRefJ = isTableMatch(fk.ReferencedTable, joinedObj);
+                        var isParentS = isTableMatch(fk.ParentTable, source.objectName);
+                        
+                        if (isParentJ && isRefS) {
+                            var expr = joinedAlias + "." + fk.ParentColumn + " = " + sourceAlias + "." + fk.ReferencedColumn;
+                            suggestions.push({
+                                label: expr,
+                                filterText: expr + " " + fk.ParentColumn + " " + fk.ReferencedColumn,
+                                kind: monaco.languages.CompletionItemKind.Snippet,
+                                insertText: expr,
+                                detail: "Smart ON (FK Constraint)",
+                                sortText: "0_0_on_" + expr,
+                                range: range
+                            });
+                        } else if (isRefJ && isParentS) {
+                            var expr = joinedAlias + "." + fk.ReferencedColumn + " = " + sourceAlias + "." + fk.ParentColumn;
+                            suggestions.push({
+                                label: expr,
+                                filterText: expr + " " + fk.ReferencedColumn + " " + fk.ParentColumn,
+                                kind: monaco.languages.CompletionItemKind.Snippet,
+                                insertText: expr,
+                                detail: "Smart ON (FK Constraint)",
+                                sortText: "0_0_on_" + expr,
+                                range: range
+                            });
+                        }
+                    });
+                }
+
+                // 2. Matching column names
+                sourceCols.forEach(sc => {
+                    var lowerSc = sc.toLowerCase();
+                    if (ignoredCommonCols.has(lowerSc)) return;
+
+                    var matchJ = joinedColMap.get(lowerSc);
+                    if (matchJ) {
+                        var expr = joinedAlias + "." + matchJ + " = " + sourceAlias + "." + sc;
+                        var already = suggestions.some(s => s.insertText === expr);
+                        if (!already) {
+                            var isId = lowerSc.endsWith('id') || lowerSc.includes('_id') || lowerSc.endsWith('code') || lowerSc.endsWith('no') || lowerSc.endsWith('key');
+                            suggestions.push({
+                                label: expr,
+                                filterText: expr + " " + matchJ + " " + sc,
+                                kind: monaco.languages.CompletionItemKind.Snippet,
+                                insertText: expr,
+                                detail: "Smart ON (Matching Column)",
+                                sortText: (isId ? "0_1_on_" : "0_2_on_") + expr,
+                                range: range
+                            });
+                        }
+                    }
+                });
+            });
+
+            // 3. Add individual columns for joined table (tp.Column)
+            joinedCols.forEach(c => {
+                var expr = joinedAlias + "." + c;
+                suggestions.push({
+                    label: expr,
+                    filterText: expr + " " + c,
+                    kind: monaco.languages.CompletionItemKind.Field,
+                    insertText: expr,
+                    detail: "Column (" + joinedObj + ")",
+                    sortText: "0_3_col_" + c,
+                    range: range
+                });
+            });
+
+            // 4. Add individual columns for query sources (a.Column)
+            querySources.forEach(source => {
+                var sourceAlias = source.qualifier || source.objectName;
+                if (isTableMatch(source.objectName, joinedObj) || isTableMatch(sourceAlias, joinedAlias)) return;
+                var sourceCols = findColumns(source.objectName) || [];
+                sourceCols.forEach(c => {
+                    var expr = sourceAlias + "." + c;
+                    suggestions.push({
+                        label: expr,
+                        filterText: expr + " " + c,
+                        kind: monaco.languages.CompletionItemKind.Field,
+                        insertText: expr,
+                        detail: "Column (" + source.objectName + ")",
+                        sortText: "0_4_col_" + c,
+                        range: range
+                    });
+                });
+            });
+
+            return suggestions;
         }

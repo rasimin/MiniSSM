@@ -1,4 +1,4 @@
-﻿        function formatSql() {
+        function formatSql() {
             if (!editor) return;
 
             var model = editor.getModel();
@@ -32,12 +32,33 @@
             });
 
             var keywords = [
+                // Statements & Clauses
                 'select', 'from', 'where', 'group by', 'order by', 'having', 'union all', 'union',
                 'inner join', 'left outer join', 'right outer join', 'full outer join',
-                'left join', 'right join', 'full join', 'cross join', 'join', 'on',
-                'insert into', 'values', 'update', 'delete from', 'set',
-                'create', 'alter', 'drop', 'as', 'begin', 'end', 'case', 'when', 'then', 'else',
-                'and', 'or', 'not', 'null', 'is', 'in', 'exists', 'distinct', 'top', 'with'
+                'left join', 'right join', 'full join', 'cross join', 'cross apply', 'outer apply', 'join', 'on',
+                'insert into', 'insert', 'values', 'update', 'delete from', 'delete', 'set', 'truncate table', 'truncate',
+                'create procedure', 'create proc', 'create view', 'create function', 'create table', 'create index', 'create',
+                'alter procedure', 'alter proc', 'alter view', 'alter function', 'alter table', 'alter index', 'alter',
+                'drop procedure', 'drop proc', 'drop view', 'drop function', 'drop table', 'drop index', 'drop',
+                'begin transaction', 'begin tran', 'commit transaction', 'commit tran', 'commit', 'rollback transaction', 'rollback tran', 'rollback',
+                'begin try', 'end try', 'begin catch', 'end catch', 'begin', 'end', 'case', 'when', 'then', 'else',
+                'and', 'or', 'not', 'null', 'is', 'in', 'exists', 'distinct', 'top', 'with', 'as', 'into', 'over', 'partition by',
+                'asc', 'desc', 'by', 'exec', 'execute', 'declare', 'if', 'while', 'return', 'returns',
+                'primary key', 'foreign key', 'references', 'identity', 'default', 'check', 'constraint',
+                'clustered', 'nonclustered', 'nolock', 'readuncommitted',
+
+                // Data Types
+                'varchar', 'nvarchar', 'char', 'nchar', 'int', 'bigint', 'smallint', 'tinyint',
+                'decimal', 'numeric', 'float', 'real', 'money', 'smallmoney',
+                'datetime', 'datetime2', 'date', 'time', 'smalldatetime', 'datetimeoffset',
+                'bit', 'uniqueidentifier', 'varbinary', 'binary', 'image', 'text', 'ntext', 'xml',
+
+                // Common Built-in Functions
+                'count', 'sum', 'avg', 'min', 'max', 'isnull', 'coalesce', 'getdate', 'sysdatetime', 'getutcdate',
+                'cast', 'convert', 'row_number', 'rank', 'dense_rank', 'ntile', 'lag', 'lead',
+                'upper', 'lower', 'substring', 'charindex', 'len', 'datalength', 'replace', 'trim', 'ltrim', 'rtrim',
+                'dateadd', 'datediff', 'datename', 'datepart', 'year', 'month', 'day', 'abs', 'round', 'floor', 'ceiling',
+                'error_number', 'error_message', 'scope_identity', 'iif'
             ];
             keywords.sort(function(a, b) { return b.length - a.length; });
             keywords.forEach(function(keyword) {
