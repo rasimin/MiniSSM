@@ -37,6 +37,7 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 | `Windows\QueryHistoryWindow.xaml`, `Windows\QueryHistoryWindow.xaml.cs` | Window dark-mode untuk melihat query execution history, filter rentang tanggal/database/isi SQL, detail query/message, Copy Query, refresh, double-click, dan Open in New Query. |
 | `Windows\ObjectSearchWindow.xaml`, `Windows\ObjectSearchWindow.xaml.cs` | Pencarian table/view/routine/trigger/column lintas database yang dapat diakses pada satu server, lalu membuka SELECT atau definition. |
 | `Windows\RenameObjectWindow.xaml`, `Windows\RenameObjectWindow.xaml.cs` | Dialog dark-mode custom untuk memasukkan nama baru objek/database dan menghasilkan script `sp_rename` atau `ALTER DATABASE` ke query tab baru. |
+| `Windows\ImportExcelWindow.xaml`, `Windows\ImportExcelWindow.xaml.cs` | Dialog dark-mode custom untuk mengimpor berkas Excel (.xlsx/.xls) menjadi tabel baru di SQL Server dengan auto-deduplikasi header & SqlBulkCopy. |
 | `Editor\sql_editor.html` | Host ringan WebView2 untuk container Monaco, stylesheet, require.js, catalog, dan script editor. |
 | `Editor\sql_editor.css` | Style host WebView2/Monaco container. |
 | `Editor\sql_editor_state.js` | Konfigurasi require.js dan state global editor/metadata serta map registry `tabModels` per `tabId`. |

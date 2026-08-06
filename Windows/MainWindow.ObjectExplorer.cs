@@ -400,6 +400,9 @@ namespace SSMS
                             var newQueryItem = new MenuItem { Header = "New Query" };
                             newQueryItem.Click += (s, ev) => CreateNewQueryTab(connStr, db);
                             contextMenu.Items.Add(newQueryItem);
+                            var importExcelItem = new MenuItem { Header = "📊 Import from Excel..." };
+                            importExcelItem.Click += (s, ev) => ShowImportExcelDialog(connStr, db, dbItem);
+                            contextMenu.Items.Add(importExcelItem);
                             var refreshItem = new MenuItem { Header = "Refresh" };
                             refreshItem.Click += async (s, ev) => await RefreshObjectExplorerNodeAsync(dbItem);
                             contextMenu.Items.Add(refreshItem);
@@ -1093,6 +1096,22 @@ namespace SSMS
                 "TriggersFolder" => "Triggers",
                 _ => string.Empty
             };
+        }
+
+        private async void ShowImportExcelDialog(string connectionString, string databaseName, TreeViewItem? dbItem = null)
+        {
+            var dialog = new ImportExcelWindow(connectionString, databaseName)
+            {
+                Owner = this
+            };
+
+            if (dialog.ShowDialog() == true && dialog.IsImportSuccessful)
+            {
+                if (dbItem != null)
+                {
+                    await RefreshObjectExplorerNodeAsync(dbItem);
+                }
+            }
         }
 
     }

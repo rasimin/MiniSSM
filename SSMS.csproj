@@ -21,6 +21,8 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.7" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
     <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.2" />
+    <PackageReference Include="ExcelDataReader" Version="3.7.0" />
+    <PackageReference Include="ExcelDataReader.DataSet" Version="3.7.0" />
   </ItemGroup>
 
   <ItemGroup>
