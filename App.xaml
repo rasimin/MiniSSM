@@ -3,6 +3,36 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:SSMS">
     <Application.Resources>
+        <!-- VS Code Modern Theme Color Brushes -->
+        <SolidColorBrush x:Key="AppBackgroundBrush" Color="#181818"/>
+        <SolidColorBrush x:Key="MainContentBackgroundBrush" Color="#1E1E1E"/>
+        <SolidColorBrush x:Key="SecondaryPanelBackgroundBrush" Color="#202020"/>
+        <SolidColorBrush x:Key="ControlInputBackgroundBrush" Color="#252526"/>
+        <SolidColorBrush x:Key="InactiveTabBackgroundBrush" Color="#2D2D2D"/>
+        <SolidColorBrush x:Key="HoverBackgroundBrush" Color="#2A2D2E"/>
+        <SolidColorBrush x:Key="SelectedBackgroundBrush" Color="#37373D"/>
+        <SolidColorBrush x:Key="SelectionEditorTableBrush" Color="#264F78"/>
+
+        <!-- Borders & Dividers -->
+        <SolidColorBrush x:Key="MainBorderBrush" Color="#3C3C3C"/>
+        <SolidColorBrush x:Key="PanelDividerBrush" Color="#2B2B2B"/>
+        <SolidColorBrush x:Key="FocusBorderBrush" Color="#007FD4"/>
+
+        <!-- Typography Brushes -->
+        <SolidColorBrush x:Key="PrimaryTextBrush" Color="#CCCCCC"/>
+        <SolidColorBrush x:Key="SecondaryTextBrush" Color="#9D9D9D"/>
+        <SolidColorBrush x:Key="PlaceholderTextBrush" Color="#808080"/>
+        <SolidColorBrush x:Key="DisabledTextBrush" Color="#6A6A6A"/>
+        <SolidColorBrush x:Key="PrimaryButtonTextBrush" Color="#FFFFFF"/>
+
+        <!-- Accent Colors -->
+        <SolidColorBrush x:Key="MainAccentBrush" Color="#007ACC"/>
+        <SolidColorBrush x:Key="AccentHoverBrush" Color="#1C97EA"/>
+        <SolidColorBrush x:Key="InfoBrush" Color="#3794FF"/>
+        <SolidColorBrush x:Key="SuccessBrush" Color="#4EC9B0"/>
+        <SolidColorBrush x:Key="WarningBrush" Color="#CCA700"/>
+        <SolidColorBrush x:Key="ErrorBrush" Color="#F14C4C"/>
+
         <!-- Modern Scrollbar Brushes -->
         <SolidColorBrush x:Key="ScrollThumbBrush" Color="#4F4F4F"/>
         <SolidColorBrush x:Key="ScrollThumbHoverBrush" Color="#7A7A7A"/>
@@ -67,7 +97,7 @@
 
         <Style TargetType="{x:Type ScrollBar}" BasedOn="{StaticResource StandardScrollBar}"/>
 
-        <!-- Style implisit untuk ScrollViewer untuk mengubah warna sudut pertemuan scrollbar -->
+        <!-- ScrollViewer Implicit Style -->
         <Style TargetType="{x:Type ScrollViewer}">
             <Setter Property="Background" Value="#1E1E1E"/>
             <Setter Property="Template">
@@ -85,7 +115,6 @@
                             <ScrollContentPresenter Grid.Column="0" Grid.Row="0" Margin="{TemplateBinding Padding}" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" CanContentScroll="{TemplateBinding CanContentScroll}"/>
                             <ScrollBar x:Name="PART_VerticalScrollBar" Grid.Column="1" Grid.Row="0" AutomationProperties.AutomationId="VerticalScrollBar" Cursor="Arrow" Style="{StaticResource StandardScrollBar}" Value="{TemplateBinding VerticalOffset}" Maximum="{TemplateBinding ScrollableHeight}" Minimum="0" ViewportSize="{TemplateBinding ViewportHeight}" Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"/>
                             <ScrollBar x:Name="PART_HorizontalScrollBar" Grid.Column="0" Grid.Row="1" AutomationProperties.AutomationId="HorizontalScrollBar" Cursor="Arrow" Orientation="Horizontal" Style="{StaticResource StandardScrollBar}" Value="{TemplateBinding HorizontalOffset}" Maximum="{TemplateBinding ScrollableWidth}" Minimum="0" ViewportSize="{TemplateBinding ViewportWidth}" Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}"/>
-                            <!-- Sudut pengisi berwarna gelap -->
                             <Rectangle Grid.Row="1" Grid.Column="1" Fill="#1E1E1E"/>
                         </Grid>
                     </ControlTemplate>
@@ -93,20 +122,20 @@
             </Setter>
         </Style>
 
-        <!-- Style untuk Tombol Select All di sudut kiri atas DataGrid -->
+        <!-- DataGrid Select All Button Style -->
         <Style TargetType="{x:Type Button}" x:Key="{ComponentResourceKey TypeInTargetAssembly={x:Type DataGrid}, ResourceId=DataGridSelectAllButtonStyle}">
             <Setter Property="Background" Value="#252526"/>
-            <Setter Property="BorderBrush" Value="#2D2D30"/>
+            <Setter Property="BorderBrush" Value="#2B2B2B"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type Button}">
                         <Grid>
-                            <Rectangle x:Name="Border" Fill="#252526" Stroke="#2D2D30" StrokeThickness="1"/>
+                            <Rectangle x:Name="Border" Fill="#252526" Stroke="#2B2B2B" StrokeThickness="1"/>
                             <Polygon Fill="#888888" Points="9,9 9,3 3,9" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,2,2"/>
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="true">
-                                <Setter TargetName="Border" Property="Fill" Value="#2D2D30"/>
+                                <Setter TargetName="Border" Property="Fill" Value="#2A2D2E"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -114,17 +143,17 @@
             </Setter>
         </Style>
 
-        <!-- Dark Grid Styling -->
+        <!-- VS Code Dark DataGrid Styling -->
         <Style TargetType="DataGrid">
             <Setter Property="Background" Value="#1E1E1E"/>
             <Setter Property="Foreground" Value="#CCCCCC"/>
-            <Setter Property="BorderBrush" Value="#2D2D30"/>
+            <Setter Property="BorderBrush" Value="#2B2B2B"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="RowBackground" Value="#1E1E1E"/>
-            <Setter Property="AlternatingRowBackground" Value="#252526"/>
+            <Setter Property="AlternatingRowBackground" Value="#202020"/>
             <Setter Property="GridLinesVisibility" Value="All"/>
-            <Setter Property="HorizontalGridLinesBrush" Value="#2D2D30"/>
-            <Setter Property="VerticalGridLinesBrush" Value="#2D2D30"/>
+            <Setter Property="HorizontalGridLinesBrush" Value="#2B2B2B"/>
+            <Setter Property="VerticalGridLinesBrush" Value="#2B2B2B"/>
             <Setter Property="HeadersVisibility" Value="All"/>
             <Setter Property="FontSize" Value="12"/>
             <Style.Resources>
@@ -134,34 +163,32 @@
 
         <Style TargetType="DataGridColumnHeader">
             <Setter Property="Background" Value="#252526"/>
-            <Setter Property="Foreground" Value="#F1F1F1"/>
-            <Setter Property="BorderBrush" Value="#2D2D30"/>
+            <Setter Property="Foreground" Value="#CCCCCC"/>
+            <Setter Property="BorderBrush" Value="#2B2B2B"/>
             <Setter Property="BorderThickness" Value="0,0,1,1"/>
             <Setter Property="Padding" Value="10,6"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>
 
-        <!-- Style implisit untuk DataGridCell untuk mematikan focus border putih dan set dark highlight -->
         <Style TargetType="DataGridCell">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="#CCCCCC"/>
-            <Setter Property="BorderBrush" Value="#48484C"/>
+            <Setter Property="BorderBrush" Value="#2B2B2B"/>
             <Setter Property="BorderThickness" Value="0,0,1,0"/>
             <Setter Property="ClipToBounds" Value="True"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Style.Triggers>
                 <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="#1E3A5F"/>
-                    <Setter Property="Foreground" Value="White"/>
+                    <Setter Property="Background" Value="#264F78"/>
+                    <Setter Property="Foreground" Value="#FFFFFF"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
 
-        <!-- Style implisit untuk DataGridRowHeader untuk mematikan highlight putih Aero -->
         <Style TargetType="DataGridRowHeader">
             <Setter Property="Background" Value="#252526"/>
-            <Setter Property="Foreground" Value="#888888"/>
-            <Setter Property="BorderBrush" Value="#2D2D30"/>
+            <Setter Property="Foreground" Value="#9D9D9D"/>
+            <Setter Property="BorderBrush" Value="#2B2B2B"/>
             <Setter Property="BorderThickness" Value="0,0,1,1"/>
             <Setter Property="Width" Value="25"/>
             <Setter Property="Template">
@@ -176,8 +203,8 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsRowSelected" Value="true">
-                                <Setter TargetName="HeaderBorder" Property="Background" Value="#2D2D30"/>
-                                <Setter Property="Foreground" Value="White"/>
+                                <Setter TargetName="HeaderBorder" Property="Background" Value="#37373D"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -185,10 +212,10 @@
             </Setter>
         </Style>
 
-        <!-- Style implisit untuk ContextMenu -->
+        <!-- VS Code Dark ContextMenu & MenuItem -->
         <Style TargetType="ContextMenu">
-            <Setter Property="Background" Value="#1E1E1E"/>
-            <Setter Property="BorderBrush" Value="#2D2D30"/>
+            <Setter Property="Background" Value="#252526"/>
+            <Setter Property="BorderBrush" Value="#3C3C3C"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -205,7 +232,6 @@
             </Setter>
         </Style>
 
-        <!-- Style implisit untuk MenuItem -->
         <Style TargetType="MenuItem">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="#CCCCCC"/>
@@ -227,14 +253,12 @@
                                 
                                 <ContentPresenter x:Name="Icon" ContentSource="Icon" Margin="0,0,8,0" VerticalAlignment="Center"/>
                                 <ContentPresenter Grid.Column="1" ContentSource="Header" RecognizesAccessKey="True" VerticalAlignment="Center"/>
-                                <TextBlock Grid.Column="2" Text="{TemplateBinding InputGestureText}" Margin="15,0,5,0" Foreground="#888888" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="{TemplateBinding InputGestureText}" Margin="15,0,5,0" Foreground="#9D9D9D" VerticalAlignment="Center"/>
                                 
-                                <!-- Submenu indicator arrow -->
-                                <Path x:Name="Arrow" Grid.Column="3" Data="M 0,0 L 4,4 L 0,8 Z" Fill="#888888" Margin="8,0,0,0" VerticalAlignment="Center" Visibility="Collapsed"/>
+                                <Path x:Name="Arrow" Grid.Column="3" Data="M 0,0 L 4,4 L 0,8 Z" Fill="#9D9D9D" Margin="8,0,0,0" VerticalAlignment="Center" Visibility="Collapsed"/>
                                 
-                                <!-- Submenu Popup -->
                                 <Popup x:Name="Popup" Placement="Right" HorizontalOffset="-2" VerticalOffset="-2" IsOpen="{TemplateBinding IsSubmenuOpen}" AllowsTransparency="True" Focusable="False">
-                                    <Border Background="#1E1E1E" BorderBrush="#2D2D30" BorderThickness="1" CornerRadius="3" Padding="2">
+                                    <Border Background="#252526" BorderBrush="#3C3C3C" BorderThickness="1" CornerRadius="3" Padding="2">
                                         <ScrollViewer SnapsToDevicePixels="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                                             <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"/>
                                         </ScrollViewer>
@@ -244,11 +268,48 @@
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsHighlighted" Value="True">
-                                <Setter TargetName="Bg" Property="Background" Value="#2D2D30"/>
-                                <Setter Property="Foreground" Value="White"/>
+                                <Setter TargetName="Bg" Property="Background" Value="#2A2D2E"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="#6A6A6A"/>
                             </Trigger>
                             <Trigger Property="HasItems" Value="True">
                                 <Setter TargetName="Arrow" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- VS Code Implicit TextBox Style -->
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="#252526"/>
+            <Setter Property="Foreground" Value="#CCCCCC"/>
+            <Setter Property="BorderBrush" Value="#3C3C3C"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="SelectionBrush" Value="#264F78"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="border"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="2">
+                            <ScrollViewer x:Name="PART_ContentHost" Focusable="False" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsFocused" Value="True">
+                                <Setter TargetName="border" Property="BorderBrush" Value="#007FD4"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Background" Value="#202020"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="#2B2B2B"/>
+                                <Setter Property="Foreground" Value="#6A6A6A"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>

@@ -7,7 +7,7 @@
         Height="760" Width="1100"
         WindowStartupLocation="CenterScreen"
         Background="#181818"
-        Foreground="#D4D4D4"
+        Foreground="#CCCCCC"
         FontFamily="Segoe UI, Arial"
         AllowDrop="True"
         Loaded="Window_Loaded"
@@ -17,15 +17,14 @@
 
     <Window.Resources>
 
-
-        <!-- Dark Theme Styles -->
+        <!-- VS Code Toolbar Button Styles -->
         <Style x:Key="ToolbarButton" TargetType="Button">
             <Setter Property="Focusable" Value="False"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="#CCCCCC"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="MinWidth" Value="30"/>
-            <Setter Property="Height" Value="26"/>
+            <Setter Property="Height" Value="28"/>
             <Setter Property="Padding" Value="6,4"/>
             <Setter Property="Margin" Value="2,0"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -43,17 +42,17 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Border" Property="Background" Value="#2D2D30"/>
-                                <Setter TargetName="Border" Property="BorderBrush" Value="#3E3E42"/>
-                                <Setter Property="Foreground" Value="White"/>
+                                <Setter TargetName="Border" Property="Background" Value="#2A2D2E"/>
+                                <Setter TargetName="Border" Property="BorderBrush" Value="#3C3C3C"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Border" Property="Background" Value="#3E3E42"/>
-                                <Setter TargetName="Border" Property="BorderBrush" Value="#505050"/>
-                                <Setter Property="Foreground" Value="White"/>
+                                <Setter TargetName="Border" Property="Background" Value="#37373D"/>
+                                <Setter TargetName="Border" Property="BorderBrush" Value="#3C3C3C"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Foreground" Value="#555555"/>
+                                <Setter Property="Foreground" Value="#6A6A6A"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -87,7 +86,7 @@
                                 <Setter Property="Foreground" Value="#4EC9B0"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Foreground" Value="#555555"/>
+                                <Setter Property="Foreground" Value="#6A6A6A"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -98,10 +97,10 @@
         <!-- Dropdown ComboBox Dark Style -->
         <Style TargetType="ComboBox">
             <Setter Property="Background" Value="#252526"/>
-            <Setter Property="Foreground" Value="#F1F1F1"/>
-            <Setter Property="BorderBrush" Value="#3E3E42"/>
+            <Setter Property="Foreground" Value="#CCCCCC"/>
+            <Setter Property="BorderBrush" Value="#3C3C3C"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="6,3"/>
+            <Setter Property="Padding" Value="6,4"/>
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -119,13 +118,13 @@
                                         <Border Background="{TemplateBinding Background}" 
                                                 BorderBrush="{TemplateBinding BorderBrush}" 
                                                 BorderThickness="{TemplateBinding BorderThickness}" 
-                                                CornerRadius="3">
+                                                CornerRadius="2">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="Auto"/>
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="1" Text="▼" FontSize="8" Foreground="#888888" VerticalAlignment="Center" Margin="5,0,8,0"/>
+                                                <TextBlock Grid.Column="1" Text="▼" FontSize="8" Foreground="#9D9D9D" VerticalAlignment="Center" Margin="5,0,8,0"/>
                                             </Grid>
                                         </Border>
                                     </ControlTemplate>
@@ -135,11 +134,11 @@
                                               Content="{TemplateBinding SelectionBoxItem}"
                                               ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
                                               ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
-                                              Margin="8,3,25,3"
+                                              Margin="8,4,25,4"
                                               VerticalAlignment="Center"
                                               HorizontalAlignment="Left" />
                             <Popup Name="Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False" PopupAnimation="Slide">
-                                <Border Name="DropDownBorder" Background="#1E1E1E" BorderBrush="#3E3E42" BorderThickness="1" CornerRadius="3" MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                                <Border Name="DropDownBorder" Background="#252526" BorderBrush="#3C3C3C" BorderThickness="1" CornerRadius="2" MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}">
                                     <ScrollViewer SnapsToDevicePixels="True">
                                         <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
                                     </ScrollViewer>
@@ -152,25 +151,25 @@
         </Style>
 
         <Style TargetType="ComboBoxItem">
-            <Setter Property="Background" Value="#1E1E1E"/>
-            <Setter Property="Foreground" Value="#F1F1F1"/>
+            <Setter Property="Background" Value="#252526"/>
+            <Setter Property="Foreground" Value="#CCCCCC"/>
             <Setter Property="Padding" Value="8,4"/>
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#0E639C"/>
-                    <Setter Property="Foreground" Value="White"/>
+                    <Setter Property="Background" Value="#2A2D2E"/>
+                    <Setter Property="Foreground" Value="#FFFFFF"/>
                 </Trigger>
                 <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="#007ACC"/>
-                    <Setter Property="Foreground" Value="White"/>
+                    <Setter Property="Background" Value="#37373D"/>
+                    <Setter Property="Foreground" Value="#FFFFFF"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
 
         <Style TargetType="TreeView">
-            <Setter Property="Background" Value="#1E1E1E"/>
-            <Setter Property="Foreground" Value="#D4D4D4"/>
-            <Setter Property="BorderBrush" Value="#2D2D30"/>
+            <Setter Property="Background" Value="#181818"/>
+            <Setter Property="Foreground" Value="#CCCCCC"/>
+            <Setter Property="BorderBrush" Value="#2B2B2B"/>
             <Setter Property="BorderThickness" Value="0,0,1,0"/>
             <Setter Property="Padding" Value="5"/>
             <Setter Property="Template">
@@ -232,7 +231,7 @@
                                             <ControlTemplate TargetType="ToggleButton">
                                                 <Border Background="Transparent" Width="16" Height="16">
                                                     <Path x:Name="Arrow"
-                                                          Fill="#888888"
+                                                          Fill="#9D9D9D"
                                                           HorizontalAlignment="Center"
                                                           VerticalAlignment="Center"
                                                           Data="M 0,0 L 4,4 L 0,8 Z"/>
@@ -278,13 +277,13 @@
                             
                             <!-- Hover state -->
                             <Trigger Property="IsMouseOver" SourceName="Bd" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#2D2F35"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#2A2D2E"/>
                                 <Setter Property="Foreground" Value="#FFFFFF"/>
                             </Trigger>
                             
                             <!-- Selected state -->
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#007ACC"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#37373D"/>
                                 <Setter Property="Foreground" Value="#FFFFFF"/>
                             </Trigger>
                             <!-- Selected but Inactive state -->
@@ -293,8 +292,8 @@
                                     <Condition Property="IsSelected" Value="True"/>
                                     <Condition Property="IsSelectionActive" Value="False"/>
                                 </MultiTrigger.Conditions>
-                                <Setter TargetName="Bd" Property="Background" Value="#3E4249"/>
-                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#37373D"/>
+                                <Setter Property="Foreground" Value="#CCCCCC"/>
                             </MultiTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -304,19 +303,19 @@
 
         <Style TargetType="TabControl">
             <Setter Property="Background" Value="#1E1E1E"/>
-            <Setter Property="BorderBrush" Value="#2D2D30"/>
+            <Setter Property="BorderBrush" Value="#2B2B2B"/>
             <Setter Property="Padding" Value="0"/>
         </Style>
 
         <Style x:Key="QueryTabHeaderHorizontalScrollBar" TargetType="ScrollBar">
-            <Setter Property="Background" Value="#252526"/>
+            <Setter Property="Background" Value="#181818"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Height" Value="6"/>
             <Setter Property="MinHeight" Value="6"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ScrollBar">
-                        <Grid Height="6" Background="#252526" SnapsToDevicePixels="True">
+                        <Grid Height="6" Background="#181818" SnapsToDevicePixels="True">
                             <Track x:Name="PART_Track"
                                    Orientation="{TemplateBinding Orientation}"
                                    IsDirectionReversed="False">
@@ -332,11 +331,11 @@
                                             <ControlTemplate TargetType="Thumb">
                                                 <Border x:Name="ThumbBorder"
                                                         Height="6"
-                                                        Background="#555555"
+                                                        Background="#4F4F4F"
                                                         CornerRadius="3"/>
                                                 <ControlTemplate.Triggers>
                                                     <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter TargetName="ThumbBorder" Property="Background" Value="#777777"/>
+                                                        <Setter TargetName="ThumbBorder" Property="Background" Value="#7A7A7A"/>
                                                     </Trigger>
                                                 </ControlTemplate.Triggers>
                                             </ControlTemplate>
@@ -351,7 +350,7 @@
         </Style>
 
         <Style x:Key="QueryTabHeaderScrollViewer" TargetType="ScrollViewer">
-            <Setter Property="Background" Value="#252526"/>
+            <Setter Property="Background" Value="#181818"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ScrollViewer">
@@ -383,7 +382,7 @@
 
         <Style x:Key="QueryTabsControl" TargetType="TabControl">
             <Setter Property="Background" Value="#1E1E1E"/>
-            <Setter Property="BorderBrush" Value="#2D2D30"/>
+            <Setter Property="BorderBrush" Value="#2B2B2B"/>
             <Setter Property="Padding" Value="0"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -395,7 +394,7 @@
                             </Grid.RowDefinitions>
 
                             <ScrollViewer Grid.Row="0"
-                                          Background="#252526"
+                                          Background="#181818"
                                           HorizontalScrollBarVisibility="Auto"
                                           VerticalScrollBarVisibility="Disabled"
                                           CanContentScroll="False"
@@ -423,11 +422,11 @@
         </Style>
 
         <Style TargetType="TabItem">
-            <Setter Property="Background" Value="#252526"/>
+            <Setter Property="Background" Value="#2D2D2D"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TabItem">
-                        <Border Name="Border" Background="{TemplateBinding Background}" BorderBrush="#2D2D30" BorderThickness="0,0,1,1" Padding="12,6">
+                        <Border Name="Border" Background="{TemplateBinding Background}" BorderBrush="#2B2B2B" BorderThickness="0,0,1,1" Padding="12,6">
                             <ContentPresenter x:Name="ContentSite"
                                                ContentSource="Header"
                                                HorizontalAlignment="Center"
@@ -435,15 +434,16 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="#1E1E1E"/>
                                 <Setter TargetName="Border" Property="BorderThickness" Value="0,2,1,0"/>
                                 <Setter TargetName="Border" Property="BorderBrush" Value="#007ACC"/>
-                                <Setter Property="Foreground" Value="White"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
                             </Trigger>
                             <Trigger Property="IsSelected" Value="False">
-                                <Setter Property="Foreground" Value="#969696"/>
+                                <Setter Property="Foreground" Value="#9D9D9D"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Border" Property="BorderBrush" Value="#888888"/>
+                                <Setter TargetName="Border" Property="Background" Value="#333333"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -451,30 +451,29 @@
             </Setter>
         </Style>
 
-
     </Window.Resources>
 
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/> <!-- Toolbar -->
             <RowDefinition Height="*"/>    <!-- Main Content -->
-            <RowDefinition Height="25"/>   <!-- Status Bar -->
+            <RowDefinition Height="26"/>   <!-- Status Bar -->
         </Grid.RowDefinitions>
 
         <!-- 1. Toolbar -->
-        <Border Grid.Row="0" Background="#1E1E1E" BorderBrush="#2D2D30" BorderThickness="0,0,0,1" Padding="4">
+        <Border Grid.Row="0" Background="#181818" BorderBrush="#2B2B2B" BorderThickness="0,0,0,1" Padding="4,4">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                               <StackPanel x:Name="ToolbarPanel" Grid.Column="0" Orientation="Horizontal">
+                <StackPanel x:Name="ToolbarPanel" Grid.Column="0" Orientation="Horizontal">
                     <Border Name="ToolbarConnect" Background="Transparent" Padding="2,0" Margin="0,0,4,0"
                             PreviewMouseLeftButtonDown="ToolbarItem_PreviewMouseLeftButtonDown"
                             PreviewMouseMove="ToolbarItem_PreviewMouseMove"
                             PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="⋮" Foreground="#555555" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
+                            <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
                             <Button Style="{StaticResource ToolbarButton}" Content="🔌" Click="BtnConnect_Click" ToolTip="Connect"/>
                         </StackPanel>
                     </Border>
@@ -484,7 +483,7 @@
                             PreviewMouseMove="ToolbarItem_PreviewMouseMove"
                             PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="⋮" Foreground="#555555" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
+                            <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
                             <Button Style="{StaticResource ToolbarButton}" Content="✕" Click="BtnDisconnect_Click" ToolTip="Disconnect"/>
                         </StackPanel>
                     </Border>
@@ -494,7 +493,7 @@
                             PreviewMouseMove="ToolbarItem_PreviewMouseMove"
                             PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="⋮" Foreground="#555555" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
+                            <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
                             <Button x:Name="BtnToggleObjectExplorer" Style="{StaticResource ToolbarButton}" Content="☰" Click="BtnToggleObjectExplorer_Click" ToolTip="Hide Object Explorer (F8)"/>
                         </StackPanel>
                     </Border>
@@ -504,7 +503,7 @@
                             PreviewMouseMove="ToolbarItem_PreviewMouseMove"
                             PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="⋮" Foreground="#555555" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
+                            <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
                             <Button Style="{StaticResource ExecuteButton}" Content="▶" Click="BtnExecute_Click" Margin="5,0" ToolTip="Execute Query (F5)"/>
                         </StackPanel>
                     </Border>
@@ -514,7 +513,7 @@
                             PreviewMouseMove="ToolbarItem_PreviewMouseMove"
                             PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="⋮" Foreground="#555555" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
+                            <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
                             <Label Content="Database:" Foreground="#CCCCCC" VerticalAlignment="Center" Margin="5,0" FontSize="12"/>
                             <ComboBox x:Name="CboDatabases" Width="200" VerticalAlignment="Center" SelectionChanged="CboDatabases_SelectionChanged"/>
                         </StackPanel>
@@ -525,7 +524,7 @@
                             PreviewMouseMove="ToolbarItem_PreviewMouseMove"
                             PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="⋮" Foreground="#555555" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
+                            <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
                             <Button Style="{StaticResource ToolbarButton}" Content="💾" Click="BtnSaveQuery_Click" ToolTip="Save Query File (Ctrl+S)"/>
                         </StackPanel>
                     </Border>
@@ -535,7 +534,7 @@
                             PreviewMouseMove="ToolbarItem_PreviewMouseMove"
                             PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="&#x22EE;" Foreground="#555555" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
+                            <TextBlock Text="&#x22EE;" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
                             <Button Style="{StaticResource ToolbarButton}" Content="&#x1F4BE;+" Click="BtnSaveAsQuery_Click" ToolTip="Save Query As (Ctrl+Shift+S)"/>
                         </StackPanel>
                     </Border>
@@ -545,7 +544,7 @@
                             PreviewMouseMove="ToolbarItem_PreviewMouseMove"
                             PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="⋮" Foreground="#555555" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
+                            <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
                             <Button Style="{StaticResource ToolbarButton}" Content="📂" Click="BtnOpenQuery_Click" ToolTip="Open SQL File (Ctrl+O)"/>
                         </StackPanel>
                     </Border>
@@ -555,7 +554,7 @@
                             PreviewMouseMove="ToolbarItem_PreviewMouseMove"
                             PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="&#x22EE;" Foreground="#555555" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
+                            <TextBlock Text="&#x22EE;" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
                             <Button Style="{StaticResource ToolbarButton}" Content="Query Tools" Click="BtnQueryTools_Click"
                                     ToolTip="Parse, execution plan, and SQL formatting"/>
                         </StackPanel>
@@ -566,7 +565,7 @@
                             PreviewMouseMove="ToolbarItem_PreviewMouseMove"
                             PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="⋮" Foreground="#555555" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
+                            <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
                             <Button Style="{StaticResource ToolbarButton}" Content="🕘" Click="BtnQueryHistory_Click" ToolTip="Query Execution History"/>
                         </StackPanel>
                     </Border>
@@ -576,7 +575,7 @@
                             PreviewMouseMove="ToolbarItem_PreviewMouseMove"
                             PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="⋮" Foreground="#555555" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
+                            <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
                             <Button Style="{StaticResource ToolbarButton}" Content="--" Click="BtnCommentQuery_Click" ToolTip="Comment Selection (Ctrl+K)"/>
                         </StackPanel>
                     </Border>
@@ -586,7 +585,7 @@
                             PreviewMouseMove="ToolbarItem_PreviewMouseMove"
                             PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="⋮" Foreground="#555555" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
+                            <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
                             <Button Style="{StaticResource ToolbarButton}" Content="--×" Click="BtnUncommentQuery_Click" ToolTip="Uncomment Selection (Ctrl+Shift+K)"/>
                         </StackPanel>
                     </Border>
@@ -596,7 +595,7 @@
                             PreviewMouseMove="ToolbarItem_PreviewMouseMove"
                             PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="⋮" Foreground="#555555" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
+                            <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
                             <Button Style="{StaticResource ToolbarButton}" Content="📄" Click="BtnNewQuery_Click" ToolTip="New Query Tab (Ctrl+N)"/>
                         </StackPanel>
                     </Border>
@@ -606,14 +605,14 @@
                             PreviewMouseMove="ToolbarItem_PreviewMouseMove"
                             PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="⋮" Foreground="#555555" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
+                            <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
                             <Button Style="{StaticResource ToolbarButton}" Content="📝 Insert Script" Click="BtnInsertScript_Click" ToolTip="Insert SQL Script Snippet"/>
                         </StackPanel>
                     </Border>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="MiniSSMS v1.1" Foreground="#555555" VerticalAlignment="Center"
+                    <TextBlock Text="MiniSSMS v1.1" Foreground="#9D9D9D" VerticalAlignment="Center"
                                Margin="0,0,8,0" FontSize="11" FontStyle="Italic"/>
                     <Button Style="{StaticResource ToolbarButton}" Click="BtnSettings_Click"
                             ToolTip="Settings" Margin="0,0,4,0" Padding="5">
@@ -636,19 +635,19 @@
             </Grid.ColumnDefinitions>
 
             <!-- Left Panel: Object Explorer -->
-            <Grid x:Name="ObjectExplorerPanel" Grid.Column="0" Background="#1E1E1E">
+            <Grid x:Name="ObjectExplorerPanel" Grid.Column="0" Background="#181818">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <Border Grid.Row="0" Background="#252526" BorderBrush="#2D2D30" BorderThickness="0,0,1,1" Padding="8,5">
+                <Border Grid.Row="0" Background="#202020" BorderBrush="#2B2B2B" BorderThickness="0,0,1,1" Padding="8,5">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Text="Object Explorer" FontWeight="SemiBold" Foreground="#FFFFFF" FontSize="12" VerticalAlignment="Center" Margin="4,0"/>
+                        <TextBlock Text="Object Explorer" FontWeight="SemiBold" Foreground="#CCCCCC" FontSize="12" VerticalAlignment="Center" Margin="4,0"/>
                         <Button Grid.Column="1" Style="{StaticResource ToolbarButton}" Click="BtnSearchObjects_Click"
                                 ToolTip="Search objects across databases" Padding="5" Margin="1,0">
                             <Viewbox Width="14" Height="14">
@@ -664,7 +663,7 @@
                     </Grid>
                 </Border>
                 <ScrollViewer Grid.Row="1"
-                              Background="#1E1E1E"
+                              Background="#181818"
                               HorizontalScrollBarVisibility="Auto"
                               VerticalScrollBarVisibility="Auto"
                               CanContentScroll="False">
@@ -680,7 +679,7 @@
             </Grid>
 
             <!-- Vertical Grid Splitter -->
-            <GridSplitter x:Name="ObjectExplorerSplitter" Grid.Column="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="#2D2D30" ShowsPreview="True"/>
+            <GridSplitter x:Name="ObjectExplorerSplitter" Grid.Column="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="#2B2B2B" ShowsPreview="True"/>
 
             <!-- Right Panel: Multi-tab Query Editor & Results -->
             <TabControl x:Name="TabQueryControls" Grid.Column="2" BorderThickness="0" Background="#1E1E1E" Style="{StaticResource QueryTabsControl}" SelectionChanged="TabQueryControls_SelectionChanged">
@@ -689,7 +688,7 @@
         </Grid>
 
         <!-- 3. Status Bar -->
-        <Border Grid.Row="2" Background="#007ACC" BorderBrush="#006699" BorderThickness="0,1,0,0" Padding="10,0">
+        <Border Grid.Row="2" Background="#181818" BorderBrush="#2B2B2B" BorderThickness="0,1,0,0" Padding="10,0">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -698,17 +697,17 @@
                 </Grid.ColumnDefinitions>
                 
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
-                    <TextBlock x:Name="TxtStatusServer" Text="Connected to Server" Foreground="White" FontSize="11" VerticalAlignment="Center"/>
-                    <Separator Width="1" Margin="8,4" Background="#3399FF"/>
-                    <TextBlock x:Name="TxtStatusDatabase" Text="master" Foreground="White" FontSize="11" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                    <TextBlock x:Name="TxtStatusServer" Text="Connected to Server" Foreground="#4EC9B0" FontSize="11" VerticalAlignment="Center"/>
+                    <Separator Width="1" Margin="8,4" Background="#2B2B2B"/>
+                    <TextBlock x:Name="TxtStatusDatabase" Text="master" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" FontWeight="SemiBold"/>
                 </StackPanel>
                 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock x:Name="TxtStatusRows" Text="0 rows" Foreground="White" FontSize="11" VerticalAlignment="Center"/>
-                    <Separator Width="1" Margin="8,4" Background="#3399FF"/>
-                    <TextBlock x:Name="TxtStatusColumns" Text="0 columns" Foreground="White" FontSize="11" VerticalAlignment="Center"/>
-                    <Separator Width="1" Margin="8,4" Background="#3399FF"/>
-                    <TextBlock x:Name="TxtStatusTime" Text="0 ms" Foreground="White" FontSize="11" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="TxtStatusRows" Text="0 rows" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center"/>
+                    <Separator Width="1" Margin="8,4" Background="#2B2B2B"/>
+                    <TextBlock x:Name="TxtStatusColumns" Text="0 columns" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center"/>
+                    <Separator Width="1" Margin="8,4" Background="#2B2B2B"/>
+                    <TextBlock x:Name="TxtStatusTime" Text="0 ms" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center"/>
                 </StackPanel>
             </Grid>
         </Border>
