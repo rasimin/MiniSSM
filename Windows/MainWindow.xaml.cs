@@ -283,7 +283,8 @@ namespace SSMS
                 ToolbarOpen,
                 ToolbarQueryHistory,
                 ToolbarInsertScript,
-                ToolbarQueryTools
+                ToolbarQueryTools,
+                ToolbarSettings
             };
 
             var itemsByName = defaultItems.ToDictionary(item => item.Name, StringComparer.Ordinal);

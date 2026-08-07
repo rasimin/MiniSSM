@@ -18,7 +18,7 @@
         StateChanged="Window_StateChanged">
 
     <WindowChrome.WindowChrome>
-        <WindowChrome CaptionHeight="32" GlassFrameThickness="0" CornerRadius="0" ResizeBorderThickness="6"/>
+        <WindowChrome CaptionHeight="38" GlassFrameThickness="0" CornerRadius="0" ResizeBorderThickness="6"/>
     </WindowChrome.WindowChrome>
 
     <Window.Resources>
@@ -29,7 +29,7 @@
             <Setter Property="Foreground" Value="#CCCCCC"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Width" Value="44"/>
-            <Setter Property="Height" Value="32"/>
+            <Setter Property="Height" Value="36"/>
             <Setter Property="FontSize" Value="10"/>
             <Setter Property="Focusable" Value="False"/>
             <Setter Property="WindowChrome.IsHitTestVisibleInChrome" Value="True"/>
@@ -573,30 +573,19 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="32"/>   <!-- Custom Integrated Title Bar -->
-            <RowDefinition Height="Auto"/> <!-- Toolbar -->
+            <RowDefinition Height="Auto"/> <!-- Integrated Compact Title Bar & Toolbar -->
             <RowDefinition Height="*"/>    <!-- Main Content -->
             <RowDefinition Height="26"/>   <!-- Status Bar -->
         </Grid.RowDefinitions>
 
-        <!-- 0. Integrated Title Bar -->
-        <Border Grid.Row="0" Background="#181818" BorderBrush="#2B2B2B" BorderThickness="0,0,0,1">
-            <Grid>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Stretch" WindowChrome.IsHitTestVisibleInChrome="True">
-                    <Button x:Name="BtnTitleMinimize" Content="🗕" Click="BtnTitleMinimize_Click" Style="{StaticResource WindowCaptionButtonStyle}" ToolTip="Minimize"/>
-                    <Button x:Name="BtnTitleMaximize" Content="🗖" Click="BtnTitleMaximize_Click" Style="{StaticResource WindowCaptionButtonStyle}" ToolTip="Maximize / Restore"/>
-                    <Button x:Name="BtnTitleClose" Content="✕" Click="BtnTitleClose_Click" Style="{StaticResource WindowCloseButtonStyle}" ToolTip="Close"/>
-                </StackPanel>
-            </Grid>
-        </Border>
-
-        <!-- 1. Toolbar -->
-        <Border Grid.Row="1" Background="#181818" BorderBrush="#2B2B2B" BorderThickness="0,0,0,1" Padding="4,4">
+        <!-- 0. Integrated Compact Title Bar & Toolbar -->
+        <Border Grid.Row="0" Background="#181818" BorderBrush="#2B2B2B" BorderThickness="0,0,0,1" Padding="6,4">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
+
                 <StackPanel x:Name="ToolbarPanel" Grid.Column="0" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
                     <Border Name="ToolbarObjectExplorer" Background="Transparent" Padding="2,0" Margin="0,0,4,0"
                             PreviewMouseLeftButtonDown="ToolbarItem_PreviewMouseLeftButtonDown"
@@ -670,6 +659,23 @@
                         </StackPanel>
                     </Border>
 
+                    <Border Name="ToolbarSettings" Background="Transparent" Padding="2,0" Margin="0,0,4,0"
+                            PreviewMouseLeftButtonDown="ToolbarItem_PreviewMouseLeftButtonDown"
+                            PreviewMouseMove="ToolbarItem_PreviewMouseMove"
+                            PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
+                            <Button Style="{StaticResource ToolbarButton}" Click="BtnSettings_Click"
+                                    ToolTip="Settings" Padding="5">
+                                <Viewbox Width="14" Height="14">
+                                    <Path Fill="#CCCCCC"
+                                          Data="M12,8.75 C10.21,8.75 8.75,10.21 8.75,12 C8.75,13.79 10.21,15.25 12,15.25 C13.79,15.25 15.25,13.79 15.25,12 C15.25,10.21 13.79,8.75 12,8.75 M19.43,13.75 C19.5,13.18 19.5,12.82 19.43,12.25 L21.54,10.6 L19.54,7.14 L17.05,8.14 C16.6,7.79 16.1,7.5 15.57,7.29 L15.2,4.64 L11.2,4.64 L10.83,7.29 C10.3,7.5 9.8,7.79 9.35,8.14 L6.86,7.14 L4.86,10.6 L6.97,12.25 C6.9,12.82 6.9,13.18 6.97,13.75 L4.86,15.4 L6.86,18.86 L9.35,17.86 C9.8,18.21 10.3,18.5 10.83,18.71 L11.2,21.36 L15.2,21.36 L15.57,18.71 C16.1,18.5 16.6,18.21 17.05,17.86 L19.54,18.86 L21.54,15.4 Z"
+                                          Stretch="Uniform"/>
+                                </Viewbox>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+
                     <Border Name="ToolbarQueryHistory" Background="Transparent" Padding="2,0" Margin="0,0,4,0"
                             PreviewMouseLeftButtonDown="ToolbarItem_PreviewMouseLeftButtonDown"
                             PreviewMouseMove="ToolbarItem_PreviewMouseMove"
@@ -721,23 +727,18 @@
                     </Border>
                 </StackPanel>
 
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" WindowChrome.IsHitTestVisibleInChrome="True">
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Stretch" WindowChrome.IsHitTestVisibleInChrome="True">
                     <TextBlock Text="MiniSSMS v1.1" Foreground="#9D9D9D" VerticalAlignment="Center"
-                               Margin="0,0,8,0" FontSize="11" FontStyle="Italic"/>
-                    <Button Style="{StaticResource ToolbarButton}" Click="BtnSettings_Click"
-                            ToolTip="Settings" Margin="0,0,4,0" Padding="5">
-                        <Viewbox Width="16" Height="16">
-                            <Path Fill="#CCCCCC"
-                                  Data="M12,8.75 C10.21,8.75 8.75,10.21 8.75,12 C8.75,13.79 10.21,15.25 12,15.25 C13.79,15.25 15.25,13.79 15.25,12 C15.25,10.21 13.79,8.75 12,8.75 M19.43,13.75 C19.5,13.18 19.5,12.82 19.43,12.25 L21.54,10.6 L19.54,7.14 L17.05,8.14 C16.6,7.79 16.1,7.5 15.57,7.29 L15.2,4.64 L11.2,4.64 L10.83,7.29 C10.3,7.5 9.8,7.79 9.35,8.14 L6.86,7.14 L4.86,10.6 L6.97,12.25 C6.9,12.82 6.9,13.18 6.97,13.75 L4.86,15.4 L6.86,18.86 L9.35,17.86 C9.8,18.21 10.3,18.5 10.83,18.71 L11.2,21.36 L15.2,21.36 L15.57,18.71 C16.1,18.5 16.6,18.21 17.05,17.86 L19.54,18.86 L21.54,15.4 Z"
-                                  Stretch="Uniform"/>
-                        </Viewbox>
-                    </Button>
+                               Margin="0,0,10,0" FontSize="11" FontStyle="Italic"/>
+                    <Button x:Name="BtnTitleMinimize" Content="🗕" Click="BtnTitleMinimize_Click" Style="{StaticResource WindowCaptionButtonStyle}" ToolTip="Minimize"/>
+                    <Button x:Name="BtnTitleMaximize" Content="🗖" Click="BtnTitleMaximize_Click" Style="{StaticResource WindowCaptionButtonStyle}" ToolTip="Maximize / Restore"/>
+                    <Button x:Name="BtnTitleClose" Content="✕" Click="BtnTitleClose_Click" Style="{StaticResource WindowCloseButtonStyle}" ToolTip="Close"/>
                 </StackPanel>
             </Grid>
         </Border>
 
-        <!-- 2. Main Content Splitter (Left: Object Explorer, Right: Editor & Results) -->
-        <Grid Grid.Row="2">
+        <!-- 1. Main Content Splitter (Left: Object Explorer, Right: Editor & Results) -->
+        <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="ObjectExplorerColumn" Width="260" MinWidth="180"/>
                 <ColumnDefinition x:Name="ObjectExplorerSplitterColumn" Width="3"/>
