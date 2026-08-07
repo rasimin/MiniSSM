@@ -14,6 +14,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Microsoft.Data.SqlClient;
 using Microsoft.Web.WebView2.Core;
+using System.Windows.Shell;
 
 namespace SSMS
 {
@@ -116,6 +117,34 @@ namespace SSMS
             if (BtnTitleMaximize != null)
             {
                 BtnTitleMaximize.Content = (WindowState == WindowState.Maximized) ? "🗗" : "🗖";
+            }
+
+            if (WindowState == WindowState.Maximized)
+            {
+                WindowChrome.SetWindowChrome(this, new WindowChrome
+                {
+                    CaptionHeight = 38,
+                    GlassFrameThickness = new Thickness(0),
+                    CornerRadius = new CornerRadius(0),
+                    ResizeBorderThickness = new Thickness(0),
+                    UseAeroCaptionButtons = false
+                });
+            }
+            else
+            {
+                WindowChrome.SetWindowChrome(this, new WindowChrome
+                {
+                    CaptionHeight = 38,
+                    GlassFrameThickness = new Thickness(0),
+                    CornerRadius = new CornerRadius(0),
+                    ResizeBorderThickness = new Thickness(6),
+                    UseAeroCaptionButtons = false
+                });
+            }
+
+            if (RootGrid != null)
+            {
+                RootGrid.Margin = new Thickness(0);
             }
         }
 
@@ -268,7 +297,7 @@ namespace SSMS
             }
         }
 
-        private void ApplyToolbarOrder()
+        public void ApplyToolbarOrder()
         {
             Border[] defaultItems =
             {
@@ -388,8 +417,72 @@ namespace SSMS
             }
         }
 
+        private const int WM_GETMINMAXINFO = 0x0024;
+        private const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct POINT
+        {
+            public int x;
+            public int y;
+        }
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct MINMAXINFO
+        {
+            public POINT ptReserved;
+            public POINT ptMaxSize;
+            public POINT ptMaxPosition;
+            public POINT ptMinTrackSize;
+            public POINT ptMaxTrackSize;
+        }
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+        private struct RECT
+        {
+            public int left;
+            public int top;
+            public int right;
+            public int bottom;
+        }
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+        private struct MONITORINFO
+        {
+            public int cbSize;
+            public RECT rcMonitor;
+            public RECT rcWork;
+            public int dwFlags;
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr MonitorFromWindow(IntPtr handle, uint flags);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+        private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+
+        private const int WM_NCHITTEST = 0x0084;
+        private const int HTCLIENT = 1;
+
         private IntPtr WindowMessageHook(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
+            if (message == WM_GETMINMAXINFO)
+            {
+                WmGetMinMaxInfo(hwnd, lParam);
+                handled = true;
+                return IntPtr.Zero;
+            }
+
+            if (message == WM_NCHITTEST && WindowState == WindowState.Maximized)
+            {
+                IntPtr hitTestResult = HandleMaximizedNcHitTest(lParam);
+                if (hitTestResult != IntPtr.Zero)
+                {
+                    handled = true;
+                    return hitTestResult;
+                }
+            }
+
             if (message != WM_MOUSEHWHEEL || Mouse.DirectlyOver is not DependencyObject element)
             {
                 return IntPtr.Zero;
@@ -407,6 +500,101 @@ namespace SSMS
             scrollViewer.ScrollToHorizontalOffset(Math.Clamp(targetOffset, 0, scrollViewer.ScrollableWidth));
             handled = true;
             return IntPtr.Zero;
+        }
+
+        private IntPtr HandleMaximizedNcHitTest(IntPtr lParam)
+        {
+            try
+            {
+                int screenX = (short)(lParam.ToInt64() & 0xFFFF);
+                int screenY = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
+
+                Point windowPoint = PointFromScreen(new Point(screenX, screenY));
+
+                if (windowPoint.Y >= 0 && windowPoint.Y <= 40)
+                {
+                    // Primary hit test
+                    HitTestResult hitResult = VisualTreeHelper.HitTest(this, windowPoint);
+                    if (hitResult != null && hitResult.VisualHit is DependencyObject hitObj)
+                    {
+                        if (IsInteractiveElement(hitObj))
+                        {
+                            return (IntPtr)HTCLIENT;
+                        }
+                    }
+
+                    // Top-edge vertical backup test (y + 10)
+                    Point lowerPoint = new Point(windowPoint.X, Math.Min(35, windowPoint.Y + 10));
+                    HitTestResult lowerHitResult = VisualTreeHelper.HitTest(this, lowerPoint);
+                    if (lowerHitResult != null && lowerHitResult.VisualHit is DependencyObject lowerObj)
+                    {
+                        if (IsInteractiveElement(lowerObj))
+                        {
+                            return (IntPtr)HTCLIENT;
+                        }
+                    }
+
+                    // Right-edge horizontal backup test (x - 10) for Close button at top-right corner
+                    if (windowPoint.X >= ActualWidth - 50)
+                    {
+                        Point leftPoint = new Point(ActualWidth - 20, Math.Max(5, windowPoint.Y));
+                        HitTestResult leftHitResult = VisualTreeHelper.HitTest(this, leftPoint);
+                        if (leftHitResult != null && leftHitResult.VisualHit is DependencyObject leftObj)
+                        {
+                            if (IsInteractiveElement(leftObj))
+                            {
+                                return (IntPtr)HTCLIENT;
+                            }
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Best effort hit test fallback
+            }
+
+            return IntPtr.Zero;
+        }
+
+        private static bool IsInteractiveElement(DependencyObject element)
+        {
+            DependencyObject? current = element;
+            while (current != null && current is not Window)
+            {
+                if (current is Button || current is ComboBox || current is TextBox ||
+                    current is Label || current is Menu || current is MenuItem)
+                {
+                    return true;
+                }
+                current = VisualTreeHelper.GetParent(current);
+            }
+            return false;
+        }
+
+        private static void WmGetMinMaxInfo(IntPtr hwnd, IntPtr lParam)
+        {
+            var mmi = System.Runtime.InteropServices.Marshal.PtrToStructure<MINMAXINFO>(lParam);
+
+            IntPtr monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            if (monitor != IntPtr.Zero)
+            {
+                var monitorInfo = new MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<MONITORINFO>() };
+                if (GetMonitorInfo(monitor, ref monitorInfo))
+                {
+                    RECT rcWork = monitorInfo.rcWork;
+                    RECT rcMonitor = monitorInfo.rcMonitor;
+
+                    mmi.ptMaxPosition.x = Math.Abs(rcWork.left - rcMonitor.left);
+                    mmi.ptMaxPosition.y = Math.Abs(rcWork.top - rcMonitor.top);
+                    mmi.ptMaxSize.x = Math.Abs(rcWork.right - rcWork.left);
+                    mmi.ptMaxSize.y = Math.Abs(rcWork.bottom - rcWork.top);
+                    mmi.ptMaxTrackSize.x = mmi.ptMaxSize.x;
+                    mmi.ptMaxTrackSize.y = mmi.ptMaxSize.y;
+                }
+            }
+
+            System.Runtime.InteropServices.Marshal.StructureToPtr(mmi, lParam, true);
         }
 
         private static ScrollViewer? FindHorizontalScrollViewer(DependencyObject element)

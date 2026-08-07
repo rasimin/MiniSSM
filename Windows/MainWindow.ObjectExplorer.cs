@@ -728,36 +728,40 @@ namespace SSMS
             }
 
             _objectSearchWindow = new ObjectSearchWindow(serverOptions, connectionString, targetDatabaseName) { Owner = this };
-            _objectSearchWindow.OpenRequested += ObjectSearchWindow_OpenRequested;
+            _objectSearchWindow.OpenRequested += async (_, args) =>
+            {
+                args.Success = await ObjectSearchWindow_OpenRequestedAsync(_objectSearchWindow, args.Result);
+            };
             _objectSearchWindow.Closed += (_, _) => _objectSearchWindow = null;
             _objectSearchWindow.Show();
         }
 
-        private async void ObjectSearchWindow_OpenRequested(object? sender, DatabaseObjectSearchResult result)
+        private async Task<bool> ObjectSearchWindow_OpenRequestedAsync(ObjectSearchWindow searchWindow, DatabaseObjectSearchResult result)
         {
-            if (sender is not ObjectSearchWindow searchWindow)
+            try
             {
-                return;
-            }
+                string connectionString = searchWindow.ConnectionString;
 
-            if (searchWindow.Owner is not MainWindow)
-            {
-                return;
+                if (result.ObjectType is "Table" or "View")
+                {
+                    string sql = $"SELECT TOP 200 * FROM {QuoteMultipartIdentifier(result.FullName)};";
+                    CreateNewQueryTab(connectionString, result.DatabaseName, sql, $"{result.FullName} (Top 200)");
+                }
+                else
+                {
+                    await OpenObjectDefinitionFromEditorAsync(
+                        connectionString,
+                        result.DatabaseName,
+                        result.ObjectType,
+                        result.FullName);
+                }
+                return true;
             }
-            string connectionString = searchWindow.ConnectionString;
-
-            if (result.ObjectType is "Table" or "View")
+            catch (Exception ex)
             {
-                string sql = $"SELECT TOP 200 * FROM {QuoteMultipartIdentifier(result.FullName)};";
-                CreateNewQueryTab(connectionString, result.DatabaseName, sql, $"{result.FullName} (Top 200)");
-            }
-            else
-            {
-                await OpenObjectDefinitionFromEditorAsync(
-                    connectionString,
-                    result.DatabaseName,
-                    result.ObjectType,
-                    result.FullName);
+                AppLogger.Error(ex, "Failed to open search result object.");
+                MessageBox.Show($"Failed to open object: {ex.Message}", "Error Opening Object", MessageBoxButton.OK, MessageBoxImage.Error);
+                return false;
             }
         }
 

@@ -18,7 +18,7 @@
         StateChanged="Window_StateChanged">
 
     <WindowChrome.WindowChrome>
-        <WindowChrome CaptionHeight="38" GlassFrameThickness="0" CornerRadius="0" ResizeBorderThickness="6"/>
+        <WindowChrome CaptionHeight="38" GlassFrameThickness="0" CornerRadius="0" ResizeBorderThickness="6" UseAeroCaptionButtons="False"/>
     </WindowChrome.WindowChrome>
 
     <Window.Resources>
@@ -29,7 +29,8 @@
             <Setter Property="Foreground" Value="#CCCCCC"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Width" Value="44"/>
-            <Setter Property="Height" Value="36"/>
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="VerticalAlignment" Value="Stretch"/>
             <Setter Property="FontSize" Value="10"/>
             <Setter Property="Focusable" Value="False"/>
             <Setter Property="WindowChrome.IsHitTestVisibleInChrome" Value="True"/>
@@ -82,7 +83,8 @@
             <Setter Property="Foreground" Value="#CCCCCC"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="MinWidth" Value="30"/>
-            <Setter Property="Height" Value="28"/>
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="VerticalAlignment" Value="Stretch"/>
             <Setter Property="Padding" Value="6,4"/>
             <Setter Property="Margin" Value="2,0"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -571,159 +573,83 @@
 
     </Window.Resources>
 
-    <Grid>
+    <Grid x:Name="RootGrid">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/> <!-- Integrated Compact Title Bar & Toolbar -->
             <RowDefinition Height="*"/>    <!-- Main Content -->
-            <RowDefinition Height="26"/>   <!-- Status Bar -->
+            <RowDefinition Height="Auto"/> <!-- Status Bar -->
         </Grid.RowDefinitions>
 
         <!-- 0. Integrated Compact Title Bar & Toolbar -->
-        <Border Grid.Row="0" Background="#181818" BorderBrush="#2B2B2B" BorderThickness="0,0,0,1" Padding="6,4">
-            <Grid>
+        <Border Grid.Row="0" Height="38" Background="#181818" BorderBrush="#2B2B2B" BorderThickness="0,0,0,1" Padding="6,0,0,0" WindowChrome.IsHitTestVisibleInChrome="True">
+            <Grid VerticalAlignment="Stretch">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <StackPanel x:Name="ToolbarPanel" Grid.Column="0" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
-                    <Border Name="ToolbarObjectExplorer" Background="Transparent" Padding="2,0" Margin="0,0,4,0"
-                            PreviewMouseLeftButtonDown="ToolbarItem_PreviewMouseLeftButtonDown"
-                            PreviewMouseMove="ToolbarItem_PreviewMouseMove"
-                            PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
-                            <Button x:Name="BtnToggleObjectExplorer" Style="{StaticResource ToolbarButton}" Content="☰" Click="BtnToggleObjectExplorer_Click" ToolTip="Hide Object Explorer (F8)"/>
-                        </StackPanel>
+                <StackPanel x:Name="ToolbarPanel" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Stretch" WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Border Name="ToolbarObjectExplorer" Background="Transparent" Padding="2,0" Margin="0,0,4,0">
+                        <Button x:Name="BtnToggleObjectExplorer" Style="{StaticResource ToolbarButton}" Content="☰" Click="BtnToggleObjectExplorer_Click" ToolTip="Hide Object Explorer (F8)"/>
                     </Border>
                     
-                    <Border Name="ToolbarExecute" Background="Transparent" Padding="2,0" Margin="0,0,4,0"
-                            PreviewMouseLeftButtonDown="ToolbarItem_PreviewMouseLeftButtonDown"
-                            PreviewMouseMove="ToolbarItem_PreviewMouseMove"
-                            PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
-                            <Button Style="{StaticResource ExecuteButton}" Content="▶ Execute" Click="BtnExecute_Click" Margin="5,0" ToolTip="Execute Query (F5)"/>
-                        </StackPanel>
+                    <Border Name="ToolbarExecute" Background="Transparent" Padding="2,0" Margin="0,0,4,0">
+                        <Button Style="{StaticResource ExecuteButton}" Content="▶ Execute" Click="BtnExecute_Click" Margin="5,0" ToolTip="Execute Query (F5)"/>
                     </Border>
                     
-                    <Border Name="ToolbarDatabase" Background="Transparent" Padding="2,0" Margin="0,0,4,0"
-                            PreviewMouseLeftButtonDown="ToolbarItem_PreviewMouseLeftButtonDown"
-                            PreviewMouseMove="ToolbarItem_PreviewMouseMove"
-                            PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
+                    <Border Name="ToolbarDatabase" Background="Transparent" Padding="2,0" Margin="0,0,4,0">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
                             <Label Content="Database:" Foreground="#CCCCCC" VerticalAlignment="Center" Margin="5,0" FontSize="12"/>
                             <ComboBox x:Name="CboDatabases" Width="200" VerticalAlignment="Center" SelectionChanged="CboDatabases_SelectionChanged"/>
                         </StackPanel>
                     </Border>
                     
-                    <Border Name="ToolbarSave" Background="Transparent" Padding="2,0" Margin="0,0,4,0"
-                            PreviewMouseLeftButtonDown="ToolbarItem_PreviewMouseLeftButtonDown"
-                            PreviewMouseMove="ToolbarItem_PreviewMouseMove"
-                            PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
-                            <Button Style="{StaticResource ToolbarButton}" Content="💾" Click="BtnSaveQuery_Click" ToolTip="Save Query File (Ctrl+S)"/>
-                        </StackPanel>
+                    <Border Name="ToolbarSave" Background="Transparent" Padding="2,0" Margin="0,0,4,0">
+                        <Button Style="{StaticResource ToolbarButton}" Content="💾" Click="BtnSaveQuery_Click" ToolTip="Save Query File (Ctrl+S)"/>
                     </Border>
                     
-                    <Border Name="ToolbarSaveAs" Background="Transparent" Padding="2,0" Margin="0,0,4,0"
-                            PreviewMouseLeftButtonDown="ToolbarItem_PreviewMouseLeftButtonDown"
-                            PreviewMouseMove="ToolbarItem_PreviewMouseMove"
-                            PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="&#x22EE;" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
-                            <Button Style="{StaticResource ToolbarButton}" Content="&#x1F4BE;+" Click="BtnSaveAsQuery_Click" ToolTip="Save Query As (Ctrl+Shift+S)"/>
-                        </StackPanel>
+                    <Border Name="ToolbarSaveAs" Background="Transparent" Padding="2,0" Margin="0,0,4,0">
+                        <Button Style="{StaticResource ToolbarButton}" Content="&#x1F4BE;+" Click="BtnSaveAsQuery_Click" ToolTip="Save Query As (Ctrl+Shift+S)"/>
                     </Border>
 
-                    <Border Name="ToolbarOpen" Background="Transparent" Padding="2,0" Margin="0,0,4,0"
-                            PreviewMouseLeftButtonDown="ToolbarItem_PreviewMouseLeftButtonDown"
-                            PreviewMouseMove="ToolbarItem_PreviewMouseMove"
-                            PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
-                            <Button Style="{StaticResource ToolbarButton}" Content="📂" Click="BtnOpenQuery_Click" ToolTip="Open SQL File (Ctrl+O)"/>
-                        </StackPanel>
+                    <Border Name="ToolbarOpen" Background="Transparent" Padding="2,0" Margin="0,0,4,0">
+                        <Button Style="{StaticResource ToolbarButton}" Content="📂" Click="BtnOpenQuery_Click" ToolTip="Open SQL File (Ctrl+O)"/>
                     </Border>
 
-                    <Border Name="ToolbarQueryTools" Background="Transparent" Padding="2,0" Margin="0,0,4,0"
-                            PreviewMouseLeftButtonDown="ToolbarItem_PreviewMouseLeftButtonDown"
-                            PreviewMouseMove="ToolbarItem_PreviewMouseMove"
-                            PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="&#x22EE;" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
-                            <Button Style="{StaticResource ToolbarButton}" Content="Query Tools" Click="BtnQueryTools_Click"
-                                    ToolTip="Parse, execution plan, and SQL formatting"/>
-                        </StackPanel>
+                    <Border Name="ToolbarQueryTools" Background="Transparent" Padding="2,0" Margin="0,0,4,0">
+                        <Button Style="{StaticResource ToolbarButton}" Content="🛠️ Query Tools" Click="BtnQueryTools_Click"
+                                ToolTip="Parse, execution plan, and SQL formatting"/>
                     </Border>
 
-                    <Border Name="ToolbarSettings" Background="Transparent" Padding="2,0" Margin="0,0,4,0"
-                            PreviewMouseLeftButtonDown="ToolbarItem_PreviewMouseLeftButtonDown"
-                            PreviewMouseMove="ToolbarItem_PreviewMouseMove"
-                            PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
-                            <Button Style="{StaticResource ToolbarButton}" Click="BtnSettings_Click"
-                                    ToolTip="Settings" Padding="5">
-                                <Viewbox Width="14" Height="14">
-                                    <Path Fill="#CCCCCC"
-                                          Data="M12,8.75 C10.21,8.75 8.75,10.21 8.75,12 C8.75,13.79 10.21,15.25 12,15.25 C13.79,15.25 15.25,13.79 15.25,12 C15.25,10.21 13.79,8.75 12,8.75 M19.43,13.75 C19.5,13.18 19.5,12.82 19.43,12.25 L21.54,10.6 L19.54,7.14 L17.05,8.14 C16.6,7.79 16.1,7.5 15.57,7.29 L15.2,4.64 L11.2,4.64 L10.83,7.29 C10.3,7.5 9.8,7.79 9.35,8.14 L6.86,7.14 L4.86,10.6 L6.97,12.25 C6.9,12.82 6.9,13.18 6.97,13.75 L4.86,15.4 L6.86,18.86 L9.35,17.86 C9.8,18.21 10.3,18.5 10.83,18.71 L11.2,21.36 L15.2,21.36 L15.57,18.71 C16.1,18.5 16.6,18.21 17.05,17.86 L19.54,18.86 L21.54,15.4 Z"
-                                          Stretch="Uniform"/>
-                                </Viewbox>
-                            </Button>
-                        </StackPanel>
+                    <Border Name="ToolbarSettings" Background="Transparent" Padding="2,0" Margin="0,0,4,0">
+                        <Button Style="{StaticResource ToolbarButton}" Click="BtnSettings_Click"
+                                ToolTip="Settings" Padding="5">
+                            <Viewbox Width="14" Height="14">
+                                <Path Fill="#CCCCCC"
+                                      Data="M12,8.75 C10.21,8.75 8.75,10.21 8.75,12 C8.75,13.79 10.21,15.25 12,15.25 C13.79,15.25 15.25,13.79 15.25,12 C15.25,10.21 13.79,8.75 12,8.75 M19.43,13.75 C19.5,13.18 19.5,12.82 19.43,12.25 L21.54,10.6 L19.54,7.14 L17.05,8.14 C16.6,7.79 16.1,7.5 15.57,7.29 L15.2,4.64 L11.2,4.64 L10.83,7.29 C10.3,7.5 9.8,7.79 9.35,8.14 L6.86,7.14 L4.86,10.6 L6.97,12.25 C6.9,12.82 6.9,13.18 6.97,13.75 L4.86,15.4 L6.86,18.86 L9.35,17.86 C9.8,18.21 10.3,18.5 10.83,18.71 L11.2,21.36 L15.2,21.36 L15.57,18.71 C16.1,18.5 16.6,18.21 17.05,17.86 L19.54,18.86 L21.54,15.4 Z"
+                                      Stretch="Uniform"/>
+                            </Viewbox>
+                        </Button>
                     </Border>
 
-                    <Border Name="ToolbarQueryHistory" Background="Transparent" Padding="2,0" Margin="0,0,4,0"
-                            PreviewMouseLeftButtonDown="ToolbarItem_PreviewMouseLeftButtonDown"
-                            PreviewMouseMove="ToolbarItem_PreviewMouseMove"
-                            PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
-                            <Button Style="{StaticResource ToolbarButton}" Content="🕘" Click="BtnQueryHistory_Click" ToolTip="Query Execution History"/>
-                        </StackPanel>
+                    <Border Name="ToolbarQueryHistory" Background="Transparent" Padding="2,0" Margin="0,0,4,0">
+                        <Button Style="{StaticResource ToolbarButton}" Content="🕘" Click="BtnQueryHistory_Click" ToolTip="Query Execution History"/>
                     </Border>
 
-                    <Border Name="ToolbarComment" Background="Transparent" Padding="2,0" Margin="0,0,4,0"
-                            PreviewMouseLeftButtonDown="ToolbarItem_PreviewMouseLeftButtonDown"
-                            PreviewMouseMove="ToolbarItem_PreviewMouseMove"
-                            PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
-                            <Button Style="{StaticResource ToolbarButton}" Content="--" Click="BtnCommentQuery_Click" ToolTip="Comment Selection (Ctrl+K)"/>
-                        </StackPanel>
+                    <Border Name="ToolbarComment" Background="Transparent" Padding="2,0" Margin="0,0,4,0">
+                        <Button Style="{StaticResource ToolbarButton}" Content="--" Click="BtnCommentQuery_Click" ToolTip="Comment Selection (Ctrl+K)"/>
                     </Border>
 
-                    <Border Name="ToolbarUncomment" Background="Transparent" Padding="2,0" Margin="0,0,4,0"
-                            PreviewMouseLeftButtonDown="ToolbarItem_PreviewMouseLeftButtonDown"
-                            PreviewMouseMove="ToolbarItem_PreviewMouseMove"
-                            PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
-                            <Button Style="{StaticResource ToolbarButton}" Content="--×" Click="BtnUncommentQuery_Click" ToolTip="Uncomment Selection (Ctrl+Shift+K)"/>
-                        </StackPanel>
+                    <Border Name="ToolbarUncomment" Background="Transparent" Padding="2,0" Margin="0,0,4,0">
+                        <Button Style="{StaticResource ToolbarButton}" Content="--×" Click="BtnUncommentQuery_Click" ToolTip="Uncomment Selection (Ctrl+Shift+K)"/>
                     </Border>
                     
-                    <Border Name="ToolbarNewQuery" Background="Transparent" Padding="2,0" Margin="0,0,4,0"
-                            PreviewMouseLeftButtonDown="ToolbarItem_PreviewMouseLeftButtonDown"
-                            PreviewMouseMove="ToolbarItem_PreviewMouseMove"
-                            PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
-                            <Button Style="{StaticResource ToolbarButton}" Content="📄 New Query" Click="BtnNewQuery_Click" ToolTip="New Query Tab (Ctrl+N)"/>
-                        </StackPanel>
+                    <Border Name="ToolbarNewQuery" Background="Transparent" Padding="2,0" Margin="0,0,4,0">
+                        <Button Style="{StaticResource ToolbarButton}" Content="📄 New Query" Click="BtnNewQuery_Click" ToolTip="New Query Tab (Ctrl+N)"/>
                     </Border>
 
-                    <Border Name="ToolbarInsertScript" Background="Transparent" Padding="2,0" Margin="0,0,4,0"
-                            PreviewMouseLeftButtonDown="ToolbarItem_PreviewMouseLeftButtonDown"
-                            PreviewMouseMove="ToolbarItem_PreviewMouseMove"
-                            PreviewMouseLeftButtonUp="ToolbarItem_PreviewMouseLeftButtonUp">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="⋮" Foreground="#6A6A6A" VerticalAlignment="Center" Margin="2,0,4,0" Cursor="SizeAll" FontSize="14" FontWeight="Bold"/>
-                            <Button Style="{StaticResource ToolbarButton}" Content="📝 Insert Script" Click="BtnInsertScript_Click" ToolTip="Insert SQL Script Snippet"/>
-                        </StackPanel>
+                    <Border Name="ToolbarInsertScript" Background="Transparent" Padding="2,0" Margin="0,0,4,0">
+                        <Button Style="{StaticResource ToolbarButton}" Content="📝 Insert Script" Click="BtnInsertScript_Click" ToolTip="Insert SQL Script Snippet"/>
                     </Border>
                 </StackPanel>
 
@@ -817,7 +743,7 @@
         </Grid>
 
         <!-- 3. Status Bar -->
-        <Border Grid.Row="3" Background="#181818" BorderBrush="#2B2B2B" BorderThickness="0,1,0,0" Padding="10,0">
+        <Border Grid.Row="2" Background="#181818" BorderBrush="#2B2B2B" BorderThickness="0,1,0,0" Padding="10,4" MinHeight="26">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>

@@ -79,12 +79,15 @@ namespace SSMS
             }
 
             _queryHistoryWindow = new QueryHistoryWindow { Owner = this };
-            _queryHistoryWindow.OpenInNewQueryRequested += (_, entry) => OpenHistoryEntryInNewQuery(entry);
+            _queryHistoryWindow.OpenInNewQueryRequested += (_, args) =>
+            {
+                args.Success = OpenHistoryEntryInNewQuery(args.Entry);
+            };
             _queryHistoryWindow.Closed += (_, _) => _queryHistoryWindow = null;
             _queryHistoryWindow.Show();
         }
 
-        private void OpenHistoryEntryInNewQuery(QueryHistoryEntry entry)
+        private bool OpenHistoryEntryInNewQuery(QueryHistoryEntry entry)
         {
             string? matchingConnectionString = TabQueryControls.Items
                 .OfType<TabItem>()
@@ -119,15 +122,29 @@ namespace SSMS
                     "Server Not Connected",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
-                return;
+                return false;
             }
 
-            string databaseName = string.IsNullOrWhiteSpace(entry.EffectiveDatabaseName)
-                ? entry.StartedDatabaseName
-                : entry.EffectiveDatabaseName;
-            string tabTitle = $"History_{entry.ExecutedAtUtc.ToLocalTime():yyyyMMdd_HHmmss}.sql";
-            CreateNewQueryTab(matchingConnectionString, databaseName, entry.QueryText, tabTitle);
-            Activate();
+            try
+            {
+                string databaseName = string.IsNullOrWhiteSpace(entry.EffectiveDatabaseName)
+                    ? entry.StartedDatabaseName
+                    : entry.EffectiveDatabaseName;
+                string tabTitle = $"History_{entry.ExecutedAtUtc.ToLocalTime():yyyyMMdd_HHmmss}.sql";
+                CreateNewQueryTab(matchingConnectionString, databaseName, entry.QueryText, tabTitle);
+                Activate();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error(ex, "Failed to open history entry in new query tab.");
+                MessageBox.Show(
+                    $"Failed to open history entry: {ex.Message}",
+                    "Error Opening History Entry",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return false;
+            }
         }
 
         private void ExecuteActiveTabQuery(QueryExecutionMode mode = QueryExecutionMode.Execute)

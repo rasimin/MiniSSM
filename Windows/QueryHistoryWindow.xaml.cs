@@ -6,13 +6,24 @@ using System.Windows.Interop;
 
 namespace SSMS
 {
+    public class QueryHistoryOpenEventArgs : EventArgs
+    {
+        public QueryHistoryEntry Entry { get; }
+        public bool Success { get; set; }
+
+        public QueryHistoryOpenEventArgs(QueryHistoryEntry entry)
+        {
+            Entry = entry;
+        }
+    }
+
     public partial class QueryHistoryWindow : Window
     {
         [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
 
         private const int DwmwaUseImmersiveDarkMode = 20;
-        public event EventHandler<QueryHistoryEntry>? OpenInNewQueryRequested;
+        public event EventHandler<QueryHistoryOpenEventArgs>? OpenInNewQueryRequested;
 
         public QueryHistoryWindow()
         {
@@ -215,8 +226,12 @@ namespace SSMS
         {
             if (HistoryGrid.SelectedItem is QueryHistoryEntry entry)
             {
-                OpenInNewQueryRequested?.Invoke(this, entry);
-                Close();
+                var args = new QueryHistoryOpenEventArgs(entry);
+                OpenInNewQueryRequested?.Invoke(this, args);
+                if (args.Success)
+                {
+                    Close();
+                }
             }
         }
     }

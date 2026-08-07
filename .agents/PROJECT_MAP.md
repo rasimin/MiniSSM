@@ -30,7 +30,8 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 | `Models\ObjectExplorerNode.cs` | Model data `Tag` untuk node TreeView Object Explorer. |
 | `Services\AppLogger.cs` | Logger file sederhana untuk error global dan event penting seperti create/close tab. Log tersimpan di `logs\minissms-YYYYMMDD.log` dalam output app. |
 | `Models\AppSettings.cs` | Model serta load/save parameter aplikasi dari `appsettings.json`. |
-| `Windows\SettingsWindow.xaml`, `Windows\SettingsWindow.xaml.cs` | Dialog Settings dari ikon gear di kanan toolbar; saat ini mengatur query command timeout. |
+| `Windows\SettingsWindow.xaml`, `Windows\SettingsWindow.xaml.cs` | Dialog Settings dari ikon gear di toolbar; mengatur query command timeout & opsi kustomisasi urutan toolbar. |
+| `Windows\ToolbarOrderWindow.xaml`, `Windows\ToolbarOrderWindow.xaml.cs` | Dialog dark-mode custom untuk mengatur urutan item/tombol pada toolbar utama (dengan kontrol Naik/Turun/Reset & Simpan). |
 | `Windows\UnsavedChangesWindow.xaml`, `Windows\UnsavedChangesWindow.xaml.cs` | Dialog dark-mode custom untuk konfirmasi Save, Don't Save, atau Cancel saat menutup query yang masih berubah. |
 | `Windows\UnsafeExecutionWindow.xaml`, `Windows\UnsafeExecutionWindow.xaml.cs` | Dialog dark-mode custom (Safety Guardrail) untuk konfirmasi eksekusi query UPDATE/DELETE tanpa WHERE dengan preview snippet berkode. |
 | `Models\QueryHistoryEntry.cs` | Model satu record history eksekusi beserta properti display untuk grid. |

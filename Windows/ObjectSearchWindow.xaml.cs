@@ -16,6 +16,17 @@ namespace SSMS
         public string ConnectionString { get; init; } = string.Empty;
     }
 
+    public class ObjectSearchOpenEventArgs : EventArgs
+    {
+        public DatabaseObjectSearchResult Result { get; }
+        public bool Success { get; set; }
+
+        public ObjectSearchOpenEventArgs(DatabaseObjectSearchResult result)
+        {
+            Result = result;
+        }
+    }
+
     public partial class ObjectSearchWindow : Window
     {
         private const string AllDatabasesLabel = "(All accessible databases)";
@@ -37,7 +48,7 @@ namespace SSMS
             (ServerComboBox.SelectedItem as ObjectSearchServerOption)?.ConnectionString ??
             _initialConnectionString;
 
-        public event EventHandler<DatabaseObjectSearchResult>? OpenRequested;
+        public event EventHandler<ObjectSearchOpenEventArgs>? OpenRequested;
 
         public ObjectSearchWindow(
             IReadOnlyList<ObjectSearchServerOption> servers,
@@ -360,8 +371,12 @@ namespace SSMS
         {
             if (ResultsGrid.SelectedItem is DatabaseObjectSearchResult result)
             {
-                OpenRequested?.Invoke(this, result);
-                Close();
+                var args = new ObjectSearchOpenEventArgs(result);
+                OpenRequested?.Invoke(this, args);
+                if (args.Success)
+                {
+                    Close();
+                }
             }
         }
 

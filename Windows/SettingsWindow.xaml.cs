@@ -64,6 +64,15 @@ namespace SSMS
             e.Handled = Regex.IsMatch(e.Text, "[^0-9]+");
         }
 
+        private void BtnCustomizeToolbar_Click(object sender, RoutedEventArgs e)
+        {
+            var toolbarOrderWindow = new ToolbarOrderWindow
+            {
+                Owner = this
+            };
+            toolbarOrderWindow.ShowDialog();
+        }
+
         private void BtnSave_Click(object sender, RoutedEventArgs e)
         {
             if (!int.TryParse(TxtCommandTimeout.Text, out int timeout) || timeout < 0)
