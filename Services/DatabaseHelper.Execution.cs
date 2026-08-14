@@ -91,7 +91,9 @@ namespace SSMS
                     }
                     finally
                     {
-                        if (resetOption != null && connection.State == ConnectionState.Open)
+                        if (resetOption != null &&
+                            !cancellationToken.IsCancellationRequested &&
+                            connection.State == ConnectionState.Open)
                         {
                             try
                             {

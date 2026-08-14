@@ -581,7 +581,7 @@
         </Grid.RowDefinitions>
 
         <!-- 0. Integrated Compact Title Bar & Toolbar -->
-        <Border Grid.Row="0" Height="38" Background="#181818" BorderBrush="#181818" BorderThickness="0" Padding="6,0,0,0" WindowChrome.IsHitTestVisibleInChrome="True">
+        <Border x:Name="MainTitleBar" Grid.Row="0" Height="38" Background="#181818" BorderBrush="#181818" BorderThickness="0" Padding="6,0,0,0" WindowChrome.IsHitTestVisibleInChrome="True" PreviewMouseLeftButtonDown="MainTitleBar_PreviewMouseLeftButtonDown">
             <Grid VerticalAlignment="Stretch">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>

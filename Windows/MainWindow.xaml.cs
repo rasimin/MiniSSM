@@ -112,6 +112,54 @@ namespace SSMS
             Close();
         }
 
+        private void MainTitleBar_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (IsWindowDragInteractiveElement(e.OriginalSource as DependencyObject))
+            {
+                return;
+            }
+
+            if (e.ClickCount == 2)
+            {
+                BtnTitleMaximize_Click(sender, e);
+                e.Handled = true;
+                return;
+            }
+
+            if (e.LeftButton == MouseButtonState.Pressed)
+            {
+                try
+                {
+                    DragMove();
+                    e.Handled = true;
+                }
+                catch (InvalidOperationException)
+                {
+                    // The mouse may have been released while the window was changing state.
+                }
+            }
+        }
+
+        private static bool IsWindowDragInteractiveElement(DependencyObject? source)
+        {
+            while (source != null)
+            {
+                if (source is Button || source is TextBox || source is ComboBox || source is MenuItem)
+                {
+                    return true;
+                }
+
+                if (source is Border border && border.Name == "MainTitleBar")
+                {
+                    return false;
+                }
+
+                source = GetParentDependencyObject(source);
+            }
+
+            return false;
+        }
+
         private void Window_StateChanged(object sender, EventArgs e)
         {
             if (BtnTitleMaximize != null)

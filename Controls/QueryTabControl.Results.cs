@@ -72,6 +72,7 @@ namespace SSMS
                 AllowUserToAddRows = false,
                 AllowUserToDeleteRows = false,
                 AllowUserToOrderColumns = false,
+                AllowUserToResizeColumns = true,
                 AllowUserToResizeRows = false,
                 AutoSizeColumnsMode = WinForms.DataGridViewAutoSizeColumnsMode.None,
                 AutoSizeRowsMode = WinForms.DataGridViewAutoSizeRowsMode.None,

@@ -43,9 +43,22 @@
                     getLocalObjects(fullSql);
                     var querySources = getQuerySources(activeSql, sourceLookupOffset);
 
-                    // Suggest routine parameters after EXEC proc or inside a function call.
-                    var routineContext = textBeforeCursor.match(/\bEXEC(?:UTE)?\s+([\[\]a-zA-Z0-9_.]+)\s+(?:[^;]*)$/i) ||
-                        textBeforeCursor.match(/([\[\]a-zA-Z0-9_.]+)\s*\([^)]*$/i);
+                    // Suggest routine parameters after EXEC proc or when the current
+                    // function argument is empty / being typed as an @parameter. Do
+                    // not intercept normal column expressions such as a.IDCustomer.
+                    var routineContext = textBeforeCursor.match(/\bEXEC(?:UTE)?\s+([\[\]a-zA-Z0-9_.]+)\s+(?:[^;]*)$/i);
+                    if (!routineContext) {
+                        var functionCallContext = textBeforeCursor.match(/([\[\]a-zA-Z0-9_.]+)\s*\([^)]*$/i);
+                        var openParenIndex = textBeforeCursor.lastIndexOf('(');
+                        var currentArgument = openParenIndex >= 0
+                            ? textBeforeCursor.substring(openParenIndex + 1)
+                            : '';
+                        var isEmptyFunctionArgument = /^\s*$/.test(currentArgument);
+                        var isParameterToken = /(?:^|[,\s])@[a-zA-Z0-9_]*$/i.test(currentArgument);
+                        if (functionCallContext && (isEmptyFunctionArgument || isParameterToken)) {
+                            routineContext = functionCallContext;
+                        }
+                    }
                     if (routineContext) {
                         var routineName = routineContext[1].replace(/[\[\]]/g, '');
                         var parameters = routineParameters[routineName];
@@ -78,8 +91,18 @@
                     if (onMatch) {
                         var joinedObj = onMatch[1].replace(/[\[\]]/g, '');
                         var joinedAlias = onMatch[2] ? onMatch[2].replace(/[\[\]]/g, '') : generateTableAlias(joinedObj);
+                        var onRange = range;
+                        var qualifierMatch = textBeforeCursor.match(/([#a-zA-Z0-9_\.]+)\.$/);
+                        if (qualifierMatch) {
+                            onRange = {
+                                startLineNumber: position.lineNumber,
+                                endLineNumber: position.lineNumber,
+                                startColumn: position.column - qualifierMatch[1].length - 1,
+                                endColumn: position.column
+                            };
+                        }
 
-                        var onSuggestions = getOnConditionSuggestions(joinedObj, joinedAlias, querySources, range);
+                        var onSuggestions = getOnConditionSuggestions(joinedObj, joinedAlias, querySources, onRange);
                         if (onSuggestions && onSuggestions.length > 0) {
                             onSuggestions.forEach(s => suggestions.push(s));
                         }
@@ -338,7 +361,7 @@
                             }
 
                             // 2. Check if the identifier is a Table directly
-                            var columns = tableColumns[identifier];
+                            var columns = findColumns(identifier);
                             var matchedSource = querySources.find(source =>
                                 source.qualifier.toLowerCase() === identifier.toLowerCase() ||
                                 source.objectName.toLowerCase() === identifier.toLowerCase());
@@ -357,7 +380,7 @@
                             if (!columns) {
                                 var realTableName = getTableForAlias(identifier, activeSql, sourceLookupOffset);
                                 if (realTableName) {
-                                    columns = tableColumns[realTableName];
+                                    columns = findColumns(realTableName);
                                     columnSource = {
                                         qualifier: identifier,
                                         objectName: realTableName,

@@ -359,7 +359,7 @@ namespace SSMS
             return -1;
         }
 
-        private void CancelQueryButton_Click(object sender, RoutedEventArgs e)
+        private async void CancelQueryButton_Click(object sender, RoutedEventArgs e)
         {
             var cancellationSource = _queryCancellationSource;
             if (cancellationSource == null || cancellationSource.IsCancellationRequested)
@@ -374,7 +374,16 @@ namespace SSMS
             {
                 mainWindow.UpdateStatusText("Cancelling query...");
             }
-            cancellationSource.Cancel();
+            try
+            {
+                // CancelAsync schedules the SqlCommand.Cancel callback without
+                // blocking the WPF dispatcher while SQL Server releases the command.
+                await cancellationSource.CancelAsync();
+            }
+            catch (ObjectDisposedException)
+            {
+                // The query may have completed and disposed the source meanwhile.
+            }
         }
 
         private bool ConfirmUnsafeExecution(string sqlQuery)

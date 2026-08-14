@@ -277,11 +277,15 @@ namespace SSMS
                 await connection.OpenAsync();
                 const string query = @"
                     SELECT s.name, o.name, c.name,
-                           CASE WHEN o.type = 'V' THEN 'View' ELSE 'Table' END
+                           CASE
+                               WHEN o.type = 'V' THEN 'View'
+                               WHEN o.type IN ('IF', 'TF') THEN 'Table-valued Function'
+                               ELSE 'Table'
+                           END
                     FROM sys.objects o
                     JOIN sys.schemas s ON o.schema_id = s.schema_id
                     JOIN sys.columns c ON o.object_id = c.object_id
-                    WHERE o.type IN ('U', 'V')
+                    WHERE o.type IN ('U', 'V', 'IF', 'TF')
                     ORDER BY s.name, o.name, c.column_id;";
                 using var command = new Microsoft.Data.SqlClient.SqlCommand(query, connection);
                 using var reader = await command.ExecuteReaderAsync();

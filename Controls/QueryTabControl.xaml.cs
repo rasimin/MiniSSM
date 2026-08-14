@@ -204,7 +204,7 @@ namespace SSMS
             _dirtyDebounceSource?.Cancel();
             _dirtyDebounceSource?.Dispose();
             _dirtyDebounceSource = null;
-            _queryCancellationSource?.Cancel();
+            _ = _queryCancellationSource?.CancelAsync();
             DisposeDisplayedResults();
             Loaded -= QueryTabControl_Loaded;
             DirtyStateChanged = null;
@@ -512,7 +512,11 @@ namespace SSMS
                         SELECT s.name AS SchemaName,
                                o.name AS ObjectName,
                                c.name AS ColumnName,
-                               CASE WHEN o.type = 'V' THEN 'View' ELSE 'Table' END AS ObjectType,
+                               CASE
+                                   WHEN o.type = 'V' THEN 'View'
+                                   WHEN o.type IN ('IF', 'TF') THEN 'Table-valued Function'
+                                   ELSE 'Table'
+                               END AS ObjectType,
                                ty.name +
                                    CASE
                                        WHEN ty.name IN ('varchar','char','varbinary','binary') THEN
@@ -537,7 +541,7 @@ namespace SSMS
                         JOIN sys.schemas s ON o.schema_id = s.schema_id
                         JOIN sys.columns c ON o.object_id = c.object_id
                         JOIN sys.types ty ON c.user_type_id = ty.user_type_id
-                        WHERE o.type IN ('U', 'V')
+                        WHERE o.type IN ('U', 'V', 'IF', 'TF')
                         ORDER BY s.name, o.name, c.column_id;";
 
                     using var command = new Microsoft.Data.SqlClient.SqlCommand(query, connection);
@@ -856,7 +860,10 @@ namespace SSMS
 
     internal sealed class BufferedDataGridView : WinForms.DataGridView
     {
+        private const int WmLButtonDown = 0x0201;
+        private const int WmLButtonUp = 0x0202;
         private const int WmMouseHorizontalWheel = 0x020E;
+        private bool _columnResizeInProgress;
 
         public event EventHandler<int>? VerticalWheelScrolled;
         public event EventHandler<int>? HorizontalWheelScrolled;
@@ -872,8 +879,51 @@ namespace SSMS
             VerticalWheelScrolled?.Invoke(this, e.Delta);
         }
 
+        private void SetColumnResizeBuffering(bool enabled)
+        {
+            if (_columnResizeInProgress == enabled)
+            {
+                return;
+            }
+
+            _columnResizeInProgress = enabled;
+            DoubleBuffered = !enabled;
+            SetStyle(WinForms.ControlStyles.OptimizedDoubleBuffer, !enabled);
+        }
+
+        private bool IsColumnResizeLocation(int x, int y)
+        {
+            if (!ColumnHeadersVisible || y < 0 || y >= ColumnHeadersHeight)
+            {
+                return false;
+            }
+
+            foreach (WinForms.DataGridViewColumn column in Columns)
+            {
+                if (!column.Visible)
+                {
+                    continue;
+                }
+
+                var bounds = GetColumnDisplayRectangle(column.Index, false);
+                if (!bounds.IsEmpty && Math.Abs(x - bounds.Right) <= 3)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         protected override void WndProc(ref WinForms.Message m)
         {
+            if (m.Msg == WmLButtonDown)
+            {
+                int x = unchecked((short)(m.LParam.ToInt64() & 0xFFFF));
+                int y = unchecked((short)((m.LParam.ToInt64() >> 16) & 0xFFFF));
+                SetColumnResizeBuffering(IsColumnResizeLocation(x, y));
+            }
+
             if (m.Msg == WmMouseHorizontalWheel)
             {
                 int delta = unchecked((short)((m.WParam.ToInt64() >> 16) & 0xFFFF));
@@ -883,6 +933,11 @@ namespace SSMS
             }
 
             base.WndProc(ref m);
+
+            if (m.Msg == WmLButtonUp)
+            {
+                SetColumnResizeBuffering(false);
+            }
         }
     }
 

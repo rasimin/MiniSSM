@@ -138,6 +138,7 @@
             var sources = [];
             var seen = {};
             var derivedRanges = [];
+            var functionRanges = [];
 
             function addSource(objectName, alias, sourceStart, sourceEnd, sourceLabel) {
                 if (typeof cursorOffset === "number" && sourceEnd > cursorOffset) {
@@ -167,12 +168,29 @@
             var match;
             while ((match = derivedRegex.exec(sqlText)) !== null) {
                 var alias = match[2].replace(/[\[\]]/g, '');
-                var columns = inferSelectColumns(match[1]);
+                var columns = inferSelectColumns(match[1], match[0]);
                 if (columns.length > 0) {
                     tableColumns[alias] = columns;
                 }
                 derivedRanges.push({ start: match.index, end: derivedRegex.lastIndex });
                 addSource(alias, alias, match.index, derivedRegex.lastIndex, "Derived Table");
+            }
+
+            // Table-valued function sources have the alias after the closing
+            // parenthesis, e.g. FROM dbo.fn_GetBalance(...) fifo.
+            var functionSourceRegex = /(?:FROM|JOIN|APPLY)\s+([#a-zA-Z0-9_\.\[\]]+)\s*\([\s\S]*?\)\s+(?:AS\s+)?(\[?[a-zA-Z_][a-zA-Z0-9_]*\]?)/gi;
+            while ((match = functionSourceRegex.exec(sqlText)) !== null) {
+                var functionAlias = match[2].replace(/[\[\]]/g, '');
+                var reservedFunctionAlias = {
+                    ON: true, WHERE: true, INNER: true, LEFT: true, RIGHT: true, FULL: true,
+                    CROSS: true, JOIN: true, OUTER: true, APPLY: true, GROUP: true, ORDER: true,
+                    HAVING: true, UNION: true, SELECT: true, TOP: true, DISTINCT: true
+                };
+                if (reservedFunctionAlias[functionAlias.toUpperCase()]) {
+                    continue;
+                }
+                functionRanges.push({ start: match.index, end: functionSourceRegex.lastIndex });
+                addSource(match[1], functionAlias, match.index, functionSourceRegex.lastIndex, "Table-valued Function");
             }
 
             var tableRegex = /(?:FROM|JOIN|APPLY|INSERT(?:\s+INTO)?|INTO|UPDATE|DELETE(?:\s+FROM)?|MERGE(?:\s+INTO)?)\s+([#a-zA-Z0-9_\.\[\]]+)(?:\s+(?:AS\s+)?(\[?[a-zA-Z_][a-zA-Z0-9_]*\]?))?/gi;
@@ -182,7 +200,14 @@
                 HAVING: true, UNION: true, SELECT: true, TOP: true, DISTINCT: true
             };
             while ((match = tableRegex.exec(sqlText)) !== null) {
-                if (derivedRanges.some(range => match.index >= range.start && match.index < range.end)) {
+                var insideDerivedRange = derivedRanges.some(range =>
+                    typeof cursorOffset === "number" &&
+                    cursorOffset >= range.start && cursorOffset <= range.end &&
+                    match.index >= range.start && match.index < range.end);
+                var insideAnyDerivedRange = derivedRanges.some(range =>
+                    match.index >= range.start && match.index < range.end);
+                if ((insideAnyDerivedRange && !insideDerivedRange) ||
+                    functionRanges.some(range => match.index === range.start)) {
                     continue;
                 }
                 var objectName = match[1].replace(/[\[\]]/g, '');
@@ -197,20 +222,51 @@
             return sources;
         }
 
-        function inferSelectColumns(selectList) {
-            return splitSqlList(selectList).map(function(expression) {
+        function getFirstSourceObject(sourceSql) {
+            if (!sourceSql) return null;
+            var sourceMatch = sourceSql.match(/\b(?:FROM|JOIN)\s+([#a-zA-Z0-9_\.\[\]]+)/i);
+            return sourceMatch ? sourceMatch[1].replace(/[\[\]]/g, '') : null;
+        }
+
+        function inferSelectColumns(selectList, sourceSql) {
+            var columns = [];
+            splitSqlList(selectList).forEach(function(expression) {
                 var trimmed = expression.trim();
+
+                // Expand SELECT [TOP n] alias.* when the source metadata is available.
+                var wildcardMatch = trimmed.match(/^(?:TOP\s+(?:\(\s*)?\d+(?:\s*\))?(?:\s+PERCENT)?(?:\s+WITH\s+TIES)?\s+)?(?:(\[?[a-zA-Z_][a-zA-Z0-9_]*\]?)\.)?\*$/i);
+                if (wildcardMatch) {
+                    var wildcardColumns = [];
+                    if (sourceSql) {
+                        var wildcardSource = wildcardMatch[1]
+                            ? getTableForAlias(wildcardMatch[1].replace(/[\[\]]/g, ''), sourceSql)
+                            : getFirstSourceObject(sourceSql);
+                        wildcardColumns = findColumns(wildcardSource) || [];
+                    }
+                    if (wildcardColumns.length > 0) {
+                        wildcardColumns.forEach(function(column) {
+                            if (columns.indexOf(column) === -1) columns.push(column);
+                        });
+                    } else if (columns.indexOf('*') === -1) {
+                        columns.push('*');
+                    }
+                    return;
+                }
+
                 var aliasMatch = trimmed.match(/\bAS\s+(\[?[a-zA-Z0-9_]+\]?)\s*$/i) ||
                     trimmed.match(/\s+(\[?[a-zA-Z_][a-zA-Z0-9_]*\]?)\s*$/);
                 if (aliasMatch && !/\)$/i.test(aliasMatch[1])) {
-                    return aliasMatch[1].replace(/[\[\]]/g, '');
+                    var aliasedColumn = aliasMatch[1].replace(/[\[\]]/g, '');
+                    if (columns.indexOf(aliasedColumn) === -1) columns.push(aliasedColumn);
+                    return;
                 }
 
                 var cleanExpression = trimmed.replace(/[\[\]]/g, '');
                 var parts = cleanExpression.split('.');
                 var candidate = parts[parts.length - 1].match(/[a-zA-Z0-9_]+$/);
-                return candidate ? candidate[0] : null;
-            }).filter(Boolean);
+                if (candidate && columns.indexOf(candidate[0]) === -1) columns.push(candidate[0]);
+            });
+            return columns;
         }
 
         function splitSqlList(text) {
@@ -299,7 +355,10 @@
                     return normalizedColumnCache[shortName];
                 }
             }
-            return tableColumns[objectName] || null;
+            if (tableColumns[objectName]) return tableColumns[objectName];
+            var localKey = Object.keys(tableColumns).find(key =>
+                key.toLowerCase().replace(/[\[\]]/g, '') === normalized);
+            return localKey ? tableColumns[localKey] : null;
         }
 
         function getSqlTokenAtPosition(model, position) {
@@ -412,10 +471,22 @@
         // Resolve Table Alias by searching backwards in sql text
         function getTableForAlias(alias, sqlText, cursorOffset) {
             var escapedAlias = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            var regex = new RegExp("(?:FROM|JOIN|APPLY)\\s+([#a-zA-Z0-9_\\.\\[\\]]+)\\s+(?:AS\\s+)?" + escapedAlias + "\\b", "gi");
             var match;
             var bestMatch = null;
             var bestStart = -1;
+
+            var functionRegex = new RegExp("(?:FROM|JOIN|APPLY)\\s+([#a-zA-Z0-9_\\.\\[\\]]+)\\s*\\([\\s\\S]*?\\)\\s+(?:AS\\s+)?" + escapedAlias + "\\b", "gi");
+            while ((match = functionRegex.exec(sqlText)) !== null) {
+                var functionStart = match.index;
+                var functionEnd = functionRegex.lastIndex;
+                if (typeof cursorOffset === "number" && functionEnd > cursorOffset) continue;
+                if (functionStart > bestStart) {
+                    bestStart = functionStart;
+                    bestMatch = match[1];
+                }
+            }
+
+            var regex = new RegExp("(?:FROM|JOIN|APPLY)\\s+([#a-zA-Z0-9_\\.\\[\\]]+)\\s+(?:AS\\s+)?" + escapedAlias + "\\b", "gi");
 
             while ((match = regex.exec(sqlText)) !== null) {
                 var matchStart = match.index;
