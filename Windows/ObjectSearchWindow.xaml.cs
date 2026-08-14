@@ -37,6 +37,8 @@ namespace SSMS
         private CancellationTokenSource? _databaseLoadCancellation;
         private bool _windowLoaded;
         private bool _isSearching;
+        private bool _isCustomMaximized;
+        private Rect _restoreBounds;
         private int _detailLoadVersion;
 
         [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
@@ -202,6 +204,12 @@ namespace SSMS
                 databaseFilter = null;
             }
 
+            string? objectTypeFilter = (ObjectTypeComboBox.SelectedItem as ComboBoxItem)?.Tag as string;
+            if (string.IsNullOrWhiteSpace(objectTypeFilter))
+            {
+                objectTypeFilter = null;
+            }
+
             _searchCancellation?.Dispose();
             var source = new CancellationTokenSource();
             _searchCancellation = source;
@@ -211,9 +219,10 @@ namespace SSMS
             CancelSearchButton.IsEnabled = true;
             ServerComboBox.IsEnabled = false;
             DatabaseComboBox.IsEnabled = false;
+            string typeDescription = objectTypeFilter ?? "all object types";
             StatusText.Text = databaseFilter == null
-                ? $"Searching all accessible databases on {server.ServerName}..."
-                : $"Searching {server.ServerName} / {databaseFilter}...";
+                ? $"Searching {typeDescription} in all accessible databases on {server.ServerName}..."
+                : $"Searching {typeDescription} in {server.ServerName} / {databaseFilter}...";
 
             try
             {
@@ -221,11 +230,12 @@ namespace SSMS
                     server.ConnectionString,
                     searchText,
                     databaseFilter,
+                    objectTypeFilter,
                     source.Token);
                 ResultsGrid.ItemsSource = results;
                 StatusText.Text = results.Count >= 1000
-                    ? "Showing the first 1,000 matches. Refine the search for more specific results."
-                    : $"{results.Count} match(es).";
+                    ? "Showing rows 1-1,000. Refine the search for more objects."
+                    : $"{results.Count} object(s) found. Row numbers are shown on the left.";
             }
             catch (OperationCanceledException)
             {
@@ -263,9 +273,15 @@ namespace SSMS
 
         private void ResultsGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e) => OpenSelectedResult();
 
+        private void ResultsGrid_LoadingRow(object sender, DataGridRowEventArgs e)
+        {
+            e.Row.Header = e.Row.GetIndex() + 1;
+        }
+
         private async void ResultsGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (ResultsGrid.SelectedItem is not DatabaseObjectSearchResult result)
+            DatabaseObjectSearchResult? result = GetSelectedResult();
+            if (result == null)
             {
                 ClearObjectDetails();
                 return;
@@ -326,6 +342,24 @@ namespace SSMS
             ObjectDetailsTextBox.Text = string.Empty;
         }
 
+        private DatabaseObjectSearchResult? GetSelectedResult()
+        {
+            if (ResultsGrid.SelectedItem is DatabaseObjectSearchResult selectedItem)
+            {
+                return selectedItem;
+            }
+
+            foreach (DataGridCellInfo cell in ResultsGrid.SelectedCells)
+            {
+                if (cell.Item is DatabaseObjectSearchResult result)
+                {
+                    return result;
+                }
+            }
+
+            return null;
+        }
+
         private void CopyDefinitionButton_Click(object sender, RoutedEventArgs e)
         {
             if (string.IsNullOrWhiteSpace(DefinitionTextBox.Text)) return;
@@ -341,6 +375,151 @@ namespace SSMS
             }
         }
 
+        private void CopySelectedGridCells_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedCells = ResultsGrid.SelectedCells
+                .Where(cell => cell.Item is DatabaseObjectSearchResult && cell.Column.Visibility == Visibility.Visible)
+                .ToList();
+
+            if (selectedCells.Count == 0)
+            {
+                CopySelectedGridRow_Click(sender, e);
+                return;
+            }
+
+            var rows = selectedCells
+                .Select(cell => (DatabaseObjectSearchResult)cell.Item)
+                .Distinct()
+                .OrderBy(result => ResultsGrid.Items.IndexOf(result))
+                .ToList();
+            var columns = selectedCells
+                .Select(cell => cell.Column)
+                .Distinct()
+                .OrderBy(column => ResultsGrid.Columns.IndexOf(column))
+                .ToList();
+
+            CopyGridText(BuildGridClipboardText(rows, columns, includeHeaders: false),
+                $"Copied {rows.Count} row(s), {columns.Count} column(s).");
+        }
+
+        private void CopySelectedGridRow_Click(object sender, RoutedEventArgs e)
+        {
+            DatabaseObjectSearchResult? result = ResultsGrid.CurrentCell.Item as DatabaseObjectSearchResult ??
+                ResultsGrid.SelectedItem as DatabaseObjectSearchResult;
+            if (result == null)
+            {
+                StatusText.Text = "Select a result row first.";
+                return;
+            }
+
+            var columns = ResultsGrid.Columns
+                .Where(column => column.Visibility == Visibility.Visible)
+                .ToList();
+            CopyGridText(BuildGridClipboardText(new[] { result }, columns, includeHeaders: true),
+                "Copied selected result row.");
+        }
+
+        private void CopySelectedGridColumn_Click(object sender, RoutedEventArgs e)
+        {
+            DataGridColumn? column = ResultsGrid.CurrentCell.Column;
+            if (column == null && ResultsGrid.SelectedCells.Count > 0)
+            {
+                column = ResultsGrid.SelectedCells[0].Column;
+            }
+            if (column == null || column.Visibility != Visibility.Visible)
+            {
+                StatusText.Text = "Select a result column first.";
+                return;
+            }
+
+            var rows = ResultsGrid.Items
+                .Cast<object>()
+                .OfType<DatabaseObjectSearchResult>()
+                .ToList();
+            CopyGridText(BuildGridClipboardText(rows, new[] { column }, includeHeaders: true),
+                $"Copied column '{GetGridColumnHeader(column)}'.");
+        }
+
+        private void CopyAllGridResults_Click(object sender, RoutedEventArgs e)
+        {
+            var rows = ResultsGrid.Items
+                .Cast<object>()
+                .OfType<DatabaseObjectSearchResult>()
+                .ToList();
+            var columns = ResultsGrid.Columns
+                .Where(column => column.Visibility == Visibility.Visible)
+                .ToList();
+            CopyGridText(BuildGridClipboardText(rows, columns, includeHeaders: true),
+                $"Copied {rows.Count} result(s) with headers.");
+        }
+
+        private string BuildGridClipboardText(
+            IReadOnlyList<DatabaseObjectSearchResult> rows,
+            IReadOnlyList<DataGridColumn> columns,
+            bool includeHeaders)
+        {
+            var lines = new List<string>();
+            if (includeHeaders)
+            {
+                lines.Add(string.Join("\t", columns.Select(GetGridColumnHeader)));
+            }
+
+            foreach (DatabaseObjectSearchResult result in rows)
+            {
+                lines.Add(string.Join("\t", columns.Select(column =>
+                    NormalizeClipboardValue(GetGridCellValue(result, column)))));
+            }
+
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        private static string GetGridColumnHeader(DataGridColumn column)
+        {
+            return column.Header?.ToString() ?? string.Empty;
+        }
+
+        private static string GetGridCellValue(DatabaseObjectSearchResult result, DataGridColumn column)
+        {
+            return GetGridColumnHeader(column) switch
+            {
+                "Database" => result.DatabaseName,
+                "Schema" => result.SchemaName,
+                "Object" => result.ObjectName,
+                "Type" => result.ObjectType,
+                "Matched In" => result.MatchLocation,
+                "Match Detail" => result.MatchDetail,
+                _ => string.Empty
+            };
+        }
+
+        private static string NormalizeClipboardValue(string? value)
+        {
+            return (value ?? string.Empty)
+                .Replace("\t", " ", StringComparison.Ordinal)
+                .Replace("\r", " ", StringComparison.Ordinal)
+                .Replace("\n", " ", StringComparison.Ordinal);
+        }
+
+        private void CopyGridText(string text, string status)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                StatusText.Text = "There is no result data to copy.";
+                return;
+            }
+
+            try
+            {
+                Clipboard.SetText(text);
+                StatusText.Text = status;
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error(ex, "Failed to copy object search results");
+                StatusText.Text = $"Copy failed: {ex.Message}";
+            }
+        }
+
         private void HeaderGrid_MouseDown(object sender, MouseButtonEventArgs e)
         {
             if (e.LeftButton == MouseButtonState.Pressed)
@@ -351,7 +530,24 @@ namespace SSMS
 
         private void BtnMaximize_Click(object sender, RoutedEventArgs e)
         {
-            WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+            if (_isCustomMaximized)
+            {
+                Left = _restoreBounds.Left;
+                Top = _restoreBounds.Top;
+                Width = _restoreBounds.Width;
+                Height = _restoreBounds.Height;
+                _isCustomMaximized = false;
+            }
+            else
+            {
+                _restoreBounds = new Rect(Left, Top, Width, Height);
+                Rect workArea = SystemParameters.WorkArea;
+                Left = workArea.Left;
+                Top = workArea.Top;
+                Width = workArea.Width;
+                Height = workArea.Height;
+                _isCustomMaximized = true;
+            }
         }
 
         private void BtnClose_Click(object sender, RoutedEventArgs e)

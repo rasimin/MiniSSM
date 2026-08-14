@@ -34,6 +34,7 @@ namespace SSMS
             string connectionString,
             string searchText,
             string? databaseFilter = null,
+            string? objectTypeFilter = null,
             CancellationToken cancellationToken = default)
         {
             var results = new List<DatabaseObjectSearchResult>();
@@ -123,14 +124,19 @@ CROSS APPLY
 (
     SELECT CHARINDEX(@SearchText, normalized.DefinitionText) AS MatchPosition
 ) definitionMatch
-WHERE o.ObjectName LIKE @Pattern ESCAPE '\'
+WHERE (
+       o.ObjectName LIKE @Pattern ESCAPE '\'
    OR o.SchemaName LIKE @Pattern ESCAPE '\'
    OR matchedColumn.ColumnName IS NOT NULL
    OR o.DefinitionText LIKE @Pattern ESCAPE '\'
+      )
+  AND (@ObjectTypeFilter IS NULL OR o.ObjectType = @ObjectTypeFilter)
 ORDER BY o.SchemaName, o.ObjectName;";
                     using var command = new SqlCommand(query, connection);
                     command.Parameters.AddWithValue("@Pattern", pattern);
                     command.Parameters.Add("@SearchText", SqlDbType.NVarChar, 4000).Value = searchText;
+                    command.Parameters.Add("@ObjectTypeFilter", SqlDbType.NVarChar, 50).Value =
+                        (object?)objectTypeFilter ?? DBNull.Value;
                     using var reader = await command.ExecuteReaderAsync(cancellationToken);
                     while (await reader.ReadAsync(cancellationToken))
                     {

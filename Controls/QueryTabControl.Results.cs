@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Data;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
@@ -411,6 +413,10 @@ namespace SSMS
             };
             contextMenu.Items.Add("Copy", null, (_, _) => CopyGridToClipboard(dataGrid, false));
             contextMenu.Items.Add("Copy with Headers", null, (_, _) => CopyGridToClipboard(dataGrid, true));
+            var generateInsertItem = new WinForms.ToolStripMenuItem("Generate INSERT Script (Selected Row)");
+            generateInsertItem.Click += async (_, _) =>
+                await GenerateInsertScriptAsync(dataTable, dataGrid, resultIndex);
+            contextMenu.Items.Add(generateInsertItem);
             var exportMenu = new WinForms.ToolStripMenuItem("Export Results");
             exportMenu.DropDownItems.Add("CSV...", null, (_, _) => ExportResultTable(dataTable, resultIndex, ResultExportFormat.Csv));
             exportMenu.DropDownItems.Add("Tab-delimited Text...", null, (_, _) => ExportResultTable(dataTable, resultIndex, ResultExportFormat.Tsv));
@@ -449,6 +455,10 @@ namespace SSMS
                 {
                     RestoreSelectionSnapshot();
                 }
+
+                generateInsertItem.Enabled = dataGrid.SelectedCells
+                    .Cast<WinForms.DataGridViewCell>()
+                    .Any(cell => cell.RowIndex >= 0);
             };
             contextMenu.Closed += (_, _) =>
             {
@@ -633,6 +643,179 @@ namespace SSMS
                 }
             }
             _resultHosts.Clear();
+        }
+
+        private async Task GenerateInsertScriptAsync(
+            DataTable table,
+            WinForms.DataGridView dataGrid,
+            int resultIndex)
+        {
+            var rowIndexes = dataGrid.SelectedCells
+                .Cast<WinForms.DataGridViewCell>()
+                .Where(cell => cell.RowIndex >= 0 && cell.RowIndex < table.Rows.Count)
+                .Select(cell => cell.RowIndex)
+                .Distinct()
+                .OrderBy(rowIndex => rowIndex)
+                .ToList();
+
+            if (rowIndexes.Count == 0 && dataGrid.CurrentCell?.RowIndex is int currentRow &&
+                currentRow >= 0 && currentRow < table.Rows.Count)
+            {
+                rowIndexes.Add(currentRow);
+            }
+
+            if (rowIndexes.Count == 0)
+            {
+                MessageBox.Show(
+                    "Pilih row pada result grid terlebih dahulu.",
+                    "Generate INSERT",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            string queryText = await GetQueryTextAsync();
+            string? targetTable = TryGetInsertTargetTable(queryText);
+            if (string.IsNullOrWhiteSpace(targetTable))
+            {
+                MessageBox.Show(
+                    "Nama tabel sumber tidak dapat dikenali dari query aktif. " +
+                    "Gunakan query dengan format SELECT ... FROM dbo.NamaTabel.",
+                    "Generate INSERT",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            string columns = string.Join(", ", table.Columns
+                .Cast<DataColumn>()
+                .Select(column => QuoteSqlIdentifier(column.ColumnName)));
+
+            var scriptLines = rowIndexes.Select(rowIndex =>
+            {
+                string values = string.Join(", ", table.Columns
+                    .Cast<DataColumn>()
+                    .Select(column => FormatSqlLiteral(table.Rows[rowIndex][column])));
+                return $"INSERT INTO {targetTable} ({columns}) VALUES ({values});";
+            });
+
+            string script = string.Join(Environment.NewLine, scriptLines);
+            if (MainWindow.Instance is { } mainWindow)
+            {
+                mainWindow.CreateNewQueryTab(
+                    ConnectionString,
+                    DatabaseName,
+                    script,
+                    $"ResultSet{resultIndex + 1}_Insert.sql");
+            }
+        }
+
+        private static string? TryGetInsertTargetTable(string queryText)
+        {
+            if (string.IsNullOrWhiteSpace(queryText))
+            {
+                return null;
+            }
+
+            var matches = Regex.Matches(
+                queryText,
+                @"\bFROM\s+([#a-zA-Z0-9_\.\[\]]+)",
+                RegexOptions.IgnoreCase);
+
+            foreach (Match match in matches)
+            {
+                if (GetParenthesisDepth(queryText, match.Index) == 0)
+                {
+                    return QuoteSqlObjectName(match.Groups[1].Value);
+                }
+            }
+
+            return null;
+        }
+
+        private static int GetParenthesisDepth(string text, int offset)
+        {
+            int depth = 0;
+            bool inString = false;
+
+            for (int i = 0; i < offset; i++)
+            {
+                char current = text[i];
+                if (current == '\'' && (i == 0 || text[i - 1] != '\\'))
+                {
+                    if (inString && i + 1 < offset && text[i + 1] == '\'')
+                    {
+                        i++;
+                    }
+                    else
+                    {
+                        inString = !inString;
+                    }
+                }
+                else if (!inString)
+                {
+                    if (current == '(') depth++;
+                    else if (current == ')') depth = Math.Max(0, depth - 1);
+                }
+            }
+
+            return depth;
+        }
+
+        private static string QuoteSqlObjectName(string objectName)
+        {
+            return string.Join(".", objectName
+                .Split('.', StringSplitOptions.RemoveEmptyEntries)
+                .Select(QuoteSqlIdentifier));
+        }
+
+        private static string QuoteSqlIdentifier(string identifier)
+        {
+            string cleanIdentifier = identifier.Trim();
+            if (cleanIdentifier.StartsWith("[", StringComparison.Ordinal) &&
+                cleanIdentifier.EndsWith("]", StringComparison.Ordinal))
+            {
+                return cleanIdentifier;
+            }
+
+            return $"[{cleanIdentifier.Replace("]", "]]", StringComparison.Ordinal)}]";
+        }
+
+        private static string FormatSqlLiteral(object value)
+        {
+            if (value == null || value == DBNull.Value)
+            {
+                return "NULL";
+            }
+
+            switch (value)
+            {
+                case bool booleanValue:
+                    return booleanValue ? "1" : "0";
+                case byte[] bytes:
+                    return "0x" + Convert.ToHexString(bytes);
+                case DateTime dateTime:
+                    return $"CONVERT(datetime2, N'{dateTime:yyyy-MM-dd HH:mm:ss.fffffff}', 121)";
+                case DateTimeOffset dateTimeOffset:
+                    return $"CONVERT(datetimeoffset, N'{dateTimeOffset:yyyy-MM-dd HH:mm:ss.fffffff zzz}', 121)";
+                case TimeSpan timeSpan:
+                    return $"CONVERT(time, N'{timeSpan:c}', 114)";
+                case char character:
+                    return $"N'{EscapeSqlString(character.ToString())}'";
+                case string text:
+                    return $"N'{EscapeSqlString(text)}'";
+                case Guid guid:
+                    return $"'{guid:D}'";
+                case IFormattable formattable:
+                    return formattable.ToString(null, CultureInfo.InvariantCulture) ?? "NULL";
+                default:
+                    return $"N'{EscapeSqlString(value.ToString() ?? string.Empty)}'";
+            }
+        }
+
+        private static string EscapeSqlString(string value)
+        {
+            return value.Replace("'", "''", StringComparison.Ordinal);
         }
 
         private async void ExportResultTable(DataTable table, int resultIndex, ResultExportFormat format)

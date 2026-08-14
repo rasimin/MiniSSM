@@ -184,7 +184,7 @@
                 var reservedFunctionAlias = {
                     ON: true, WHERE: true, INNER: true, LEFT: true, RIGHT: true, FULL: true,
                     CROSS: true, JOIN: true, OUTER: true, APPLY: true, GROUP: true, ORDER: true,
-                    HAVING: true, UNION: true, SELECT: true, TOP: true, DISTINCT: true
+                    HAVING: true, UNION: true, SELECT: true, TOP: true, DISTINCT: true, SET: true
                 };
                 if (reservedFunctionAlias[functionAlias.toUpperCase()]) {
                     continue;
@@ -197,7 +197,7 @@
             var reservedAliases = {
                 ON: true, WHERE: true, INNER: true, LEFT: true, RIGHT: true, FULL: true,
                 CROSS: true, JOIN: true, OUTER: true, APPLY: true, GROUP: true, ORDER: true,
-                HAVING: true, UNION: true, SELECT: true, TOP: true, DISTINCT: true
+                HAVING: true, UNION: true, SELECT: true, TOP: true, DISTINCT: true, SET: true
             };
             while ((match = tableRegex.exec(sqlText)) !== null) {
                 var insideDerivedRange = derivedRanges.some(range =>

@@ -309,6 +309,13 @@ namespace SSMS
             formatItem.Click += (_, _) => FormatActiveQuery();
             menu.Items.Add(formatItem);
 
+            var identityInsertItem = new MenuItem
+            {
+                Header = "Add IDENTITY_INSERT ON / OFF"
+            };
+            identityInsertItem.Click += async (_, _) => await AddIdentityInsertToActiveQueryAsync();
+            menu.Items.Add(identityInsertItem);
+
             button.ContextMenu = menu;
             menu.PlacementTarget = button;
             menu.IsOpen = true;
@@ -357,6 +364,14 @@ namespace SSMS
             if (TabQueryControls.SelectedItem is TabItem tabItem && tabItem.Content is QueryTabControl activeTab)
             {
                 activeTab.FormatSql();
+            }
+        }
+
+        private async Task AddIdentityInsertToActiveQueryAsync()
+        {
+            if (TabQueryControls.SelectedItem is TabItem tabItem && tabItem.Content is QueryTabControl activeTab)
+            {
+                await activeTab.AddIdentityInsertWrapperAsync();
             }
         }
 

@@ -1,5 +1,6 @@
 using System;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -65,6 +66,50 @@ namespace SSMS
                     await webView.ExecuteScriptAsync($"insertTextAtCursor({JsonSerializer.Serialize(text)});");
                 }
                 catch { }
+            }
+        }
+
+        public async Task AddIdentityInsertWrapperAsync()
+        {
+            string queryText = await GetQueryTextAsync();
+            if (string.IsNullOrWhiteSpace(queryText))
+            {
+                MessageBox.Show(
+                    "Query atau block script belum dipilih.",
+                    "IDENTITY_INSERT",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            Match targetMatch = Regex.Match(
+                queryText,
+                @"\bINSERT\s+INTO\s+([#a-zA-Z0-9_\.\[\]]+)",
+                RegexOptions.IgnoreCase);
+            if (!targetMatch.Success)
+            {
+                MessageBox.Show(
+                    "Target table tidak ditemukan. Pastikan script berisi INSERT INTO nama_tabel.",
+                    "IDENTITY_INSERT",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            string targetTable = QuoteSqlObjectName(targetMatch.Groups[1].Value);
+            if (MainWindow.Instance?.SharedSqlEditorWebView is not { } webView)
+            {
+                return;
+            }
+
+            try
+            {
+                await webView.ExecuteScriptAsync(
+                    $"addIdentityInsertWrapper({JsonSerializer.Serialize(targetTable)});");
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error(ex, "Failed to add IDENTITY_INSERT wrapper");
             }
         }
 

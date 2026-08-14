@@ -114,6 +114,28 @@
             }
         }
 
+        function addIdentityInsertWrapper(tableName) {
+            if (!editor || !tableName) return;
+
+            var model = editor.getModel();
+            var selection = editor.getSelection();
+            if (!model || !selection) return;
+
+            var range = selection.isEmpty() ? model.getFullModelRange() : selection;
+            var selectedText = model.getValueInRange(range);
+            var wrappedText = 'SET IDENTITY_INSERT ' + tableName + ' ON;\n' +
+                selectedText +
+                (selectedText.endsWith('\n') ? '' : '\n') +
+                'SET IDENTITY_INSERT ' + tableName + ' OFF;';
+
+            editor.executeEdits('identity-insert-wrapper', [{
+                range: range,
+                text: wrappedText,
+                forceMoveMarkers: true
+            }]);
+            editor.focus();
+        }
+
         function getSelectedLineRange() {
             var selection = editor.getSelection();
             var startLine = selection.startLineNumber;

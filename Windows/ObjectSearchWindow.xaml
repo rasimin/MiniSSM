@@ -253,7 +253,7 @@
             </Setter>
             <Style.Triggers>
                 <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="Transparent"/>
+                    <Setter Property="Background" Value="#007ACC"/>
                     <Setter Property="Foreground" Value="White"/>
                 </Trigger>
             </Style.Triggers>
@@ -337,6 +337,8 @@
                         <ColumnDefinition Width="240"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="260"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="180"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="Server:" Foreground="#CCCCCC" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
@@ -344,6 +346,16 @@
                     
                     <TextBlock Grid.Column="2" Text="Database:" Foreground="#CCCCCC" FontSize="12" VerticalAlignment="Center" Margin="16,0,8,0"/>
                     <ComboBox x:Name="DatabaseComboBox" Grid.Column="3"/>
+
+                    <TextBlock Grid.Column="4" Text="Object Type:" Foreground="#CCCCCC" FontSize="12" VerticalAlignment="Center" Margin="16,0,8,0"/>
+                    <ComboBox x:Name="ObjectTypeComboBox" Grid.Column="5" SelectedIndex="0">
+                        <ComboBoxItem Content="All" Tag=""/>
+                        <ComboBoxItem Content="Table" Tag="Table"/>
+                        <ComboBoxItem Content="View" Tag="View"/>
+                        <ComboBoxItem Content="Stored Procedure" Tag="StoredProcedure"/>
+                        <ComboBoxItem Content="Function" Tag="Function"/>
+                        <ComboBoxItem Content="Trigger" Tag="Trigger"/>
+                    </ComboBox>
                 </Grid>
             </Border>
 
@@ -361,9 +373,20 @@
 
             <!-- Results DataGrid -->
             <DataGrid x:Name="ResultsGrid" Grid.Row="3" AutoGenerateColumns="False" IsReadOnly="True"
-                      CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single"
+                      CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Extended"
+                      SelectionUnit="CellOrRowHeader" HeadersVisibility="All" RowHeaderWidth="44"
+                      LoadingRow="ResultsGrid_LoadingRow"
                       SelectionChanged="ResultsGrid_SelectionChanged"
                       MouseDoubleClick="ResultsGrid_MouseDoubleClick">
+                <DataGrid.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Copy" Click="CopySelectedGridCells_Click"/>
+                        <MenuItem Header="Copy Selected Row" Click="CopySelectedGridRow_Click"/>
+                        <MenuItem Header="Copy Selected Column" Click="CopySelectedGridColumn_Click"/>
+                        <Separator/>
+                        <MenuItem Header="Copy All Results with Headers" Click="CopyAllGridResults_Click"/>
+                    </ContextMenu>
+                </DataGrid.ContextMenu>
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Database" Binding="{Binding DatabaseName}" Width="150"/>
                     <DataGridTextColumn Header="Schema" Binding="{Binding SchemaName}" Width="100"/>
