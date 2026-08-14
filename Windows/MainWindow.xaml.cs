@@ -46,6 +46,7 @@ namespace SSMS
         private bool _isCloseConfirmationInProgress;
         private QueryHistoryWindow? _queryHistoryWindow;
         private ObjectSearchWindow? _objectSearchWindow;
+        private SqlTraceWindow? _sqlTraceWindow;
         private string? _lastSaveOrOpenFolder;
 
         private bool _isSharedWebViewInitialized;
@@ -452,6 +453,11 @@ namespace SSMS
                         }
                         dirtyTabs.Remove(tab);
                     }
+                }
+
+                if (_sqlTraceWindow != null)
+                {
+                    await _sqlTraceWindow.StopAndCloseAsync();
                 }
 
                 _allowWindowClose = true;

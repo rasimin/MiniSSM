@@ -317,6 +317,10 @@ namespace SSMS
             newQueryMenu.Click += (s, e) => CreateNewQueryTab(connectionString, "master");
             contextMenu.Items.Add(newQueryMenu);
 
+            var traceMenu = new MenuItem { Header = "SQL Trace / Profiler..." };
+            traceMenu.Click += (s, e) => ShowSqlTraceDialog(connectionString, null);
+            contextMenu.Items.Add(traceMenu);
+
             var disconnectMenu = new MenuItem { Header = "Disconnect" };
             disconnectMenu.Click += (s, e) => DisconnectServer(serverNode);
             contextMenu.Items.Add(disconnectMenu);
@@ -400,6 +404,9 @@ namespace SSMS
                             var newQueryItem = new MenuItem { Header = "New Query" };
                             newQueryItem.Click += (s, ev) => CreateNewQueryTab(connStr, db);
                             contextMenu.Items.Add(newQueryItem);
+                            var traceItem = new MenuItem { Header = "SQL Trace / Profiler..." };
+                            traceItem.Click += (s, ev) => ShowSqlTraceDialog(connStr, db);
+                            contextMenu.Items.Add(traceItem);
                             var importExcelItem = new MenuItem { Header = "📊 Import from Excel..." };
                             importExcelItem.Click += (s, ev) => ShowImportExcelDialog(connStr, db, dbItem);
                             contextMenu.Items.Add(importExcelItem);
@@ -1100,6 +1107,23 @@ namespace SSMS
                 "TriggersFolder" => "Triggers",
                 _ => string.Empty
             };
+        }
+
+        private void ShowSqlTraceDialog(string connectionString, string? databaseName)
+        {
+            if (_sqlTraceWindow != null)
+            {
+                if (_sqlTraceWindow.WindowState == WindowState.Minimized)
+                {
+                    _sqlTraceWindow.WindowState = WindowState.Normal;
+                }
+                _sqlTraceWindow.Activate();
+                return;
+            }
+
+            _sqlTraceWindow = new SqlTraceWindow(connectionString, databaseName);
+            _sqlTraceWindow.Closed += (_, _) => _sqlTraceWindow = null;
+            _sqlTraceWindow.Show();
         }
 
         private async void ShowImportExcelDialog(string connectionString, string databaseName, TreeViewItem? dbItem = null)

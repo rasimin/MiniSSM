@@ -25,9 +25,11 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 | `Windows\MainWindow.xaml`, `Windows\MainWindow.xaml.cs` | Layout utama dan orkestrasi aplikasi: compact toolbar terintegrasi title bar (dengan caption buttons `🗕 🗖 ✕` di kanan & tombol Settings di sebelah Query Tools), area kosong title bar yang dapat digunakan untuk memindahkan window, Object Explorer, tab query, context menu, shortcut, open/save script, dan script object. Berisi single shared instance WebView2 (`SharedSqlEditorWebView`). |
 | `Controls\QueryTabControl.xaml`, `Controls\QueryTabControl.xaml.cs`, `Controls\QueryTabControl.Execution.cs` | Layout dan logic satu tab query: WebView2 editor, splitter, Results/Messages tab (dengan pesan berwarna & double-click error jump ke baris Monaco Editor), eksekusi query dengan **Safety Guardrail konfirmasi UPDATE/DELETE tanpa WHERE**, pembatalan query asynchronous agar UI tidak hang saat `SqlCommand.Cancel()`, result grid, dan cache autocomplete metadata (termasuk Foreign Keys). |
 | `Services\DatabaseHelper.cs` | Semua akses SQL Server: metadata database/object, eksekusi query, generate script. |
+| `Services\SqlTraceService.cs` | Menjalankan legacy SQL Trace (`sp_trace_*`), memfilter database, membaca event live dari `fn_trace_gettable`, dan menghentikan trace. |
 | `Utilities\SqlBatchSplitter.cs` | Memecah script pada separator `GO`/`GO n` tanpa memecah `GO` di string atau comment; dipakai semua mode eksekusi. |
 | `Utilities\FileDialogHelper.cs` | Utility untuk menjalankan OpenFileDialog / SaveFileDialog pada dedicated background STA thread agar tidak memblokir UI thread dan WebView2 saat navigasi folder. |
 | `Models\ObjectExplorerNode.cs` | Model data `Tag` untuk node TreeView Object Explorer. |
+| `Models\SqlTraceEvent.cs` | Model event query yang ditampilkan pada SQL Trace window. |
 | `Services\AppLogger.cs` | Logger file sederhana untuk error global dan event penting seperti create/close tab. Log tersimpan di `logs\minissms-YYYYMMDD.log` dalam output app. |
 | `Models\AppSettings.cs` | Model serta load/save parameter aplikasi dari `appsettings.json`. |
 | `Windows\SettingsWindow.xaml`, `Windows\SettingsWindow.xaml.cs` | Dialog Settings dari ikon gear di toolbar; mengatur query command timeout & opsi kustomisasi urutan toolbar. |
@@ -40,6 +42,7 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 | `Windows\ObjectSearchWindow.xaml`, `Windows\ObjectSearchWindow.xaml.cs` | Pencarian table/view/routine/trigger/column lintas database yang dapat diakses pada satu server, lalu membuka SELECT atau definition. |
 | `Windows\RenameObjectWindow.xaml`, `Windows\RenameObjectWindow.xaml.cs` | Dialog dark-mode custom untuk memasukkan nama baru objek/database dan menghasilkan script `sp_rename` atau `ALTER DATABASE` ke query tab baru. |
 | `Windows\ImportExcelWindow.xaml`, `Windows\ImportExcelWindow.xaml.cs` | Dialog dark-mode custom untuk mengimpor berkas Excel (.xlsx/.xls) menjadi tabel baru di SQL Server dengan auto-deduplikasi header & SqlBulkCopy. |
+| `Windows\SqlTraceWindow.xaml`, `Windows\SqlTraceWindow.xaml.cs` | Form warning dan monitoring real-time legacy SQL Trace/Profiler dengan filter database, tombol Start/Stop, dan grid event query. |
 | `Editor\sql_editor.html` | Host ringan WebView2 untuk container Monaco, stylesheet, require.js, catalog, dan script editor. |
 | `Editor\sql_editor.css` | Style host WebView2/Monaco container. |
 | `Editor\sql_editor_state.js` | Konfigurasi require.js dan state global editor/metadata serta map registry `tabModels` per `tabId`. |
@@ -64,3 +67,4 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 7. Tombol Execute/F5 memanggil `QueryTabControl.ExecuteQuery()`.
 8. Query dieksekusi oleh `DatabaseHelper.ExecuteQueryAsync()`, lalu hasil ditampilkan di DataGrid atau Messages.
 9. Setiap query yang benar-benar dikirim ke SQL Server dicatat ke SQLite setelah selesai.
+10. Menu konteks server/database dapat membuka `SqlTraceWindow`; trace dibuat di SQL Server dan dipoll setiap satu detik selama window terbuka.

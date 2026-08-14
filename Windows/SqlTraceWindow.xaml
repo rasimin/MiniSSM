@@ -1,0 +1,317 @@
+<Window x:Class="SSMS.SqlTraceWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="SQL Trace / Profiler"
+        Width="1400"
+        Height="760"
+        MinWidth="950"
+        MinHeight="520"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
+        ResizeMode="CanResizeWithGrip"
+        Topmost="False"
+        ShowInTaskbar="True"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Foreground="#D4D4D4"
+        FontFamily="Segoe UI, Arial"
+        Loaded="Window_Loaded"
+        Closing="Window_Closing"
+        StateChanged="Window_StateChanged"
+        KeyDown="Window_KeyDown">
+
+    <Window.Resources>
+        <Style x:Key="TraceButton" TargetType="Button">
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="MinWidth" Value="92"/>
+            <Setter Property="Padding" Value="12,0"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="#CCCCCC"/>
+            <Setter Property="Background" Value="#2D2D30"/>
+            <Setter Property="BorderBrush" Value="#3C3C3C"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#3F3F46"/>
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#555555"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#202020"/>
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#2B2B2B"/>
+                                <Setter Property="Foreground" Value="#6A6A6A"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="TracePrimaryButton" TargetType="Button" BasedOn="{StaticResource TraceButton}">
+            <Setter Property="Background" Value="#007ACC"/>
+            <Setter Property="BorderBrush" Value="#007ACC"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+
+        <Style TargetType="ComboBox">
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="MinWidth" Value="220"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="#CCCCCC"/>
+            <Setter Property="Background" Value="#252526"/>
+            <Setter Property="BorderBrush" Value="#3C3C3C"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <Border x:Name="MainBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="3"
+                                    SnapsToDevicePixels="True"/>
+                            <ToggleButton Background="Transparent"
+                                          BorderThickness="0"
+                                          Foreground="{TemplateBinding Foreground}"
+                                          Focusable="False"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border Background="Transparent">
+                                            <TextBlock Text="▼" FontSize="8" Foreground="#8A8A8A"
+                                                       VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,8,0"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <ContentPresenter IsHitTestVisible="False"
+                                              Content="{TemplateBinding SelectionBoxItem}"
+                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                              ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                              Margin="8,3,25,3"
+                                              VerticalAlignment="Center"
+                                              HorizontalAlignment="Left"/>
+                            <Popup Name="Popup" Placement="Bottom"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   AllowsTransparency="True" Focusable="False" PopupAnimation="Slide">
+                                <Border Background="#252526" BorderBrush="#3C3C3C" BorderThickness="1"
+                                        CornerRadius="3" Margin="0,2,0,0"
+                                        MinWidth="{TemplateBinding ActualWidth}"
+                                        MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                                    <ScrollViewer SnapsToDevicePixels="True">
+                                        <ScrollViewer.Resources>
+                                            <Style TargetType="{x:Type ScrollBar}" BasedOn="{StaticResource StandardScrollBar}"/>
+                                        </ScrollViewer.Resources>
+                                        <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="MainBorder" Property="BorderBrush" Value="#555555"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="MainBorder" Property="BorderBrush" Value="#007ACC"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Background" Value="#252526"/>
+            <Setter Property="Foreground" Value="#CCCCCC"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="ItemBorder"
+                                Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#2A2D2E"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#007ACC"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="DataGrid">
+            <Setter Property="Background" Value="#1E1E1E"/>
+            <Setter Property="Foreground" Value="#CCCCCC"/>
+            <Setter Property="BorderBrush" Value="#2B2B2B"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="RowBackground" Value="#181818"/>
+            <Setter Property="AlternatingRowBackground" Value="#202020"/>
+            <Setter Property="GridLinesVisibility" Value="All"/>
+            <Setter Property="HorizontalGridLinesBrush" Value="#2B2B2B"/>
+            <Setter Property="VerticalGridLinesBrush" Value="#2B2B2B"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="HeadersVisibility" Value="Column"/>
+            <Setter Property="AutoGenerateColumns" Value="False"/>
+            <Setter Property="CanUserResizeColumns" Value="True"/>
+            <Setter Property="RowHeight" Value="24"/>
+        </Style>
+
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#252526"/>
+            <Setter Property="Foreground" Value="#CCCCCC"/>
+            <Setter Property="BorderBrush" Value="#3C3C3C"/>
+            <Setter Property="BorderThickness" Value="0,0,1,1"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+
+        <Style x:Key="TraceCellText" TargetType="TextBlock">
+            <Setter Property="TextWrapping" Value="NoWrap"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </Window.Resources>
+
+    <Border Margin="8"
+            Background="#181818"
+            BorderBrush="#3C3C3C"
+            BorderThickness="1"
+            CornerRadius="6">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="12" ShadowDepth="3" Opacity="0.5" Color="#000000"/>
+        </Border.Effect>
+
+        <Grid Margin="14,10,14,12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="6"/>
+                <RowDefinition Height="175"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0" Margin="0,0,0,10" MouseLeftButtonDown="HeaderGrid_MouseDown">
+                <StackPanel>
+                    <TextBlock Text="SQL Trace / Profiler" Foreground="#F2F2F2" FontSize="14" FontWeight="SemiBold"/>
+                    <TextBlock Text="Legacy SQL Trace — live query capture" Foreground="#8A8A8A" FontSize="11" Margin="0,2,0,0"/>
+                </StackPanel>
+                <Button Width="26" Height="26" HorizontalAlignment="Right" Content="✕"
+                        Foreground="#A0A0A0" Background="Transparent" BorderThickness="0"
+                        FontSize="11" Cursor="Hand" Click="BtnClose_Click"/>
+                <Button x:Name="BtnMaximize" Width="26" Height="26" HorizontalAlignment="Right" Margin="0,0,28,0" Content="□"
+                        Foreground="#A0A0A0" Background="Transparent" BorderThickness="0"
+                        FontSize="13" Cursor="Hand" Click="BtnMaximize_Click"/>
+            </Grid>
+
+            <Border Grid.Row="1" Background="#2C2210" BorderBrush="#5C4515" BorderThickness="1"
+                    CornerRadius="3" Padding="10,8" Margin="0,0,0,10">
+                <TextBlock TextWrapping="Wrap" Foreground="#F5C46A" FontSize="11.5">
+                    <Run Text="Warning: SQL Trace / Profiler is deprecated by Microsoft and may be removed in a future SQL Server version. It requires ALTER TRACE, can affect server performance, and captures SQL text that may contain sensitive data. Stop the trace when finished; use Extended Events for long-term monitoring."/>
+                </TextBlock>
+            </Border>
+
+            <Grid Grid.Row="2" Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Database:" Foreground="#CCCCCC" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <ComboBox x:Name="CboDatabase" Grid.Column="1" DisplayMemberPath="DisplayName"/>
+                <Button x:Name="BtnStart" Grid.Column="2" Content="Start Trace" Style="{StaticResource TracePrimaryButton}"
+                        Margin="10,0,0,0" Click="BtnStart_Click"/>
+                <Button x:Name="BtnStop" Grid.Column="3" Content="Stop Trace" Style="{StaticResource TraceButton}"
+                        Margin="8,0,0,0" IsEnabled="False" Click="BtnStop_Click"/>
+                <Button x:Name="BtnClearTrace" Grid.Column="4" Width="34" MinWidth="34" Padding="0"
+                        Content="⌫" ToolTip="Clear captured events" Style="{StaticResource TraceButton}"
+                        Margin="8,0,0,0" Click="BtnClearTrace_Click"/>
+                <TextBlock x:Name="TxtState" Grid.Column="5" Text="Not running" Foreground="#8A8A8A"
+                           VerticalAlignment="Center" Margin="14,0,0,0"/>
+            </Grid>
+
+            <DataGrid x:Name="TraceGrid" Grid.Row="3" ItemsSource="{Binding TraceEvents}"
+                      IsReadOnly="True" SelectionMode="Single" SelectionUnit="FullRow"
+                      EnableRowVirtualization="True" EnableColumnVirtualization="True"
+                      SelectionChanged="TraceGrid_SelectionChanged">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Time" Binding="{Binding StartTime, StringFormat=HH:mm:ss.fff}" Width="110" ElementStyle="{StaticResource TraceCellText}"/>
+                    <DataGridTextColumn Header="SQL Text" Binding="{Binding TextData}" Width="*" ElementStyle="{StaticResource TraceCellText}"/>
+                    <DataGridTextColumn Header="Event" Binding="{Binding EventName}" Width="145" ElementStyle="{StaticResource TraceCellText}"/>
+                    <DataGridTextColumn Header="Database" Binding="{Binding DatabaseName}" Width="150" ElementStyle="{StaticResource TraceCellText}"/>
+                    <DataGridTextColumn Header="SPID" Binding="{Binding Spid}" Width="55" ElementStyle="{StaticResource TraceCellText}"/>
+                    <DataGridTextColumn Header="Login" Binding="{Binding LoginName}" Width="150" ElementStyle="{StaticResource TraceCellText}"/>
+                    <DataGridTextColumn Header="Host" Binding="{Binding HostName}" Width="140" ElementStyle="{StaticResource TraceCellText}"/>
+                    <DataGridTextColumn Header="Application" Binding="{Binding ApplicationName}" Width="180" ElementStyle="{StaticResource TraceCellText}"/>
+                    <DataGridTextColumn Header="Duration ms" Binding="{Binding DurationMilliseconds, StringFormat=N2}" Width="95" ElementStyle="{StaticResource TraceCellText}"/>
+                    <DataGridTextColumn Header="CPU ms" Binding="{Binding CpuMilliseconds, StringFormat=N2}" Width="80" ElementStyle="{StaticResource TraceCellText}"/>
+                    <DataGridTextColumn Header="Reads" Binding="{Binding Reads}" Width="75" ElementStyle="{StaticResource TraceCellText}"/>
+                    <DataGridTextColumn Header="Writes" Binding="{Binding Writes}" Width="75" ElementStyle="{StaticResource TraceCellText}"/>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <GridSplitter Grid.Row="4" Height="6" HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                          Background="#2B2B2B" ShowsPreview="True" ResizeDirection="Rows"
+                          ResizeBehavior="PreviousAndNext"/>
+
+            <Grid Grid.Row="5" Margin="0,8,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0" Margin="0,0,0,6">
+                    <TextBlock x:Name="TxtSelectedEvent"
+                               Text="SQL Text Detail — select an event above"
+                               Foreground="#CCCCCC" FontSize="11" FontWeight="SemiBold"/>
+                    <Button Grid.Column="1" x:Name="BtnOpenNewQuery" Content="Open New Query"
+                            Style="{StaticResource TraceButton}" HorizontalAlignment="Right"
+                            Height="26" MinWidth="125" Click="BtnOpenNewQuery_Click"/>
+                </Grid>
+                <TextBox x:Name="TxtSqlDetail" Grid.Row="1" TextWrapping="NoWrap"
+                         HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                         AcceptsReturn="True" IsReadOnly="True" FontFamily="Consolas" FontSize="12"
+                         Background="#1E1E1E" Foreground="#F2F2F2" BorderBrush="#2B2B2B"
+                         BorderThickness="1" Padding="8,6"/>
+            </Grid>
+
+            <Grid Grid.Row="6" Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="TxtStatus" Grid.Column="0" Text="Ready. Click Start Trace to begin." Foreground="#9D9D9D" FontSize="11"/>
+                <TextBlock x:Name="TxtTraceFile" Grid.Column="1" TextAlignment="Right" TextTrimming="CharacterEllipsis"
+                           Foreground="#6A6A6A" FontSize="10" Margin="12,0,0,0"/>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>
