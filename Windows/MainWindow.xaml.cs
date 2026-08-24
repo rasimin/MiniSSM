@@ -47,6 +47,7 @@ namespace SSMS
         private QueryHistoryWindow? _queryHistoryWindow;
         private ObjectSearchWindow? _objectSearchWindow;
         private SqlTraceWindow? _sqlTraceWindow;
+        private SchemaImportWindow? _schemaImportWindow;
         private string? _lastSaveOrOpenFolder;
 
         private bool _isSharedWebViewInitialized;

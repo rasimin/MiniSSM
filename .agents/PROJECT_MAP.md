@@ -75,3 +75,7 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 11. Menu `Query Tools > Import Schema...` membuka `SchemaImportWindow` dengan konteks koneksi/database dari tab aktif atau Object Explorer. File dianalisis tanpa masuk editor, lalu batch dieksekusi melalui `SchemaImportService` berdasarkan dependency dan hasilnya dilaporkan per object.
 12. Menu konteks database pada Object Explorer memiliki `Create DROP DATABASE Script`, yang membuka script ke query baru tanpa mengeksekusinya.
 13. `SchemaImportWindow` memakai header drag penuh, layout maximize berbasis work area, filter hasil, tab `Results`/`Report`, dan rerun khusus batch gagal yang menambahkan ringkasan ke tab report.
+14. Tab `Report` dan file Save Report hanya berisi rekap summary; SQL batch/error detail tetap dilihat dari baris pada tab `Results`.
+15. `Auto Rerun Dependencies` mengulang hanya failure yang terdeteksi sebagai dependency-related, maksimal tiga ronde, dan berhenti saat jumlah failure tidak berkurang.
+16. `SchemaImportWindow` dibuka modeless tanpa ownership WPF agar dapat berada di belakang query utama; hanya satu window import yang dapat terbuka dari MainWindow.
+17. Script `DROP DATABASE` hasil Object Explorer memvalidasi database, menampilkan error jika tidak ada, dan mengembalikan result status serta waktu jika berhasil.

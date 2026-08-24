@@ -13,6 +13,7 @@ namespace SSMS
     public sealed class SchemaImportService
     {
         private const int MaxDependencyRetryPasses = 3;
+        public const int MaxAutomaticDependencyRounds = 3;
         private static readonly Regex UseStatementPattern = new(
             @"^\s*USE\s+(?:\[[^\]]+\]|""[^""]+""|[A-Za-z_][\w$#@]*)\s*;?\s*$",
             RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
@@ -132,7 +133,7 @@ namespace SSMS
                 .ToList();
         }
 
-        public Task<List<SchemaImportItemResult>> RerunFailedAsync(
+        public async Task<SchemaImportRetryResult> RerunFailedAsync(
             SchemaImportPlan plan,
             IEnumerable<SchemaImportItemResult> failedResults,
             string connectionString,
@@ -143,25 +144,118 @@ namespace SSMS
             if (plan == null) throw new ArgumentNullException(nameof(plan));
             if (failedResults == null) throw new ArgumentNullException(nameof(failedResults));
 
-            var failedIndexes = failedResults
-                .Where(result => result.Status == SchemaImportStatus.Failed)
-                .Select(result => result.BatchIndex)
-                .ToHashSet();
+            List<SchemaImportItemResult> currentResults = failedResults
+                .Where(result => result.Status == SchemaImportStatus.Failed && IsDependencyErrorMessage(result.ErrorMessage))
+                .ToList();
+            var aggregateResults = currentResults.ToDictionary(result => result.BatchIndex, CloneResult);
+            var retryResult = new SchemaImportRetryResult();
+
+            for (int round = 1; round <= MaxAutomaticDependencyRounds && currentResults.Count > 0; round++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                SchemaImportPlan retryPlan = BuildRetryPlan(plan, currentResults);
+                List<SchemaImportItemResult> roundResults = await ImportAsync(
+                    retryPlan,
+                    connectionString,
+                    databaseName,
+                    false,
+                    progress,
+                    cancellationToken);
+
+                int dependencyFailures = roundResults.Count(result =>
+                    result.Status == SchemaImportStatus.Failed && IsDependencyErrorMessage(result.ErrorMessage));
+                retryResult.Rounds.Add(new SchemaImportRetryRound
+                {
+                    Round = round,
+                    Requested = currentResults.Count,
+                    Success = roundResults.Count(result => result.Status is SchemaImportStatus.Success or SchemaImportStatus.Retried),
+                    Failed = roundResults.Count(result => result.Status == SchemaImportStatus.Failed),
+                    DependencyFailures = dependencyFailures
+                });
+
+                foreach (SchemaImportItemResult roundResult in roundResults)
+                {
+                    if (!aggregateResults.TryGetValue(roundResult.BatchIndex, out SchemaImportItemResult? aggregate))
+                    {
+                        aggregate = CloneResult(roundResult);
+                        aggregateResults[roundResult.BatchIndex] = aggregate;
+                    }
+                    else
+                    {
+                        aggregate.Attempts += roundResult.Attempts;
+                        aggregate.Status = roundResult.Status;
+                        aggregate.ErrorMessage = roundResult.ErrorMessage;
+                    }
+                }
+
+                if (dependencyFailures == 0 || dependencyFailures >= currentResults.Count)
+                {
+                    retryResult.StoppedWithoutProgress = dependencyFailures >= currentResults.Count && dependencyFailures > 0;
+                    break;
+                }
+
+                currentResults = roundResults
+                    .Where(result => result.Status == SchemaImportStatus.Failed && IsDependencyErrorMessage(result.ErrorMessage))
+                    .ToList();
+            }
+
+            retryResult.Results.AddRange(aggregateResults.Values.OrderBy(result => result.BatchIndex));
+            retryResult.ReachedRoundLimit = retryResult.Rounds.Count >= MaxAutomaticDependencyRounds &&
+                                            retryResult.Rounds.LastOrDefault()?.DependencyFailures > 0;
+            return retryResult;
+        }
+
+        public static bool IsDependencyErrorMessage(string? message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return false;
+            }
+
+            int[] dependencyErrorNumbers = { 207, 208, 4121, 4512, 15151, 2760, 15135 };
+            if (dependencyErrorNumbers.Any(number => Regex.IsMatch(message, $@"\b(?:Msg\s+)?{number}\b", RegexOptions.IgnoreCase)))
+            {
+                return true;
+            }
+
+            return message.Contains("could not find object", StringComparison.OrdinalIgnoreCase) ||
+                   message.Contains("invalid object name", StringComparison.OrdinalIgnoreCase) ||
+                   message.Contains("invalid column name", StringComparison.OrdinalIgnoreCase) ||
+                   message.Contains("could not find the function", StringComparison.OrdinalIgnoreCase) ||
+                   message.Contains("type", StringComparison.OrdinalIgnoreCase) &&
+                   message.Contains("does not exist", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static SchemaImportPlan BuildRetryPlan(
+            SchemaImportPlan plan,
+            IEnumerable<SchemaImportItemResult> results)
+        {
+            var failedIndexes = results.Select(result => result.BatchIndex).ToHashSet();
             var retryPlan = new SchemaImportPlan
             {
                 FilePath = plan.FilePath,
                 FileLength = plan.FileLength,
                 ScriptDatabaseName = plan.ScriptDatabaseName
             };
+            retryPlan.Batches.AddRange(plan.Batches.Where(batch => failedIndexes.Contains(batch.Index)));
+            return retryPlan;
+        }
 
-            foreach (SchemaImportBatchInfo batch in plan.Batches.Where(batch => failedIndexes.Contains(batch.Index)))
+        private static SchemaImportItemResult CloneResult(SchemaImportItemResult result)
+        {
+            return new SchemaImportItemResult
             {
-                retryPlan.Batches.Add(batch);
-            }
-
-            return retryPlan.Batches.Count == 0
-                ? Task.FromResult(new List<SchemaImportItemResult>())
-                : ImportAsync(retryPlan, connectionString, databaseName, false, progress, cancellationToken);
+                BatchIndex = result.BatchIndex,
+                ObjectName = result.ObjectName,
+                ObjectType = result.ObjectType,
+                SourceLine = result.SourceLine,
+                Phase = result.Phase,
+                Status = result.Status,
+                Attempts = result.Attempts,
+                ErrorMessage = result.ErrorMessage,
+                DependencyText = result.DependencyText,
+                SqlText = result.SqlText
+            };
         }
 
         public static string BuildReportText(
@@ -176,22 +270,11 @@ namespace SSMS
             sb.AppendLine($"File: {plan.FilePath}");
             sb.AppendLine($"Target database: {databaseName}");
             sb.AppendLine();
+            sb.AppendLine("Summary:");
+            sb.AppendLine($"Planned: {rows.Count}");
             sb.AppendLine($"Success: {rows.Count(row => row.Status is SchemaImportStatus.Success or SchemaImportStatus.Retried)}");
             sb.AppendLine($"Skipped: {rows.Count(row => row.Status == SchemaImportStatus.Skipped)}");
             sb.AppendLine($"Failed: {rows.Count(row => row.Status == SchemaImportStatus.Failed)}");
-            sb.AppendLine();
-
-            foreach (SchemaImportItemResult row in rows.Where(row => row.Status == SchemaImportStatus.Failed))
-            {
-                sb.AppendLine($"[{row.Status}] {row.DisplayName} ({row.ObjectType})");
-                sb.AppendLine($"  Source line: {row.SourceLine}");
-                sb.AppendLine($"  Attempts: {row.Attempts}");
-                if (!string.IsNullOrWhiteSpace(row.DependencyText)) sb.AppendLine($"  Dependencies: {row.DependencyText}");
-                sb.AppendLine($"  Error: {row.ErrorMessage}");
-                sb.AppendLine("  SQL:");
-                sb.AppendLine(row.SqlText.Trim());
-                sb.AppendLine();
-            }
 
             return sb.ToString();
         }
@@ -306,16 +389,7 @@ namespace SSMS
         {
             foreach (SqlError error in exception.Errors)
             {
-                if (error.Number is 207 or 208 or 4121 or 4512 or 15151 or 2760 or 15135)
-                {
-                    return true;
-                }
-
-                if (error.Message.Contains("could not find object", StringComparison.OrdinalIgnoreCase) ||
-                    error.Message.Contains("invalid object name", StringComparison.OrdinalIgnoreCase) ||
-                    error.Message.Contains("invalid column name", StringComparison.OrdinalIgnoreCase) ||
-                    error.Message.Contains("could not find the function", StringComparison.OrdinalIgnoreCase) ||
-                    error.Message.Contains("type", StringComparison.OrdinalIgnoreCase) && error.Message.Contains("does not exist", StringComparison.OrdinalIgnoreCase))
+                if (IsDependencyErrorMessage($"Msg {error.Number}: {error.Message}"))
                 {
                     return true;
                 }

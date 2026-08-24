@@ -117,4 +117,21 @@ namespace SSMS
             ? 0
             : Math.Min(100, (int)Math.Round(Completed * 100d / Total));
     }
+
+    public sealed class SchemaImportRetryRound
+    {
+        public int Round { get; init; }
+        public int Requested { get; init; }
+        public int Success { get; init; }
+        public int Failed { get; init; }
+        public int DependencyFailures { get; init; }
+    }
+
+    public sealed class SchemaImportRetryResult
+    {
+        public List<SchemaImportItemResult> Results { get; } = new();
+        public List<SchemaImportRetryRound> Rounds { get; } = new();
+        public bool ReachedRoundLimit { get; set; }
+        public bool StoppedWithoutProgress { get; set; }
+    }
 }

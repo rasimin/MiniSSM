@@ -4,7 +4,7 @@
         Title="Import Schema"
         Width="1180" Height="760"
         MinWidth="900" MinHeight="600"
-        WindowStartupLocation="CenterOwner"
+        WindowStartupLocation="CenterScreen"
         WindowStyle="None"
         ResizeMode="CanResize"
         AllowsTransparency="True"
@@ -350,7 +350,7 @@
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
                     <Button x:Name="AnalyzeButton" Content="Analyze" Style="{StaticResource ImportButton}" Click="AnalyzeButton_Click"/>
                     <Button x:Name="ImportButton" Content="Import" Style="{StaticResource PrimaryImportButton}" IsEnabled="False" Click="ImportButton_Click"/>
-                    <Button x:Name="RerunFailedButton" Content="Rerun Failed" Style="{StaticResource ImportButton}" IsEnabled="False" Click="RerunFailedButton_Click"/>
+                    <Button x:Name="RerunFailedButton" Content="Auto Rerun Dependencies" Style="{StaticResource ImportButton}" IsEnabled="False" Click="RerunFailedButton_Click" ToolTip="Rerun dependency-related failures for up to 3 rounds"/>
                     <Button x:Name="SaveReportButton" Content="Save Report" Style="{StaticResource ImportButton}" IsEnabled="False" Click="SaveReportButton_Click"/>
                 </StackPanel>
             </Grid>

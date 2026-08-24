@@ -328,6 +328,24 @@ namespace SSMS
 
         private void OpenSchemaImportWindow()
         {
+            if (_schemaImportWindow != null)
+            {
+                if (_schemaImportWindow.WindowState == WindowState.Minimized)
+                {
+                    _schemaImportWindow.WindowState = WindowState.Normal;
+                }
+
+                if (!_schemaImportWindow.IsVisible)
+                {
+                    _schemaImportWindow.Show();
+                }
+                else
+                {
+                    _schemaImportWindow.Activate();
+                }
+                return;
+            }
+
             string connectionString = string.Empty;
             string databaseName = "master";
 
@@ -357,11 +375,9 @@ namespace SSMS
                 return;
             }
 
-            var importWindow = new SchemaImportWindow(connectionString, databaseName)
-            {
-                Owner = this
-            };
-            importWindow.ShowDialog();
+            _schemaImportWindow = new SchemaImportWindow(connectionString, databaseName);
+            _schemaImportWindow.Closed += (_, _) => _schemaImportWindow = null;
+            _schemaImportWindow.Show();
         }
 
         public void CreateNewQueryFromCurrentContext()
