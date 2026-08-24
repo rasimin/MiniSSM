@@ -93,6 +93,11 @@ namespace SSMS
             UpdateMaximizeButton();
         }
 
+        private void BtnMinimize_Click(object sender, RoutedEventArgs e)
+        {
+            WindowState = WindowState.Minimized;
+        }
+
         private void Window_StateChanged(object? sender, EventArgs e)
         {
             UpdateMaximizeButton();

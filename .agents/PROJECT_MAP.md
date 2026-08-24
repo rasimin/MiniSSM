@@ -46,7 +46,7 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 | `Windows\RenameObjectWindow.xaml`, `Windows\RenameObjectWindow.xaml.cs` | Dialog dark-mode custom untuk memasukkan nama baru objek/database dan menghasilkan script `sp_rename` atau `ALTER DATABASE` ke query tab baru. |
 | `Windows\ImportExcelWindow.xaml`, `Windows\ImportExcelWindow.xaml.cs` | Dialog dark-mode custom untuk mengimpor berkas Excel (.xlsx/.xls) menjadi tabel baru di SQL Server dengan auto-deduplikasi header & SqlBulkCopy. |
 | `Windows\SchemaImportWindow.xaml`, `Windows\SchemaImportWindow.xaml.cs` | Dialog frameless dark-mode yang dapat resize/maximize/minimize untuk memilih file SQL, database existing atau opsi `Create new database...`, melakukan Analyze, menjalankan import schema terurut, filter text/status/type pada Results, tombol `Rerun Failed` untuk mengulang semua batch gagal lalu otomatis hanya dependency failures, menampilkan progress/detail error dengan panel note yang dapat discroll, dan menyimpan report. |
-| `Windows\SqlTraceWindow.xaml`, `Windows\SqlTraceWindow.xaml.cs` | Form warning dan monitoring real-time legacy SQL Trace/Profiler dengan filter database, tombol Start/Stop, dan grid event query. |
+| `Windows\SqlTraceWindow.xaml`, `Windows\SqlTraceWindow.xaml.cs` | Form warning dan monitoring real-time legacy SQL Trace/Profiler dengan header minimize/maximize/close, filter database, tombol Start/Stop, dan grid event query. |
 | `Editor\sql_editor.html` | Host ringan WebView2 untuk container Monaco, stylesheet, require.js, catalog, dan script editor. |
 | `Editor\sql_editor.css` | Style host WebView2/Monaco container. |
 | `Editor\sql_editor_state.js` | Konfigurasi require.js dan state global editor/metadata serta map registry `tabModels` per `tabId`. |

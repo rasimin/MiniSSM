@@ -225,6 +225,9 @@
                 <Button Width="26" Height="26" HorizontalAlignment="Right" Content="✕"
                         Foreground="#A0A0A0" Background="Transparent" BorderThickness="0"
                         FontSize="11" Cursor="Hand" Click="BtnClose_Click"/>
+                <Button x:Name="BtnMinimize" Width="26" Height="26" HorizontalAlignment="Right" Margin="0,0,56,0" Content="—"
+                        Foreground="#A0A0A0" Background="Transparent" BorderThickness="0"
+                        FontSize="13" Cursor="Hand" ToolTip="Minimize" Click="BtnMinimize_Click"/>
                 <Button x:Name="BtnMaximize" Width="26" Height="26" HorizontalAlignment="Right" Margin="0,0,28,0" Content="□"
                         Foreground="#A0A0A0" Background="Transparent" BorderThickness="0"
                         FontSize="13" Cursor="Hand" Click="BtnMaximize_Click"/>
