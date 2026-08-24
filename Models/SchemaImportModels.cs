@@ -121,6 +121,7 @@ namespace SSMS
     public sealed class SchemaImportRetryRound
     {
         public int Round { get; init; }
+        public bool IsInitialFailedRerun { get; init; }
         public int Requested { get; init; }
         public int Success { get; init; }
         public int Failed { get; init; }

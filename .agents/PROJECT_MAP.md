@@ -33,7 +33,7 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 | `Models\SqlTraceEvent.cs` | Model event query yang ditampilkan pada SQL Trace window. |
 | `Models\SchemaImportModels.cs` | Model plan, batch, status hasil, dan progress untuk import schema. |
 | `Services\AppLogger.cs` | Logger file sederhana untuk error global dan event penting seperti create/close tab. Log tersimpan di `logs\minissms-YYYYMMDD.log` dalam output app. |
-| `Services\SchemaImportService.cs` | Analisis dan eksekusi import schema per batch dengan fase dependency, retry error dependency maksimal tiga pass, skip `USE`/`CREATE DATABASE` dari script, optional create database baru dari koneksi `master`, cancellation, dan report. |
+| `Services\SchemaImportService.cs` | Analisis dan eksekusi import schema per batch dengan fase dependency, eksekusi awal satu pass, rerun manual seluruh batch gagal, lalu retry otomatis hanya untuk error dependency maksimal tiga ronde, skip `USE`/`CREATE DATABASE` dari script, optional create database baru dari koneksi `master`, cancellation, dan report. |
 | `Models\AppSettings.cs` | Model serta load/save parameter aplikasi dari `appsettings.json`. |
 | `Windows\SettingsWindow.xaml`, `Windows\SettingsWindow.xaml.cs` | Dialog Settings dari ikon gear di toolbar; mengatur query command timeout & opsi kustomisasi urutan toolbar. |
 | `Windows\ToolbarOrderWindow.xaml`, `Windows\ToolbarOrderWindow.xaml.cs` | Dialog dark-mode custom untuk mengatur urutan item/tombol pada toolbar utama (dengan kontrol Naik/Turun/Reset & Simpan). |
@@ -45,7 +45,7 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 | `Windows\ObjectSearchWindow.xaml`, `Windows\ObjectSearchWindow.xaml.cs` | Pencarian table/view/routine/trigger/column lintas database yang dapat diakses pada satu server, lalu membuka SELECT atau definition. |
 | `Windows\RenameObjectWindow.xaml`, `Windows\RenameObjectWindow.xaml.cs` | Dialog dark-mode custom untuk memasukkan nama baru objek/database dan menghasilkan script `sp_rename` atau `ALTER DATABASE` ke query tab baru. |
 | `Windows\ImportExcelWindow.xaml`, `Windows\ImportExcelWindow.xaml.cs` | Dialog dark-mode custom untuk mengimpor berkas Excel (.xlsx/.xls) menjadi tabel baru di SQL Server dengan auto-deduplikasi header & SqlBulkCopy. |
-| `Windows\SchemaImportWindow.xaml`, `Windows\SchemaImportWindow.xaml.cs` | Dialog frameless dark-mode yang dapat resize/maximize untuk memilih file SQL, database existing atau opsi `Create new database...`, melakukan Analyze, menjalankan import schema terurut, menampilkan progress/detail error dengan panel note yang dapat discroll, dan menyimpan report. |
+| `Windows\SchemaImportWindow.xaml`, `Windows\SchemaImportWindow.xaml.cs` | Dialog frameless dark-mode yang dapat resize/maximize/minimize untuk memilih file SQL, database existing atau opsi `Create new database...`, melakukan Analyze, menjalankan import schema terurut, filter text/status/type pada Results, tombol `Rerun Failed` untuk mengulang semua batch gagal lalu otomatis hanya dependency failures, menampilkan progress/detail error dengan panel note yang dapat discroll, dan menyimpan report. |
 | `Windows\SqlTraceWindow.xaml`, `Windows\SqlTraceWindow.xaml.cs` | Form warning dan monitoring real-time legacy SQL Trace/Profiler dengan filter database, tombol Start/Stop, dan grid event query. |
 | `Editor\sql_editor.html` | Host ringan WebView2 untuk container Monaco, stylesheet, require.js, catalog, dan script editor. |
 | `Editor\sql_editor.css` | Style host WebView2/Monaco container. |
@@ -74,8 +74,8 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 10. Menu konteks server/database dapat membuka `SqlTraceWindow`; trace dibuat di SQL Server dan dipoll setiap satu detik selama window terbuka.
 11. Menu `Query Tools > Import Schema...` membuka `SchemaImportWindow` dengan konteks koneksi/database dari tab aktif atau Object Explorer. File dianalisis tanpa masuk editor, lalu batch dieksekusi melalui `SchemaImportService` berdasarkan dependency dan hasilnya dilaporkan per object.
 12. Menu konteks database pada Object Explorer memiliki `Create DROP DATABASE Script`, yang membuka script ke query baru tanpa mengeksekusinya.
-13. `SchemaImportWindow` memakai header drag penuh, layout maximize berbasis work area, filter hasil, tab `Results`/`Report`, dan rerun khusus batch gagal yang menambahkan ringkasan ke tab report.
+13. `SchemaImportWindow` memakai header drag penuh dengan tombol minimize/maximize/close, layout maximize berbasis work area, filter text/status/type, tab `Results`/`Report`, dan tombol `Rerun Failed` yang mengulang semua batch gagal sekali lalu melanjutkan retry otomatis khusus dependency failures ke tab report.
 14. Tab `Report` dan file Save Report hanya berisi rekap summary; SQL batch/error detail tetap dilihat dari baris pada tab `Results`.
-15. `Auto Rerun Dependencies` mengulang hanya failure yang terdeteksi sebagai dependency-related, maksimal tiga ronde, dan berhenti saat jumlah failure tidak berkurang.
+15. `Rerun Failed` mengulang semua batch gagal pada putaran pertama; setelah itu hanya failure yang terdeteksi sebagai dependency-related yang diulang otomatis, maksimal tiga ronde, dan berhenti saat jumlah failure tidak berkurang.
 16. `SchemaImportWindow` dibuka modeless tanpa ownership WPF agar dapat berada di belakang query utama; hanya satu window import yang dapat terbuka dari MainWindow.
 17. Script `DROP DATABASE` hasil Object Explorer memvalidasi database, menampilkan error jika tidak ada, dan mengembalikan result status serta waktu jika berhasil.

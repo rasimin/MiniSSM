@@ -31,7 +31,8 @@ namespace SSMS
             string databaseName,
             bool createDatabase = false,
             IProgress<SchemaImportProgress>? progress = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            bool autoRetryDependencies = false)
         {
             if (plan == null) throw new ArgumentNullException(nameof(plan));
             if (string.IsNullOrWhiteSpace(connectionString)) throw new ArgumentException("Connection string is required.", nameof(connectionString));
@@ -50,7 +51,8 @@ namespace SSMS
             using var connection = new SqlConnection(DatabaseHelper.BuildConnectionString(connectionString, databaseName));
             await connection.OpenAsync(cancellationToken);
 
-            for (int pass = 1; pass <= MaxDependencyRetryPasses && pending.Count > 0; pass++)
+            int maxPasses = autoRetryDependencies ? MaxDependencyRetryPasses : 1;
+            for (int pass = 1; pass <= maxPasses && pending.Count > 0; pass++)
             {
                 var deferred = new List<SchemaImportBatchInfo>();
 
@@ -81,7 +83,7 @@ namespace SSMS
                     catch (SqlException ex)
                     {
                         item.ErrorMessage = FormatSqlException(ex, batch.StartLineNumber);
-                        if (IsDependencyError(ex) && pass < MaxDependencyRetryPasses)
+                        if (IsDependencyError(ex) && autoRetryDependencies && pass < maxPasses)
                         {
                             deferred.Add(batch);
                             item.Status = SchemaImportStatus.Retried;
@@ -103,7 +105,7 @@ namespace SSMS
                     }
                 }
 
-                if (deferred.Count == pending.Count && pass == MaxDependencyRetryPasses)
+                if (deferred.Count == pending.Count && pass == maxPasses)
                 {
                     foreach (SchemaImportBatchInfo batch in deferred)
                     {
@@ -145,14 +147,44 @@ namespace SSMS
             if (failedResults == null) throw new ArgumentNullException(nameof(failedResults));
 
             List<SchemaImportItemResult> currentResults = failedResults
-                .Where(result => result.Status == SchemaImportStatus.Failed && IsDependencyErrorMessage(result.ErrorMessage))
+                .Where(result => result.Status == SchemaImportStatus.Failed)
                 .ToList();
             var aggregateResults = currentResults.ToDictionary(result => result.BatchIndex, CloneResult);
             var retryResult = new SchemaImportRetryResult();
 
-            for (int round = 1; round <= MaxAutomaticDependencyRounds && currentResults.Count > 0; round++)
+            if (currentResults.Count == 0)
+            {
+                return retryResult;
+            }
+
+            // The first rerun is intentionally broad: retry every failed batch once,
+            // regardless of whether its previous error looked dependency-related.
+            SchemaImportPlan initialRetryPlan = BuildRetryPlan(plan, currentResults);
+            List<SchemaImportItemResult> initialRoundResults = await ImportAsync(
+                initialRetryPlan,
+                connectionString,
+                databaseName,
+                false,
+                progress,
+                cancellationToken,
+                autoRetryDependencies: false);
+            AddRoundResult(
+                retryResult,
+                round: 1,
+                initialFailedRerun: true,
+                requested: currentResults.Count,
+                roundResults: initialRoundResults);
+            MergeRoundResults(aggregateResults, initialRoundResults);
+
+            currentResults = initialRoundResults
+                .Where(result => result.Status == SchemaImportStatus.Failed && IsDependencyErrorMessage(result.ErrorMessage))
+                .ToList();
+
+            int automaticRound = 0;
+            while (currentResults.Count > 0 && automaticRound < MaxAutomaticDependencyRounds)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                automaticRound++;
                 SchemaImportPlan retryPlan = BuildRetryPlan(plan, currentResults);
                 List<SchemaImportItemResult> roundResults = await ImportAsync(
                     retryPlan,
@@ -160,33 +192,18 @@ namespace SSMS
                     databaseName,
                     false,
                     progress,
-                    cancellationToken);
+                    cancellationToken,
+                    autoRetryDependencies: false);
 
                 int dependencyFailures = roundResults.Count(result =>
                     result.Status == SchemaImportStatus.Failed && IsDependencyErrorMessage(result.ErrorMessage));
-                retryResult.Rounds.Add(new SchemaImportRetryRound
-                {
-                    Round = round,
-                    Requested = currentResults.Count,
-                    Success = roundResults.Count(result => result.Status is SchemaImportStatus.Success or SchemaImportStatus.Retried),
-                    Failed = roundResults.Count(result => result.Status == SchemaImportStatus.Failed),
-                    DependencyFailures = dependencyFailures
-                });
-
-                foreach (SchemaImportItemResult roundResult in roundResults)
-                {
-                    if (!aggregateResults.TryGetValue(roundResult.BatchIndex, out SchemaImportItemResult? aggregate))
-                    {
-                        aggregate = CloneResult(roundResult);
-                        aggregateResults[roundResult.BatchIndex] = aggregate;
-                    }
-                    else
-                    {
-                        aggregate.Attempts += roundResult.Attempts;
-                        aggregate.Status = roundResult.Status;
-                        aggregate.ErrorMessage = roundResult.ErrorMessage;
-                    }
-                }
+                AddRoundResult(
+                    retryResult,
+                    round: automaticRound + 1,
+                    initialFailedRerun: false,
+                    requested: currentResults.Count,
+                    roundResults: roundResults);
+                MergeRoundResults(aggregateResults, roundResults);
 
                 if (dependencyFailures == 0 || dependencyFailures >= currentResults.Count)
                 {
@@ -200,9 +217,47 @@ namespace SSMS
             }
 
             retryResult.Results.AddRange(aggregateResults.Values.OrderBy(result => result.BatchIndex));
-            retryResult.ReachedRoundLimit = retryResult.Rounds.Count >= MaxAutomaticDependencyRounds &&
+            retryResult.ReachedRoundLimit = automaticRound >= MaxAutomaticDependencyRounds &&
                                             retryResult.Rounds.LastOrDefault()?.DependencyFailures > 0;
             return retryResult;
+        }
+
+        private static void AddRoundResult(
+            SchemaImportRetryResult retryResult,
+            int round,
+            bool initialFailedRerun,
+            int requested,
+            IReadOnlyCollection<SchemaImportItemResult> roundResults)
+        {
+            retryResult.Rounds.Add(new SchemaImportRetryRound
+            {
+                Round = round,
+                IsInitialFailedRerun = initialFailedRerun,
+                Requested = requested,
+                Success = roundResults.Count(result => result.Status is SchemaImportStatus.Success or SchemaImportStatus.Retried),
+                Failed = roundResults.Count(result => result.Status == SchemaImportStatus.Failed),
+                DependencyFailures = roundResults.Count(result => result.Status == SchemaImportStatus.Failed && IsDependencyErrorMessage(result.ErrorMessage))
+            });
+        }
+
+        private static void MergeRoundResults(
+            IDictionary<int, SchemaImportItemResult> aggregateResults,
+            IEnumerable<SchemaImportItemResult> roundResults)
+        {
+            foreach (SchemaImportItemResult roundResult in roundResults)
+            {
+                if (!aggregateResults.TryGetValue(roundResult.BatchIndex, out SchemaImportItemResult? aggregate))
+                {
+                    aggregate = CloneResult(roundResult);
+                    aggregateResults[roundResult.BatchIndex] = aggregate;
+                }
+                else
+                {
+                    aggregate.Attempts += roundResult.Attempts;
+                    aggregate.Status = roundResult.Status;
+                    aggregate.ErrorMessage = roundResult.ErrorMessage;
+                }
+            }
         }
 
         public static bool IsDependencyErrorMessage(string? message)

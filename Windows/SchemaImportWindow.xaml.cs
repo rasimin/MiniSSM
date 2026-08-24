@@ -216,7 +216,8 @@ namespace SSMS
                     databaseName,
                     createNewDatabase,
                     progress,
-                    cancellationSource.Token);
+                    cancellationSource.Token,
+                    autoRetryDependencies: false);
                 _lastImportDatabaseName = databaseName;
                 SetResultsView();
                 SummaryText.Text = BuildResultSummary(_plan, _results, databaseName);
@@ -255,11 +256,11 @@ namespace SSMS
             }
 
             List<SchemaImportItemResult> failedRows = _results
-                .Where(result => result.Status == SchemaImportStatus.Failed && SchemaImportService.IsDependencyErrorMessage(result.ErrorMessage))
+                .Where(result => result.Status == SchemaImportStatus.Failed)
                 .ToList();
             if (failedRows.Count == 0)
             {
-                MessageBox.Show("There are no dependency-related failures to rerun automatically. Review other failures in the Results tab.", "Auto Rerun Dependencies", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show("There are no failed batches to rerun.", "Rerun Failed", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
@@ -270,8 +271,8 @@ namespace SSMS
             }
 
             MessageBoxResult confirmation = MessageBox.Show(
-                $"Automatically rerun {failedRows.Count:N0} dependency-related failure(s) against database '{databaseName}'?\n\nMaximum: {SchemaImportService.MaxAutomaticDependencyRounds} rounds. The process stops when the failed count no longer decreases.",
-                "Confirm Auto Rerun",
+                $"Rerun all {failedRows.Count:N0} failed batch(es) against database '{databaseName}'?\n\nAfter this pass, only remaining dependency-related failures will be retried automatically, up to {SchemaImportService.MaxAutomaticDependencyRounds} rounds.",
+                "Confirm Rerun Failed",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning);
             if (confirmation != MessageBoxResult.Yes)
@@ -283,7 +284,7 @@ namespace SSMS
             using var cancellationSource = new CancellationTokenSource();
             _operationCancellationSource = cancellationSource;
             _rerunAttemptOffsets = failedRows.ToDictionary(row => row.BatchIndex, row => row.Attempts);
-            SetBusy(true, "Auto rerunning dependency failures...");
+            SetBusy(true, "Rerunning failed batches...");
 
             var progress = new Progress<SchemaImportProgress>(value => UpdateProgress(value, _rerunAttemptOffsets));
             try
@@ -298,11 +299,11 @@ namespace SSMS
 
                 ApplyRerunResults(rerunResult.Results, attemptsAlreadyIncluded: true);
                 ReportTextBox.AppendText(
-                    $"\r\n\r\n===== AUTO RERUN DEPENDENCIES ({DateTime.Now:yyyy-MM-dd HH:mm:ss}) =====\r\n" +
+                    $"\r\n\r\n===== RERUN FAILED + AUTOMATIC DEPENDENCY RETRIES ({DateTime.Now:yyyy-MM-dd HH:mm:ss}) =====\r\n" +
                     BuildAutomaticRerunReport(_plan, rerunResult, databaseName));
                 ImportTabs.SelectedItem = ReportTab;
                 SummaryText.Text = BuildResultSummary(_plan, _results, databaseName);
-                ProgressText.Text = "Automatic dependency rerun completed. Review the updated results and report.";
+                ProgressText.Text = "Failed batches rerun completed. Review the updated results and report.";
             }
             catch (OperationCanceledException)
             {
@@ -403,8 +404,7 @@ namespace SSMS
             AnalyzeButton.IsEnabled = !busy;
             ImportButton.IsEnabled = !busy && _plan?.Batches.Count > 0;
             RerunFailedButton.IsEnabled = !busy && _results.Any(result =>
-                result.Status == SchemaImportStatus.Failed &&
-                SchemaImportService.IsDependencyErrorMessage(result.ErrorMessage));
+                result.Status == SchemaImportStatus.Failed);
             SaveReportButton.IsEnabled = !busy && _results.Any(result => result.Status != SchemaImportStatus.Pending);
             DatabaseComboBox.IsEnabled = !busy;
             NewDatabaseNameTextBox.IsEnabled = !busy;
@@ -454,6 +454,13 @@ namespace SSMS
                 return false;
             }
 
+            string selectedType = (TypeFilterComboBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "All";
+            if (!string.Equals(selectedType, "All", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(result.ObjectType, selectedType, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
             string filterText = FilterTextBox.Text.Trim();
             if (string.IsNullOrWhiteSpace(filterText))
             {
@@ -478,6 +485,12 @@ namespace SSMS
         }
 
         private void StatusFilterComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            _resultsView?.Refresh();
+            UpdateFilterSummary();
+        }
+
+        private void TypeFilterComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             _resultsView?.Refresh();
             UpdateFilterSummary();
@@ -579,8 +592,17 @@ namespace SSMS
             string databaseName)
         {
             var sb = new StringBuilder();
-            sb.AppendLine($"Automatic dependency rerun rounds: {retryResult.Rounds.Count}");
-            foreach (SchemaImportRetryRound round in retryResult.Rounds)
+            SchemaImportRetryRound? initialRound = retryResult.Rounds.FirstOrDefault(round => round.IsInitialFailedRerun);
+            if (initialRound != null)
+            {
+                sb.AppendLine($"Initial rerun of all failed batches: requested {initialRound.Requested:N0}, success {initialRound.Success:N0}, failed {initialRound.Failed:N0}");
+            }
+
+            List<SchemaImportRetryRound> automaticRounds = retryResult.Rounds
+                .Where(round => !round.IsInitialFailedRerun)
+                .ToList();
+            sb.AppendLine($"Automatic dependency rerun rounds: {automaticRounds.Count}");
+            foreach (SchemaImportRetryRound round in automaticRounds)
             {
                 sb.AppendLine($"Round {round.Round}: requested {round.Requested:N0}, success {round.Success:N0}, failed {round.Failed:N0}, dependency failures remaining {round.DependencyFailures:N0}");
             }
@@ -652,6 +674,11 @@ namespace SSMS
             WindowState = WindowState == WindowState.Maximized
                 ? WindowState.Normal
                 : WindowState.Maximized;
+        }
+
+        private void MinimizeButton_Click(object sender, RoutedEventArgs e)
+        {
+            WindowState = WindowState.Minimized;
         }
 
         private void Window_StateChanged(object? sender, EventArgs e)

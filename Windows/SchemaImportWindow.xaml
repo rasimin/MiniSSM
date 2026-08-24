@@ -271,6 +271,21 @@
                     <TextBlock Text="  Dependency-aware SQL script importer" Foreground="#8A8A8A" FontSize="11" VerticalAlignment="Center"/>
                 </StackPanel>
                 <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                    <Button x:Name="MinimizeButton" Width="24" Height="24" Content="—" Foreground="#A0A0A0" Background="Transparent" BorderThickness="0" FontSize="12" Cursor="Hand" ToolTip="Minimize" Click="MinimizeButton_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="MinimizeBorder" Background="Transparent" CornerRadius="3">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="MinimizeBorder" Property="Background" Value="#2A2D2E"/>
+                                        <Setter Property="Foreground" Value="#FFFFFF"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
                     <Button x:Name="MaximizeButton" Width="24" Height="24" Content="□" Foreground="#A0A0A0" Background="Transparent" BorderThickness="0" FontSize="12" Cursor="Hand" ToolTip="Maximize" Click="MaximizeButton_Click">
                         <Button.Template>
                             <ControlTemplate TargetType="Button">
@@ -350,7 +365,7 @@
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
                     <Button x:Name="AnalyzeButton" Content="Analyze" Style="{StaticResource ImportButton}" Click="AnalyzeButton_Click"/>
                     <Button x:Name="ImportButton" Content="Import" Style="{StaticResource PrimaryImportButton}" IsEnabled="False" Click="ImportButton_Click"/>
-                    <Button x:Name="RerunFailedButton" Content="Auto Rerun Dependencies" Style="{StaticResource ImportButton}" IsEnabled="False" Click="RerunFailedButton_Click" ToolTip="Rerun dependency-related failures for up to 3 rounds"/>
+                    <Button x:Name="RerunFailedButton" Content="Rerun Failed" Style="{StaticResource ImportButton}" IsEnabled="False" Click="RerunFailedButton_Click" ToolTip="Rerun all failed batches, then retry remaining dependency failures automatically"/>
                     <Button x:Name="SaveReportButton" Content="Save Report" Style="{StaticResource ImportButton}" IsEnabled="False" Click="SaveReportButton_Click"/>
                 </StackPanel>
             </Grid>
@@ -370,6 +385,8 @@
                                 <ColumnDefinition Width="220"/>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="150"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="150"/>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
@@ -384,7 +401,27 @@
                                 <ComboBoxItem Content="Failed"/>
                                 <ComboBoxItem Content="Skipped"/>
                             </ComboBox>
-                            <TextBlock x:Name="FilterSummaryText" Grid.Column="5" Foreground="#8A8A8A" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                            <TextBlock Grid.Column="4" Text="Type" Foreground="#CCCCCC" VerticalAlignment="Center" Margin="14,0,8,0"/>
+                            <ComboBox x:Name="TypeFilterComboBox" Grid.Column="5" Height="28" SelectionChanged="TypeFilterComboBox_SelectionChanged">
+                                <ComboBoxItem Content="All" IsSelected="True"/>
+                                <ComboBoxItem Content="Unknown"/>
+                                <ComboBoxItem Content="Database"/>
+                                <ComboBoxItem Content="Schema"/>
+                                <ComboBoxItem Content="Type"/>
+                                <ComboBoxItem Content="Sequence"/>
+                                <ComboBoxItem Content="Table"/>
+                                <ComboBoxItem Content="Constraint"/>
+                                <ComboBoxItem Content="ForeignKey"/>
+                                <ComboBoxItem Content="Index"/>
+                                <ComboBoxItem Content="View"/>
+                                <ComboBoxItem Content="Function"/>
+                                <ComboBoxItem Content="Procedure"/>
+                                <ComboBoxItem Content="Trigger"/>
+                                <ComboBoxItem Content="Data"/>
+                                <ComboBoxItem Content="Permission"/>
+                                <ComboBoxItem Content="Other"/>
+                            </ComboBox>
+                            <TextBlock x:Name="FilterSummaryText" Grid.Column="7" Foreground="#8A8A8A" VerticalAlignment="Center" Margin="12,0,0,0"/>
                         </Grid>
                         <DataGrid x:Name="ResultsGrid" Grid.Row="1" SelectionChanged="ResultsGrid_SelectionChanged">
                             <DataGrid.Columns>
