@@ -132,6 +132,38 @@ namespace SSMS
                 .ToList();
         }
 
+        public Task<List<SchemaImportItemResult>> RerunFailedAsync(
+            SchemaImportPlan plan,
+            IEnumerable<SchemaImportItemResult> failedResults,
+            string connectionString,
+            string databaseName,
+            IProgress<SchemaImportProgress>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            if (plan == null) throw new ArgumentNullException(nameof(plan));
+            if (failedResults == null) throw new ArgumentNullException(nameof(failedResults));
+
+            var failedIndexes = failedResults
+                .Where(result => result.Status == SchemaImportStatus.Failed)
+                .Select(result => result.BatchIndex)
+                .ToHashSet();
+            var retryPlan = new SchemaImportPlan
+            {
+                FilePath = plan.FilePath,
+                FileLength = plan.FileLength,
+                ScriptDatabaseName = plan.ScriptDatabaseName
+            };
+
+            foreach (SchemaImportBatchInfo batch in plan.Batches.Where(batch => failedIndexes.Contains(batch.Index)))
+            {
+                retryPlan.Batches.Add(batch);
+            }
+
+            return retryPlan.Batches.Count == 0
+                ? Task.FromResult(new List<SchemaImportItemResult>())
+                : ImportAsync(retryPlan, connectionString, databaseName, false, progress, cancellationToken);
+        }
+
         public static string BuildReportText(
             SchemaImportPlan plan,
             IEnumerable<SchemaImportItemResult> results,

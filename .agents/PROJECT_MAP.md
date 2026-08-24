@@ -73,3 +73,5 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 9. Setiap query yang benar-benar dikirim ke SQL Server dicatat ke SQLite setelah selesai.
 10. Menu konteks server/database dapat membuka `SqlTraceWindow`; trace dibuat di SQL Server dan dipoll setiap satu detik selama window terbuka.
 11. Menu `Query Tools > Import Schema...` membuka `SchemaImportWindow` dengan konteks koneksi/database dari tab aktif atau Object Explorer. File dianalisis tanpa masuk editor, lalu batch dieksekusi melalui `SchemaImportService` berdasarkan dependency dan hasilnya dilaporkan per object.
+12. Menu konteks database pada Object Explorer memiliki `Create DROP DATABASE Script`, yang membuka script ke query baru tanpa mengeksekusinya.
+13. `SchemaImportWindow` memakai header drag penuh, layout maximize berbasis work area, filter hasil, tab `Results`/`Report`, dan rerun khusus batch gagal yang menambahkan ringkasan ke tab report.

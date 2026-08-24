@@ -417,6 +417,10 @@ namespace SSMS
                             var renameDbItem = new MenuItem { Header = "Rename..." };
                             renameDbItem.Click += (s, ev) => ShowRenameDialog(connStr, db, "Database", db);
                             contextMenu.Items.Add(renameDbItem);
+                            contextMenu.Items.Add(new Separator());
+                            var dropDatabaseItem = new MenuItem { Header = "Create DROP DATABASE Script" };
+                            dropDatabaseItem.Click += (s, ev) => CreateDropDatabaseScript(connStr, db);
+                            contextMenu.Items.Add(dropDatabaseItem);
                             dbItem.ContextMenu = contextMenu;
 
                             item.Items.Add(dbItem);

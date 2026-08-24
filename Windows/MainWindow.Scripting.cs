@@ -116,6 +116,23 @@ namespace SSMS
             return GenerateScriptObjectAsync(connectionString, databaseName, objectType, objectName, "CREATE");
         }
 
+        private void CreateDropDatabaseScript(string connectionString, string databaseName)
+        {
+            string safeDatabaseName = QuoteSqlIdentifier(databaseName);
+            string safeDatabaseLiteral = databaseName.Replace("'", "''");
+            string sql = $"-- Review this script before executing. Dropping a database permanently deletes its data.\r\n" +
+                         "USE [master];\r\n" +
+                         "GO\r\n\r\n" +
+                         $"IF DB_ID(N'{safeDatabaseLiteral}') IS NOT NULL\r\n" +
+                         "BEGIN\r\n" +
+                         $"    ALTER DATABASE {safeDatabaseName} SET SINGLE_USER WITH ROLLBACK IMMEDIATE;\r\n" +
+                         $"    DROP DATABASE {safeDatabaseName};\r\n" +
+                         "END;\r\n" +
+                         "GO\r\n";
+
+            CreateNewQueryTab(connectionString, "master", sql, $"Drop_{databaseName}.sql");
+        }
+
         private async Task GenerateScriptObjectAsync(string connectionString, string databaseName, string objectType, string objectName, string scriptType)
         {
             string sql = "";
