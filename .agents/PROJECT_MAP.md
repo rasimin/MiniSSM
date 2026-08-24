@@ -27,10 +27,13 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 | `Services\DatabaseHelper.cs` | Semua akses SQL Server: metadata database/object, eksekusi query, generate script. |
 | `Services\SqlTraceService.cs` | Menjalankan legacy SQL Trace (`sp_trace_*`), memfilter database, membaca event live dari `fn_trace_gettable`, dan menghentikan trace. |
 | `Utilities\SqlBatchSplitter.cs` | Memecah script pada separator `GO`/`GO n` tanpa memecah `GO` di string atau comment; dipakai semua mode eksekusi. |
+| `Utilities\SchemaScriptParser.cs` | Membaca batch schema dari file SQL, mengklasifikasikan object, mendeteksi referensi sederhana, dan menyusun dependency-aware execution order. |
 | `Utilities\FileDialogHelper.cs` | Utility untuk menjalankan OpenFileDialog / SaveFileDialog pada dedicated background STA thread agar tidak memblokir UI thread dan WebView2 saat navigasi folder. |
 | `Models\ObjectExplorerNode.cs` | Model data `Tag` untuk node TreeView Object Explorer. |
 | `Models\SqlTraceEvent.cs` | Model event query yang ditampilkan pada SQL Trace window. |
+| `Models\SchemaImportModels.cs` | Model plan, batch, status hasil, dan progress untuk import schema. |
 | `Services\AppLogger.cs` | Logger file sederhana untuk error global dan event penting seperti create/close tab. Log tersimpan di `logs\minissms-YYYYMMDD.log` dalam output app. |
+| `Services\SchemaImportService.cs` | Analisis dan eksekusi import schema per batch dengan fase dependency, retry error dependency maksimal tiga pass, skip `USE`/`CREATE DATABASE` dari script, optional create database baru dari koneksi `master`, cancellation, dan report. |
 | `Models\AppSettings.cs` | Model serta load/save parameter aplikasi dari `appsettings.json`. |
 | `Windows\SettingsWindow.xaml`, `Windows\SettingsWindow.xaml.cs` | Dialog Settings dari ikon gear di toolbar; mengatur query command timeout & opsi kustomisasi urutan toolbar. |
 | `Windows\ToolbarOrderWindow.xaml`, `Windows\ToolbarOrderWindow.xaml.cs` | Dialog dark-mode custom untuk mengatur urutan item/tombol pada toolbar utama (dengan kontrol Naik/Turun/Reset & Simpan). |
@@ -42,6 +45,7 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 | `Windows\ObjectSearchWindow.xaml`, `Windows\ObjectSearchWindow.xaml.cs` | Pencarian table/view/routine/trigger/column lintas database yang dapat diakses pada satu server, lalu membuka SELECT atau definition. |
 | `Windows\RenameObjectWindow.xaml`, `Windows\RenameObjectWindow.xaml.cs` | Dialog dark-mode custom untuk memasukkan nama baru objek/database dan menghasilkan script `sp_rename` atau `ALTER DATABASE` ke query tab baru. |
 | `Windows\ImportExcelWindow.xaml`, `Windows\ImportExcelWindow.xaml.cs` | Dialog dark-mode custom untuk mengimpor berkas Excel (.xlsx/.xls) menjadi tabel baru di SQL Server dengan auto-deduplikasi header & SqlBulkCopy. |
+| `Windows\SchemaImportWindow.xaml`, `Windows\SchemaImportWindow.xaml.cs` | Dialog frameless dark-mode yang dapat resize/maximize untuk memilih file SQL, database existing atau opsi `Create new database...`, melakukan Analyze, menjalankan import schema terurut, menampilkan progress/detail error dengan panel note yang dapat discroll, dan menyimpan report. |
 | `Windows\SqlTraceWindow.xaml`, `Windows\SqlTraceWindow.xaml.cs` | Form warning dan monitoring real-time legacy SQL Trace/Profiler dengan filter database, tombol Start/Stop, dan grid event query. |
 | `Editor\sql_editor.html` | Host ringan WebView2 untuk container Monaco, stylesheet, require.js, catalog, dan script editor. |
 | `Editor\sql_editor.css` | Style host WebView2/Monaco container. |
@@ -68,3 +72,4 @@ MiniSSMS adalah aplikasi desktop WPF untuk SQL Server.
 8. Query dieksekusi oleh `DatabaseHelper.ExecuteQueryAsync()`, lalu hasil ditampilkan di DataGrid atau Messages.
 9. Setiap query yang benar-benar dikirim ke SQL Server dicatat ke SQLite setelah selesai.
 10. Menu konteks server/database dapat membuka `SqlTraceWindow`; trace dibuat di SQL Server dan dipoll setiap satu detik selama window terbuka.
+11. Menu `Query Tools > Import Schema...` membuka `SchemaImportWindow` dengan konteks koneksi/database dari tab aktif atau Object Explorer. File dianalisis tanpa masuk editor, lalu batch dieksekusi melalui `SchemaImportService` berdasarkan dependency dan hasilnya dilaporkan per object.

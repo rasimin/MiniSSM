@@ -316,9 +316,52 @@ namespace SSMS
             identityInsertItem.Click += async (_, _) => await AddIdentityInsertToActiveQueryAsync();
             menu.Items.Add(identityInsertItem);
 
+            menu.Items.Add(new Separator());
+            var importSchemaItem = new MenuItem { Header = "Import Schema..." };
+            importSchemaItem.Click += (_, _) => OpenSchemaImportWindow();
+            menu.Items.Add(importSchemaItem);
+
             button.ContextMenu = menu;
             menu.PlacementTarget = button;
             menu.IsOpen = true;
+        }
+
+        private void OpenSchemaImportWindow()
+        {
+            string connectionString = string.Empty;
+            string databaseName = "master";
+
+            if (TabQueryControls.SelectedItem is TabItem tabItem && tabItem.Content is QueryTabControl activeTab)
+            {
+                connectionString = activeTab.ConnectionString;
+                databaseName = activeTab.DatabaseName;
+            }
+            else if (TryGetSelectedObjectExplorerContext(out string explorerConnectionString, out string explorerDatabaseName))
+            {
+                connectionString = explorerConnectionString;
+                databaseName = explorerDatabaseName;
+            }
+            else if (!string.IsNullOrWhiteSpace(_initialConnectionString))
+            {
+                connectionString = _initialConnectionString;
+                databaseName = CboDatabases.SelectedItem?.ToString() ?? "master";
+            }
+
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                MessageBox.Show(
+                    "Open a connected query tab or connect to a server before importing a schema.",
+                    "Import Schema",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            var importWindow = new SchemaImportWindow(connectionString, databaseName)
+            {
+                Owner = this
+            };
+            importWindow.ShowDialog();
         }
 
         public void CreateNewQueryFromCurrentContext()
