@@ -199,6 +199,24 @@ namespace SSMS
             WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
         }
 
+        private void Window_StateChanged(object? sender, EventArgs e)
+        {
+            bool isMaximized = WindowState == WindowState.Maximized;
+            if (isMaximized)
+            {
+                Rect workArea = SystemParameters.WorkArea;
+                MaxWidth = workArea.Width;
+                MaxHeight = workArea.Height;
+                WindowCard.Margin = new Thickness(0);
+            }
+            else
+            {
+                MaxWidth = double.PositiveInfinity;
+                MaxHeight = double.PositiveInfinity;
+                WindowCard.Margin = new Thickness(8);
+            }
+        }
+
         private void BtnClose_Click(object sender, RoutedEventArgs e)
         {
             Close();
@@ -228,10 +246,6 @@ namespace SSMS
             {
                 var args = new QueryHistoryOpenEventArgs(entry);
                 OpenInNewQueryRequested?.Invoke(this, args);
-                if (args.Success)
-                {
-                    Close();
-                }
             }
         }
     }

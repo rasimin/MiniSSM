@@ -119,7 +119,10 @@
                         if (/^\s*GO\s*(?:\d+)?\s*$/i.test(line)) {
                             lastStart = i + 1;
                         } else if (/^\s*(?:WITH|SELECT|INSERT|UPDATE|DELETE|MERGE)\b/i.test(line)) {
-                            lastStart = lineStart;
+                            var currentStatement = sqlText.substring(lastStart, i).trim();
+                            if (!/^WITH\b/i.test(currentStatement) || !/^\s*SELECT\b/i.test(line)) {
+                                lastStart = lineStart;
+                            }
                         } else if (ch === ';') {
                             lastStart = i + 1;
                         }
@@ -519,19 +522,11 @@
                 tableColumns[cteName] = cteColumns;
             }
 
-            var inferredCteRegex = /(?:\bWITH|,)\s*(\[?[a-zA-Z0-9_]+\]?)\s+AS\s*\(\s*SELECT\s+([\s\S]*?)\s+FROM\b/gi;
+            var inferredCteRegex = /(?:\bWITH|,)\s*(\[?[a-zA-Z0-9_]+\]?)\s+AS\s*\(\s*SELECT\s+([\s\S]*?)\s+FROM\s+([#a-zA-Z0-9_\.\[\]]+)(?:\s+(?:AS\s+)?(\[?[a-zA-Z_][a-zA-Z0-9_]*\]?))?/gi;
             while ((match = inferredCteRegex.exec(sqlText)) !== null) {
                 var inferredName = match[1].replace(/[\[\]]/g, '');
-                var inferredColumns = match[2].split(',').map(expression => {
-                    var aliasMatch = expression.trim().match(/\bAS\s+(\[?[a-zA-Z0-9_]+\]?)\s*$/i);
-                    if (aliasMatch) {
-                        return aliasMatch[1].replace(/[\[\]]/g, '');
-                    }
-                    var cleanExpression = expression.trim().replace(/[\[\]]/g, '');
-                    var parts = cleanExpression.split('.');
-                    var candidate = parts[parts.length - 1].match(/[a-zA-Z0-9_]+$/);
-                    return candidate ? candidate[0] : null;
-                }).filter(Boolean);
+                var inferredSourceSql = "FROM " + match[3] + (match[4] ? " " + match[4] : "");
+                var inferredColumns = inferSelectColumns(match[2], inferredSourceSql);
                 if (objects[inferredName] && objects[inferredName].columns.length === 0) {
                     objects[inferredName].columns = inferredColumns;
                     tableColumns[inferredName] = inferredColumns;

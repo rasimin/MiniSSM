@@ -6,11 +6,13 @@
         MinWidth="900" MinHeight="580"
         WindowStartupLocation="CenterOwner"
         WindowStyle="None"
+        ResizeMode="CanResize"
         AllowsTransparency="True"
         Background="Transparent"
         Foreground="#D4D4D4"
         FontFamily="Segoe UI, Arial"
-        KeyDown="Window_KeyDown">
+        KeyDown="Window_KeyDown"
+        StateChanged="Window_StateChanged">
 
     <Window.Resources>
         <!-- Secondary Button Style -->
@@ -285,7 +287,7 @@
         </Style>
     </Window.Resources>
 
-    <Border Margin="8" Background="#181818" BorderBrush="#3C3C3C" BorderThickness="1" CornerRadius="6">
+    <Border x:Name="WindowCard" Margin="8" Background="#181818" BorderBrush="#3C3C3C" BorderThickness="1" CornerRadius="6">
         <Border.Effect>
             <DropShadowEffect BlurRadius="12" ShadowDepth="3" Opacity="0.5" Color="#000000"/>
         </Border.Effect>
@@ -296,7 +298,8 @@
                 <RowDefinition Height="Auto"/> <!-- 1. Filter Card Box -->
                 <RowDefinition Height="Auto"/> <!-- 2. Grid Toolbar (Refresh & Open in New Query) -->
                 <RowDefinition Height="*"/>    <!-- 3. DataGrid -->
-                <RowDefinition Height="210"/>  <!-- 4. Query Details -->
+                <RowDefinition Height="6"/>    <!-- 4. DataGrid / Query Details Splitter -->
+                <RowDefinition Height="210" MinHeight="120"/>  <!-- 5. Query Details -->
             </Grid.RowDefinitions>
 
             <!-- 0. Top Window Title Bar (OUTSIDE filter box) -->
@@ -386,7 +389,7 @@
             <!-- 3. DataGrid -->
             <DataGrid x:Name="HistoryGrid"
                       Grid.Row="3"
-                      Margin="0,0,0,10"
+                      Margin="0,0,0,0"
                       AutoGenerateColumns="False"
                       IsReadOnly="True"
                       CanUserAddRows="False"
@@ -407,15 +410,29 @@
             </DataGrid>
 
             <!-- Loading Overlay -->
-            <Border x:Name="LoadingOverlay" Grid.Row="3" Background="#181818" Visibility="Collapsed" Margin="0,0,0,10">
+            <Border x:Name="LoadingOverlay" Grid.Row="3" Background="#181818" Visibility="Collapsed">
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                     <ProgressBar IsIndeterminate="True" Width="200" Height="3" Foreground="#007ACC" Background="#252526" BorderThickness="0" Margin="0,0,0,10"/>
                     <TextBlock Text="Loading history..." Foreground="#8A8A8A" HorizontalAlignment="Center" FontSize="12"/>
                 </StackPanel>
             </Border>
 
-            <!-- 4. Expanded Query Details Section -->
-            <Border Grid.Row="4" Background="#202020" BorderBrush="#2B2B2B" BorderThickness="1" CornerRadius="4" Padding="12">
+            <!-- 4. DataGrid / Query Details Splitter -->
+            <GridSplitter Grid.Row="4"
+                          Height="6"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Center"
+                          Background="#2B2B2B"
+                          BorderBrush="#3C3C3C"
+                          BorderThickness="0,1,0,1"
+                          ResizeDirection="Rows"
+                          ResizeBehavior="PreviousAndNext"
+                          ShowsPreview="True"
+                          Cursor="SizeNS"
+                          ToolTip="Drag to resize the query details panel"/>
+
+            <!-- 5. Expanded Query Details Section -->
+            <Border Grid.Row="5" Background="#202020" BorderBrush="#2B2B2B" BorderThickness="1" CornerRadius="4" Padding="12">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="6*"/>
