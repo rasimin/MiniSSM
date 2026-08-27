@@ -75,6 +75,10 @@ namespace SSMS
         private bool _metadataRequested;
         private CancellationTokenSource? _dirtyDebounceSource;
         private CancellationTokenSource? _queryCancellationSource;
+        private readonly object _liveMessageSync = new();
+        private readonly System.Text.StringBuilder _pendingLiveMessageText = new();
+        private System.Windows.Threading.DispatcherTimer? _liveMessageFlushTimer;
+        private bool _acceptLiveMessages;
         private readonly List<WinForms.DataGridView> _resultGrids = new();
         private readonly List<DataTable> _resultTables = new();
         private readonly List<WindowsFormsHost> _resultHosts = new();
@@ -205,6 +209,7 @@ namespace SSMS
             _dirtyDebounceSource?.Dispose();
             _dirtyDebounceSource = null;
             _ = _queryCancellationSource?.CancelAsync();
+            StopLiveMessageStreaming();
             DisposeDisplayedResults();
             Loaded -= QueryTabControl_Loaded;
             DirtyStateChanged = null;

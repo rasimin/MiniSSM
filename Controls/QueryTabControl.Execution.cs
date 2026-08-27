@@ -74,7 +74,8 @@ namespace SSMS
             LoadingOverlay.Visibility = Visibility.Visible;
             TabResults.SelectedIndex = 1;
 
-            var messageProgress = new Progress<string>(msg => AppendLiveQueryMessage(msg));
+            StartLiveMessageStreaming();
+            var messageProgress = new Progress<string>(QueueLiveQueryMessage);
 
             var mainWindow = Window.GetWindow(this) as MainWindow;
             mainWindow?.UpdateStatusText(LoadingMessageText.Text);
@@ -91,6 +92,7 @@ namespace SSMS
                     messageProgress,
                     cancellationSource.Token,
                     mode);
+                StopLiveMessageStreaming();
 
                 if (mode is QueryExecutionMode.Execute or QueryExecutionMode.ActualPlan)
                 {
@@ -179,6 +181,7 @@ namespace SSMS
             }
             catch (Exception ex)
             {
+                StopLiveMessageStreaming();
                 if (!historyRecorded)
                 {
                     if (mode is QueryExecutionMode.Execute or QueryExecutionMode.ActualPlan)
@@ -200,6 +203,7 @@ namespace SSMS
             }
             finally
             {
+                StopLiveMessageStreaming();
                 if (ReferenceEquals(_queryCancellationSource, cancellationSource))
                 {
                     _queryCancellationSource = null;
@@ -254,6 +258,85 @@ namespace SSMS
             TxtMessages.Document.Blocks.Clear();
         }
 
+        private void StartLiveMessageStreaming()
+        {
+            StopLiveMessageStreaming();
+            lock (_liveMessageSync)
+            {
+                _pendingLiveMessageText.Clear();
+                _acceptLiveMessages = true;
+            }
+
+            _liveMessageFlushTimer = new System.Windows.Threading.DispatcherTimer(
+                System.Windows.Threading.DispatcherPriority.Background,
+                Dispatcher)
+            {
+                Interval = TimeSpan.FromMilliseconds(75)
+            };
+            _liveMessageFlushTimer.Tick += LiveMessageFlushTimer_Tick;
+            _liveMessageFlushTimer.Start();
+        }
+
+        private void StopLiveMessageStreaming()
+        {
+            if (_liveMessageFlushTimer != null)
+            {
+                _liveMessageFlushTimer.Stop();
+                _liveMessageFlushTimer.Tick -= LiveMessageFlushTimer_Tick;
+                _liveMessageFlushTimer = null;
+            }
+
+            lock (_liveMessageSync)
+            {
+                _acceptLiveMessages = false;
+                _pendingLiveMessageText.Clear();
+            }
+        }
+
+        private void QueueLiveQueryMessage(string message)
+        {
+            if (string.IsNullOrEmpty(message))
+            {
+                return;
+            }
+
+            lock (_liveMessageSync)
+            {
+                if (!_acceptLiveMessages)
+                {
+                    return;
+                }
+
+                if (_pendingLiveMessageText.Length > 0)
+                {
+                    _pendingLiveMessageText.AppendLine();
+                }
+                _pendingLiveMessageText.Append(message);
+            }
+        }
+
+        private void LiveMessageFlushTimer_Tick(object? sender, EventArgs e)
+        {
+            FlushPendingLiveMessages();
+        }
+
+        private void FlushPendingLiveMessages()
+        {
+            string pending;
+            lock (_liveMessageSync)
+            {
+                if (_pendingLiveMessageText.Length == 0)
+                {
+                    return;
+                }
+
+                pending = _pendingLiveMessageText.ToString();
+                _pendingLiveMessageText.Clear();
+            }
+
+            AppendLiveQueryMessage(pending);
+        }
+
         private void SetQueryMessages(string message, bool isError = false)
         {
             TxtMessages.Document.Blocks.Clear();
@@ -269,9 +352,29 @@ namespace SSMS
 
             string[] lines = message.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
             int lastExtractedLineNumber = -1;
+            var normalText = new System.Text.StringBuilder();
+            System.Windows.Media.Brush? normalBrush = null;
 
-            foreach (var line in lines)
+            void FlushNormalText()
             {
+                if (normalText.Length == 0 || normalBrush == null)
+                {
+                    return;
+                }
+
+                var paragraph = new System.Windows.Documents.Paragraph(new System.Windows.Documents.Run(normalText.ToString()))
+                {
+                    Margin = new Thickness(0, 0, 0, 2),
+                    Foreground = normalBrush
+                };
+                TxtMessages.Document.Blocks.Add(paragraph);
+                normalText.Clear();
+                normalBrush = null;
+            }
+
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i];
                 var brush = isError ? MessageRedBrush : ClassifyMessageLineColor(line);
                 
                 int lineNum = -1;
@@ -286,21 +389,33 @@ namespace SSMS
                     lineNum = lastExtractedLineNumber;
                 }
 
-                var run = new System.Windows.Documents.Run(line);
+                if (lineNum <= 0)
+                {
+                    if (normalBrush != brush)
+                    {
+                        FlushNormalText();
+                        normalBrush = brush;
+                    }
 
-                var paragraph = new System.Windows.Documents.Paragraph(run)
+                    if (normalText.Length > 0)
+                    {
+                        normalText.AppendLine();
+                    }
+                    normalText.Append(line);
+                    continue;
+                }
+
+                FlushNormalText();
+                var paragraph = new System.Windows.Documents.Paragraph(new System.Windows.Documents.Run(line))
                 {
                     Margin = new Thickness(0, 0, 0, 2),
-                    Foreground = brush
+                    Foreground = brush,
+                    Tag = lineNum
                 };
-
-                if (lineNum > 0)
-                {
-                    paragraph.Tag = lineNum;
-                }
 
                 TxtMessages.Document.Blocks.Add(paragraph);
             }
+            FlushNormalText();
             TxtMessages.ScrollToEnd();
         }
 
