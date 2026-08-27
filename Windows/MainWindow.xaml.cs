@@ -45,6 +45,7 @@ namespace SSMS
         private bool _allowWindowClose;
         private bool _isCloseConfirmationInProgress;
         private QueryHistoryWindow? _queryHistoryWindow;
+        private SqlAgentWindow? _sqlAgentWindow;
         private ObjectSearchWindow? _objectSearchWindow;
         private SqlTraceWindow? _sqlTraceWindow;
         private SchemaImportWindow? _schemaImportWindow;
@@ -349,6 +350,12 @@ namespace SSMS
 
         public void ApplyToolbarOrder()
         {
+            if (ToolbarQueryTools.Child is Button toolsButton)
+            {
+                toolsButton.Content = "\u2692 Tools";
+                toolsButton.ToolTip = "Tools: query actions and SQL Agent Monitor";
+            }
+
             Border[] defaultItems =
             {
                 ToolbarObjectExplorer,

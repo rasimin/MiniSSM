@@ -38,7 +38,7 @@ namespace SSMS
             { "ToolbarSave", "💾  Save Query File (Ctrl+S)" },
             { "ToolbarSaveAs", "💾+ Save Query As (Ctrl+Shift+S)" },
             { "ToolbarOpen", "📂  Open SQL File (Ctrl+O)" },
-            { "ToolbarQueryTools", "🛠️  Query Tools (Parse / Plan / Format)" },
+            { "ToolbarQueryTools", "\u2692 Tools (Query actions / SQL Agent)" },
             { "ToolbarSettings", "⚙️  Settings Button" },
             { "ToolbarQueryHistory", "🕘  Query Execution History" },
             { "ToolbarInsertScript", "📝  Insert Script Snippet" }

@@ -287,6 +287,29 @@ namespace SSMS
             CreateNewQueryFromCurrentContext();
         }
 
+        private void OpenSqlAgentWindow()
+        {
+            if (_sqlAgentWindow != null)
+            {
+                if (_sqlAgentWindow.WindowState == WindowState.Minimized)
+                {
+                    _sqlAgentWindow.WindowState = WindowState.Normal;
+                }
+
+                _sqlAgentWindow.Activate();
+                return;
+            }
+
+            string connectionString = TabQueryControls.SelectedItem is TabItem tabItem &&
+                                       tabItem.Content is QueryTabControl activeTab
+                ? activeTab.ConnectionString
+                : _initialConnectionString;
+
+            _sqlAgentWindow = new SqlAgentWindow(connectionString) { Owner = this };
+            _sqlAgentWindow.Closed += (_, _) => _sqlAgentWindow = null;
+            _sqlAgentWindow.Show();
+        }
+
         private void BtnQueryTools_Click(object sender, RoutedEventArgs e)
         {
             if (sender is not Button button) return;
@@ -320,6 +343,11 @@ namespace SSMS
             var importSchemaItem = new MenuItem { Header = "Import Schema..." };
             importSchemaItem.Click += (_, _) => OpenSchemaImportWindow();
             menu.Items.Add(importSchemaItem);
+
+            menu.Items.Add(new Separator());
+            var sqlAgentItem = new MenuItem { Header = "SQL Agent Monitor" };
+            sqlAgentItem.Click += (_, _) => OpenSqlAgentWindow();
+            menu.Items.Add(sqlAgentItem);
 
             button.ContextMenu = menu;
             menu.PlacementTarget = button;
