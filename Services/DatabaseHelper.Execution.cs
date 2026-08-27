@@ -136,9 +136,16 @@ namespace SSMS
                 result.ExecutionTime = stopwatch.Elapsed;
 
                 var sb = new System.Text.StringBuilder();
+                var seenErrors = new HashSet<string>(StringComparer.Ordinal);
                 foreach (SqlError error in sqlEx.Errors)
                 {
                     int absLine = Math.Max(1, currentBatchStartLine + error.LineNumber - 1);
+                    string errorKey = string.Join("\u001F", error.Number, error.Class, error.State, absLine, error.Message);
+                    if (!seenErrors.Add(errorKey))
+                    {
+                        continue;
+                    }
+
                     sb.AppendLine($"Msg {error.Number}, Level {error.Class}, State {error.State}, Line {absLine}");
                     sb.AppendLine(error.Message);
                 }

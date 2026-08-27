@@ -13,3 +13,6 @@ obj/
 
 # Local credentials settings file
 connection_settings.json
+
+# Local sampling files
+sampling/
