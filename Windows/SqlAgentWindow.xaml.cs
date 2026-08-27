@@ -28,6 +28,11 @@ namespace SSMS
 
         private async void Window_Loaded(object sender, RoutedEventArgs e)
         {
+            // History is the primary diagnostic view, so keep it as the first and active tab.
+            DetailTabs.Items.Remove(HistoryTab);
+            DetailTabs.Items.Insert(0, HistoryTab);
+            DetailTabs.SelectedItem = HistoryTab;
+
             await RefreshAsync(selectFirstJob: true);
             _autoRefreshTimer.Start();
         }
@@ -157,7 +162,7 @@ namespace SSMS
         {
             if (JobsGrid.SelectedItem is SqlAgentJob)
             {
-                DetailTabs.SelectedIndex = 1;
+                DetailTabs.SelectedItem = HistoryTab;
             }
         }
 

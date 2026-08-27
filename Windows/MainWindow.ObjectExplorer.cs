@@ -321,6 +321,10 @@ namespace SSMS
             traceMenu.Click += (s, e) => ShowSqlTraceDialog(connectionString, null);
             contextMenu.Items.Add(traceMenu);
 
+            var sqlAgentMenu = new MenuItem { Header = "SQL Agent Monitor" };
+            sqlAgentMenu.Click += (s, e) => OpenSqlAgentWindowFromInstance(connectionString);
+            contextMenu.Items.Add(sqlAgentMenu);
+
             var disconnectMenu = new MenuItem { Header = "Disconnect" };
             disconnectMenu.Click += (s, e) => DisconnectServer(serverNode);
             contextMenu.Items.Add(disconnectMenu);

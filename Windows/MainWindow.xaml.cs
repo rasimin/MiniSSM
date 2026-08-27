@@ -46,6 +46,7 @@ namespace SSMS
         private bool _isCloseConfirmationInProgress;
         private QueryHistoryWindow? _queryHistoryWindow;
         private SqlAgentWindow? _sqlAgentWindow;
+        private string? _sqlAgentConnectionString;
         private ObjectSearchWindow? _objectSearchWindow;
         private SqlTraceWindow? _sqlTraceWindow;
         private SchemaImportWindow? _schemaImportWindow;

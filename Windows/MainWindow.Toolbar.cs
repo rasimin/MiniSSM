@@ -287,27 +287,56 @@ namespace SSMS
             CreateNewQueryFromCurrentContext();
         }
 
-        private void OpenSqlAgentWindow()
+        private void OpenSqlAgentWindow(string? requestedConnectionString = null)
         {
+            string? connectionString = requestedConnectionString;
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                connectionString = TabQueryControls.SelectedItem is TabItem tabItem &&
+                                   tabItem.Content is QueryTabControl activeTab
+                    ? activeTab.ConnectionString
+                    : _initialConnectionString;
+            }
+
             if (_sqlAgentWindow != null)
             {
-                if (_sqlAgentWindow.WindowState == WindowState.Minimized)
+                if (!string.Equals(_sqlAgentConnectionString, connectionString, StringComparison.OrdinalIgnoreCase))
                 {
-                    _sqlAgentWindow.WindowState = WindowState.Normal;
+                    _sqlAgentWindow.Close();
+                    _sqlAgentWindow = null;
+                    _sqlAgentConnectionString = null;
                 }
+                else
+                {
+                    if (_sqlAgentWindow.WindowState == WindowState.Minimized)
+                    {
+                        _sqlAgentWindow.WindowState = WindowState.Normal;
+                    }
 
-                _sqlAgentWindow.Activate();
+                    _sqlAgentWindow.Activate();
+                    return;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                MessageBox.Show("No SQL Server connection is available.", "SQL Agent Monitor", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
-            string connectionString = TabQueryControls.SelectedItem is TabItem tabItem &&
-                                       tabItem.Content is QueryTabControl activeTab
-                ? activeTab.ConnectionString
-                : _initialConnectionString;
-
+            _sqlAgentConnectionString = connectionString;
             _sqlAgentWindow = new SqlAgentWindow(connectionString) { Owner = this };
-            _sqlAgentWindow.Closed += (_, _) => _sqlAgentWindow = null;
+            _sqlAgentWindow.Closed += (_, _) =>
+            {
+                _sqlAgentWindow = null;
+                _sqlAgentConnectionString = null;
+            };
             _sqlAgentWindow.Show();
+        }
+
+        private void OpenSqlAgentWindowFromInstance(string connectionString)
+        {
+            OpenSqlAgentWindow(connectionString);
         }
 
         private void BtnQueryTools_Click(object sender, RoutedEventArgs e)
