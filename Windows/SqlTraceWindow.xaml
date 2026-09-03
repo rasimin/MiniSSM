@@ -243,14 +243,15 @@
             <Grid Grid.Row="2" Margin="0,0,0,10">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto" MinWidth="180" MaxWidth="240"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="Database:" Foreground="#CCCCCC" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                <ComboBox x:Name="CboDatabase" Grid.Column="1" DisplayMemberPath="DisplayName"/>
+                <ComboBox x:Name="CboDatabase" Grid.Column="1" DisplayMemberPath="DisplayName" MinWidth="180" MaxWidth="240"/>
                 <Button x:Name="BtnStart" Grid.Column="2" Content="Start Trace" Style="{StaticResource TracePrimaryButton}"
                         Margin="10,0,0,0" Click="BtnStart_Click"/>
                 <Button x:Name="BtnStop" Grid.Column="3" Content="Stop Trace" Style="{StaticResource TraceButton}"
@@ -259,7 +260,89 @@
                         Content="⌫" ToolTip="Clear captured events" Style="{StaticResource TraceButton}"
                         Margin="8,0,0,0" Click="BtnClearTrace_Click"/>
                 <TextBlock x:Name="TxtState" Grid.Column="5" Text="Not running" Foreground="#8A8A8A"
-                           VerticalAlignment="Center" Margin="14,0,0,0"/>
+                           VerticalAlignment="Center" Margin="14,0,16,0"/>
+
+                <!-- Search Panel (Enabled only when trace is stopped) -->
+                <Border Grid.Column="6" x:Name="SearchBorder"
+                        Height="30"
+                        MinWidth="250"
+                        MaxWidth="420"
+                        HorizontalAlignment="Right"
+                        Background="#252526"
+                        BorderBrush="#3C3C3C"
+                        BorderThickness="1"
+                        CornerRadius="3"
+                        SnapsToDevicePixels="True">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsKeyboardFocusWithin, ElementName=SearchBorder}" Value="True">
+                                    <Setter Property="BorderBrush" Value="#007ACC"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="28"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0" Text="🔍" FontSize="11" Foreground="#8A8A8A"
+                                   VerticalAlignment="Center" HorizontalAlignment="Center"/>
+
+                        <TextBox x:Name="TxtSearch" Grid.Column="1"
+                                 Background="Transparent" Foreground="#F2F2F2"
+                                 BorderThickness="0" VerticalAlignment="Center"
+                                 FontSize="12" CaretBrush="White"
+                                 Padding="0,2,4,2"
+                                 TextChanged="TxtSearch_TextChanged"
+                                 KeyDown="TxtSearch_KeyDown">
+                            <TextBox.Template>
+                                <ControlTemplate TargetType="TextBox">
+                                    <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
+                                                  HorizontalScrollBarVisibility="Hidden"
+                                                  VerticalScrollBarVisibility="Hidden"
+                                                  VerticalAlignment="Center"/>
+                                </ControlTemplate>
+                            </TextBox.Template>
+                        </TextBox>
+
+                        <TextBlock Grid.Column="1" IsHitTestVisible="False"
+                                   Text="Search captured SQL / events..."
+                                   Foreground="#6A6A6A" FontSize="12"
+                                   VerticalAlignment="Center" Margin="2,0,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=TxtSearch}" Value="">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <Border Grid.Column="2" x:Name="SearchCountBadge"
+                                Background="#333337" CornerRadius="2"
+                                Padding="6,2" Margin="4,0,4,0"
+                                VerticalAlignment="Center" Visibility="Collapsed">
+                            <TextBlock x:Name="TxtSearchCount" Text="0 / 0"
+                                       Foreground="#9D9D9D" FontSize="10"/>
+                        </Border>
+
+                        <Button Grid.Column="3" x:Name="BtnClearSearch"
+                                Content="✕" Width="22" Height="22"
+                                Background="Transparent" Foreground="#8A8A8A"
+                                BorderThickness="0" Cursor="Hand" FontSize="10"
+                                Margin="0,0,3,0" VerticalAlignment="Center"
+                                Visibility="Collapsed" ToolTip="Clear search filter (Esc)"
+                                Click="BtnClearSearch_Click"/>
+                    </Grid>
+                </Border>
             </Grid>
 
             <DataGrid x:Name="TraceGrid" Grid.Row="3" ItemsSource="{Binding TraceEvents}"

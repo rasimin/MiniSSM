@@ -137,6 +137,19 @@
             return lastStart;
         }
 
+        var reservedAliases = {
+            ON: true, WHERE: true, INNER: true, LEFT: true, RIGHT: true, FULL: true,
+            CROSS: true, JOIN: true, OUTER: true, APPLY: true, GROUP: true, ORDER: true,
+            HAVING: true, UNION: true, SELECT: true, TOP: true, DISTINCT: true, SET: true,
+            WITH: true, NOLOCK: true, HOLDLOCK: true, UPDLOCK: true, TABLOCK: true, TABLOCKX: true,
+            PAGLOCK: true, READCOMMITTED: true, READCOMMITTEDLOCK: true, READPAST: true,
+            READUNCOMMITTED: true, REPEATABLEREAD: true, ROWLOCK: true, SERIALIZABLE: true,
+            SNAPSHOT: true, XLOCK: true,
+            FOR: true, OPTION: true, PIVOT: true, UNPIVOT: true, TABLESAMPLE: true,
+            EXCEPT: true, INTERSECT: true, OFFSET: true, FETCH: true, LIMIT: true, WAITFOR: true,
+            AS: true, GO: true, WHEN: true, THEN: true, ELSE: true, END: true
+        };
+
         function getQuerySources(sqlText, cursorOffset) {
             var sources = [];
             var seen = {};
@@ -170,7 +183,11 @@
             var derivedRegex = /(?:FROM|JOIN|APPLY)\s*\(\s*SELECT\s+([\s\S]*?)\s+FROM[\s\S]*?\)\s+(?:AS\s+)?(\[?[a-zA-Z0-9_]+\]?)/gi;
             var match;
             while ((match = derivedRegex.exec(sqlText)) !== null) {
-                var alias = match[2].replace(/[\[\]]/g, '');
+                var rawDerivedAlias = match[2] || '';
+                var alias = rawDerivedAlias.replace(/[\[\]]/g, '');
+                if (!rawDerivedAlias.startsWith('[') && reservedAliases[alias.toUpperCase()]) {
+                    continue;
+                }
                 var columns = inferSelectColumns(match[1], match[0]);
                 if (columns.length > 0) {
                     tableColumns[alias] = columns;
@@ -183,13 +200,9 @@
             // parenthesis, e.g. FROM dbo.fn_GetBalance(...) fifo.
             var functionSourceRegex = /(?:FROM|JOIN|APPLY)\s+([#a-zA-Z0-9_\.\[\]]+)\s*\([\s\S]*?\)\s+(?:AS\s+)?(\[?[a-zA-Z_][a-zA-Z0-9_]*\]?)/gi;
             while ((match = functionSourceRegex.exec(sqlText)) !== null) {
-                var functionAlias = match[2].replace(/[\[\]]/g, '');
-                var reservedFunctionAlias = {
-                    ON: true, WHERE: true, INNER: true, LEFT: true, RIGHT: true, FULL: true,
-                    CROSS: true, JOIN: true, OUTER: true, APPLY: true, GROUP: true, ORDER: true,
-                    HAVING: true, UNION: true, SELECT: true, TOP: true, DISTINCT: true, SET: true
-                };
-                if (reservedFunctionAlias[functionAlias.toUpperCase()]) {
+                var rawFunctionAlias = match[2] || '';
+                var functionAlias = rawFunctionAlias.replace(/[\[\]]/g, '');
+                if (!rawFunctionAlias.startsWith('[') && reservedAliases[functionAlias.toUpperCase()]) {
                     continue;
                 }
                 functionRanges.push({ start: match.index, end: functionSourceRegex.lastIndex });
@@ -197,11 +210,6 @@
             }
 
             var tableRegex = /(?:FROM|JOIN|APPLY|INSERT(?:\s+INTO)?|INTO|UPDATE|DELETE(?:\s+FROM)?|MERGE(?:\s+INTO)?)\s+([#a-zA-Z0-9_\.\[\]]+)(?:\s+(?:AS\s+)?(\[?[a-zA-Z_][a-zA-Z0-9_]*\]?))?/gi;
-            var reservedAliases = {
-                ON: true, WHERE: true, INNER: true, LEFT: true, RIGHT: true, FULL: true,
-                CROSS: true, JOIN: true, OUTER: true, APPLY: true, GROUP: true, ORDER: true,
-                HAVING: true, UNION: true, SELECT: true, TOP: true, DISTINCT: true, SET: true
-            };
             while ((match = tableRegex.exec(sqlText)) !== null) {
                 var insideDerivedRange = derivedRanges.some(range =>
                     typeof cursorOffset === "number" &&
@@ -214,8 +222,9 @@
                     continue;
                 }
                 var objectName = match[1].replace(/[\[\]]/g, '');
-                var aliasName = match[2] ? match[2].replace(/[\[\]]/g, '') : '';
-                if (reservedAliases[aliasName.toUpperCase()]) {
+                var rawAlias = match[2] || '';
+                var aliasName = rawAlias.replace(/[\[\]]/g, '');
+                if (!rawAlias.startsWith('[') && reservedAliases[aliasName.toUpperCase()]) {
                     aliasName = '';
                 }
                 addSource(objectName, aliasName, match.index, tableRegex.lastIndex);
@@ -473,6 +482,11 @@
 
         // Resolve Table Alias by searching backwards in sql text
         function getTableForAlias(alias, sqlText, cursorOffset) {
+            if (!alias) return null;
+            var cleanAlias = alias.replace(/[\[\]]/g, '');
+            if (!alias.startsWith('[') && reservedAliases[cleanAlias.toUpperCase()]) {
+                return null;
+            }
             var escapedAlias = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             var match;
             var bestMatch = null;

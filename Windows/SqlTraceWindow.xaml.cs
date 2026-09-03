@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Threading;
 using Microsoft.Data.SqlClient;
@@ -24,6 +25,8 @@ namespace SSMS
         private bool _isCustomMaximized;
         private Rect _restoreBounds;
         private long _lastEventSequence;
+        private ICollectionView? _traceEventsView;
+        private string _searchFilter = string.Empty;
 
         public ObservableCollection<SqlTraceEvent> TraceEvents { get; } = new();
 
@@ -34,6 +37,10 @@ namespace SSMS
             _connectionString = connectionString;
             _initialDatabaseName = databaseName;
             BtnMaximize.Content = "\u25A1";
+
+            _traceEventsView = CollectionViewSource.GetDefaultView(TraceEvents);
+            _traceEventsView.Filter = FilterTraceEvent;
+            UpdateSearchUiState(isRunning: false);
         }
 
         private async void Window_Loaded(object sender, RoutedEventArgs e)
@@ -192,11 +199,13 @@ namespace SSMS
                 _traceSession = await SqlTraceSession.StartAsync(_connectionString, choice?.DatabaseName);
                 _lastEventSequence = 0;
                 TraceEvents.Clear();
+                TxtSearch.Clear();
                 BtnStop.IsEnabled = true;
                 TxtState.Text = "Running";
                 TxtState.Foreground = System.Windows.Media.Brushes.LightGreen;
                 TxtStatus.Text = "Waiting for completed RPC and SQL batch events...";
                 TxtTraceFile.Text = $"Trace file: {_traceSession.TraceFilePath}";
+                UpdateSearchUiState(isRunning: true);
 
                 _pollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
                 _pollTimer.Tick += PollTimer_Tick;
@@ -217,6 +226,7 @@ namespace SSMS
                 TxtState.Text = "Not running";
                 TxtState.Foreground = System.Windows.Media.Brushes.Gray;
                 TxtStatus.Text = "Failed to start trace.";
+                UpdateSearchUiState(isRunning: false);
                 DarkMessageBoxWindow.Show(
                     this,
                     $"Trace gagal dimulai: {ex.Message}\n\nPastikan login memiliki permission ALTER TRACE dan SQL Server dapat menulis trace file.",
@@ -234,12 +244,14 @@ namespace SSMS
         private void BtnClearTrace_Click(object sender, RoutedEventArgs e)
         {
             TraceEvents.Clear();
+            TxtSearch.Clear();
             TraceGrid.SelectedItem = null;
             TxtSelectedEvent.Text = "SQL Text Detail — select an event above";
             TxtSqlDetail.Clear();
             TxtStatus.Text = _traceSession == null
                 ? "Display cleared."
                 : "Display cleared. Trace is still running.";
+            UpdateSearchMatchCount();
         }
 
         private async void PollTimer_Tick(object? sender, EventArgs e)
@@ -305,6 +317,8 @@ namespace SSMS
             TxtState.Text = "Stopped";
             TxtState.Foreground = System.Windows.Media.Brushes.Gray;
             TxtStatus.Text = "Trace stopped. Captured events remain visible in this window.";
+            UpdateSearchUiState(isRunning: false);
+            UpdateSearchMatchCount();
         }
 
         private async void Window_Closing(object? sender, CancelEventArgs e)
@@ -348,9 +362,130 @@ namespace SSMS
 
         private void Window_KeyDown(object sender, KeyEventArgs e)
         {
+            if (e.Key == Key.F && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                if (TxtSearch.IsEnabled)
+                {
+                    TxtSearch.Focus();
+                    TxtSearch.SelectAll();
+                    e.Handled = true;
+                }
+                return;
+            }
+
             if (e.Key == Key.Escape)
             {
                 Close();
+            }
+        }
+
+        private void TxtSearch_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+        {
+            _searchFilter = TxtSearch.Text;
+            BtnClearSearch.Visibility = string.IsNullOrEmpty(_searchFilter) ? Visibility.Collapsed : Visibility.Visible;
+            _traceEventsView?.Refresh();
+            UpdateSearchMatchCount();
+
+            if (TraceGrid.SelectedItem == null && _traceEventsView != null)
+            {
+                var first = _traceEventsView.Cast<SqlTraceEvent>().FirstOrDefault();
+                if (first != null)
+                {
+                    TraceGrid.SelectedItem = first;
+                }
+            }
+        }
+
+        private void TxtSearch_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Escape)
+            {
+                if (!string.IsNullOrEmpty(TxtSearch.Text))
+                {
+                    TxtSearch.Clear();
+                    e.Handled = true;
+                }
+            }
+        }
+
+        private void BtnClearSearch_Click(object sender, RoutedEventArgs e)
+        {
+            TxtSearch.Clear();
+            TxtSearch.Focus();
+        }
+
+        private bool FilterTraceEvent(object item)
+        {
+            if (item is not SqlTraceEvent ev) return false;
+            if (string.IsNullOrWhiteSpace(_searchFilter)) return true;
+
+            string[] terms = _searchFilter.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (terms.Length == 0) return true;
+
+            for (int i = 0; i < terms.Length; i++)
+            {
+                string term = terms[i];
+                bool matched =
+                    (!string.IsNullOrEmpty(ev.TextData) && ev.TextData.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0) ||
+                    (!string.IsNullOrEmpty(ev.EventName) && ev.EventName.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0) ||
+                    (!string.IsNullOrEmpty(ev.DatabaseName) && ev.DatabaseName.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0) ||
+                    (!string.IsNullOrEmpty(ev.LoginName) && ev.LoginName.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0) ||
+                    (!string.IsNullOrEmpty(ev.HostName) && ev.HostName.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0) ||
+                    (!string.IsNullOrEmpty(ev.ApplicationName) && ev.ApplicationName.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0) ||
+                    ev.Spid.ToString().Contains(term, StringComparison.OrdinalIgnoreCase);
+
+                if (!matched) return false;
+            }
+
+            return true;
+        }
+
+        private void UpdateSearchMatchCount()
+        {
+            int total = TraceEvents.Count;
+            if (string.IsNullOrWhiteSpace(_searchFilter))
+            {
+                SearchCountBadge.Visibility = Visibility.Collapsed;
+                if (_traceSession == null && total > 0)
+                {
+                    TxtStatus.Text = $"Trace stopped. Showing all {total:N0} captured event(s).";
+                }
+                return;
+            }
+
+            int matches = 0;
+            if (_traceEventsView != null)
+            {
+                foreach (var _ in _traceEventsView) matches++;
+            }
+
+            SearchCountBadge.Visibility = Visibility.Visible;
+            TxtSearchCount.Text = $"{matches} / {total}";
+
+            if (matches == 0)
+            {
+                TxtStatus.Text = $"Tidak ada event yang cocok dengan '{_searchFilter}' (dari {total:N0} total event).";
+            }
+            else
+            {
+                TxtStatus.Text = $"Menampilkan {matches:N0} dari {total:N0} event yang cocok dengan '{_searchFilter}'.";
+            }
+        }
+
+        private void UpdateSearchUiState(bool isRunning)
+        {
+            if (isRunning)
+            {
+                TxtSearch.Clear();
+                SearchBorder.IsEnabled = false;
+                SearchBorder.Opacity = 0.45;
+                SearchBorder.ToolTip = "Pencarian dinonaktifkan saat trace sedang berjalan. Hentikan trace untuk mencari hasil.";
+            }
+            else
+            {
+                SearchBorder.IsEnabled = true;
+                SearchBorder.Opacity = 1.0;
+                SearchBorder.ToolTip = "Cari event hasil trace berdasarkan SQL Text, database, login, event, atau SPID (Ctrl+F)";
             }
         }
 
